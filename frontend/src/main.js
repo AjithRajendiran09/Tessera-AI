@@ -84,12 +84,15 @@ function setupNav() {
       $('page-' + currentPage).classList.add('active');
       
       if (currentPage === 'graph') {
+        document.body.style.overflow = 'hidden'; // Prevent mobile scroll from misaligning canvas touch coordinates
         setTimeout(() => {
           renderGraph();
           if (networkInstance) {
             networkInstance.fit(); // ensure it scales correctly after rendering
           }
         }, 350); // wait for 300ms fadeIn animation to complete
+      } else {
+        document.body.style.overflow = ''; // Restore scrolling for other pages
       }
       
       // Close sidebar on mobile after nav click
