@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+  <defs>
+    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c5cff"/>
+      <stop offset="50%" stop-color="#5c8cff"/>
+      <stop offset="100%" stop-color="#ff6c8c"/>
+    </linearGradient>
+  </defs>
+  <!-- Diamond container -->
+  <path d="M20 2 L38 20 L20 38 L2 20 Z" stroke="url(#logo-grad)" stroke-width="2" fill="none"/>
+  <!-- A letter - left side -->
+  <path d="M10 28 L16.5 10 L20 20" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- A crossbar -->
+  <path d="M12.5 22 L18.5 22" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round"/>
+  <!-- R letter - right side, sharing the A's right stroke -->
+  <path d="M20 10 L20 28" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- R bump -->
+  <path d="M20 10 L26 10 C29 10 29 16.5 26 16.5 L20 16.5" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- R leg -->
+  <path d="M23 16.5 L29 28" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round"/>
+</svg>
