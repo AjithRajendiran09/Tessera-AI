@@ -500,7 +500,12 @@ function renderGaps() {
 
 // ── Export ──
 function exportPapers() {
-  exportToExcel(null, 'All_Papers');
+  if (domainFilter) {
+    const d = state.domains.find(dd => dd.id === domainFilter);
+    exportToExcel(domainFilter, d?.name || 'Filtered');
+  } else {
+    exportToExcel(null, 'All_Papers');
+  }
 }
 
 function exportToExcel(domainId, sheetLabel) {
