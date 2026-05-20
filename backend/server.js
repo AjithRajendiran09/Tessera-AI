@@ -60,21 +60,27 @@ app.delete('/api/domains/:id', checkSupabase, async (req, res) => {
   res.status(204).send();
 });
 
-app.post('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) => {
+app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) => {
   try {
-    const domainId = req.params.id;
+    const domainId = req.params.id.trim();
     // Get Domain
-    const { data: domain } = await supabase.from('domains').select('*').eq('id', domainId).single();
-    if (!domain) return res.status(404).json({ error: 'Domain not found' });
+    const { data: domain, error: dErr } = await supabase.from('domains').select('*').eq('id', domainId).single();
+    if (dErr || !domain) {
+      console.error('Domain fetch error:', dErr);
+      return res.status(404).json({ error: 'Domain not found' });
+    }
 
     // Get Papers
-    const { data: papers } = await supabase.from('papers').select('*').eq('domain_id', domainId);
+    const { data: papers, error: pErr } = await supabase.from('papers').select('*').eq('domain_id', domainId);
+    if (pErr) console.error('Papers fetch error:', pErr);
     
     // Get Gaps
-    const { data: gaps } = await supabase.from('research_gaps').select('*').eq('domain_id', domainId);
+    const { data: gaps, error: gErr } = await supabase.from('research_gaps').select('*').eq('domain_id', domainId);
+    if (gErr) console.error('Gaps fetch error:', gErr);
 
-    if (!papers || papers.length === 0) {
-      return res.status(400).json({ error: 'Not enough papers in this domain to generate a literature review.' });
+    if (pErr || !papers || papers.length === 0) {
+      console.error('Papers array empty for domain:', domainId, 'Count:', papers?.length, 'Error:', pErr);
+      return res.status(400).json({ error: `Not enough papers (${papers?.length || 0}) in this domain to generate a literature review.` });
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -130,12 +136,6 @@ app.get('/api/papers/:id', checkSupabase, async (req, res) => {
     .single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
-});
-
-app.post('/api/papers/bulk', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('papers').insert(req.body).select();
-  if (error) return res.status(400).json({ error: error.message });
-  res.status(201).json(data);
 });
 
 app.post('/api/papers', checkSupabase, async (req, res) => {

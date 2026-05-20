@@ -11,7 +11,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/bibtex-parse-js@0.0.24/build/bibtexParse.min.js"></script>
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 <body>
@@ -87,8 +86,6 @@
       <div class="page-header">
         <h1>Paper Repository</h1>
         <div class="page-actions">
-          <input type="file" id="bibtex-upload" accept=".bib" style="display:none">
-          <button class="btn btn-ghost" id="btn-import-bib" style="color:var(--accent);border-color:var(--accent);">📚 Import .bib</button>
           <button class="btn btn-primary" id="btn-add-paper">＋ Add Paper</button>
           <button class="btn btn-ghost" id="btn-export">📥 Export</button>
         </div>
@@ -129,12 +126,12 @@
     </div>
 
     <!-- Page: Knowledge Graph -->
-    <div id="page-graph" class="page" style="height: 100%; display: flex; flex-direction: column;">
-      <div class="page-header" style="margin-bottom: 10px;">
+    <div id="page-graph" class="page" style="height: calc(100vh - 100px); display: flex; flex-direction: column;">
+      <div class="page-header" style="margin-bottom: 10px; flex-shrink: 0;">
         <h1>Knowledge Graph</h1>
         <p class="page-desc">Interactive visualization of Papers, Domains, and Gaps.</p>
       </div>
-      <div id="kg-network" style="flex: 1; min-height: 500px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
+      <div id="kg-network" style="flex: 1; height: 100%; width: 100%; min-height: 600px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
     </div>
 
     <!-- Page: About -->

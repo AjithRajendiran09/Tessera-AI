@@ -9,8 +9,15 @@ async function fetchAPI(endpoint, options = {}) {
     }
   });
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+    let rawText = '';
+    try {
+      rawText = await res.text();
+      const errorData = JSON.parse(rawText);
+      throw new Error(errorData.error || `HTTP ${res.status}: ${JSON.stringify(errorData)}`);
+    } catch (e) {
+      if (e.message.includes('HTTP')) throw e;
+      throw new Error(`HTTP ${res.status}: ${rawText.substring(0, 100)}`);
+    }
   }
   // For 204 No Content
   if (res.status === 204) return null;
@@ -36,9 +43,7 @@ export async function deleteDomain(id) {
 }
 
 export async function generateLitReview(domainId) {
-  return fetchAPI(`/domains/${domainId}/generate-lit-review`, {
-    method: 'POST'
-  });
+  return fetchAPI(`/domains/${domainId}/generate-lit-review`);
 }
 
 // ── PAPERS ──
@@ -87,13 +92,6 @@ export async function createPaper(paper) {
   return fetchAPI('/papers', {
     method: 'POST',
     body: JSON.stringify(paper)
-  });
-}
-
-export async function createPapersBulk(papers) {
-  return fetchAPI('/papers/bulk', {
-    method: 'POST',
-    body: JSON.stringify(papers)
   });
 }
 

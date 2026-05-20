@@ -23,8 +23,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNav();
   setupModalClose();
   $('btn-add-paper').addEventListener('click', () => openPaperForm());
-  $('btn-import-bib').addEventListener('click', () => $('bibtex-upload').click());
-  $('bibtex-upload').addEventListener('change', handleBibtexImport);
   $('btn-add-domain').addEventListener('click', () => openDomainForm());
   $('btn-add-gap').addEventListener('click', () => openGapForm());
   $('btn-export').addEventListener('click', exportPapers);
@@ -86,7 +84,12 @@ function setupNav() {
       $('page-' + currentPage).classList.add('active');
       
       if (currentPage === 'graph') {
-        setTimeout(renderGraph, 50); // delay to let display:block apply
+        setTimeout(() => {
+          renderGraph();
+          if (networkInstance) {
+            networkInstance.fit(); // ensure it scales correctly after rendering
+          }
+        }, 350); // wait for 300ms fadeIn animation to complete
       }
       
       // Close sidebar on mobile after nav click
@@ -677,11 +680,22 @@ function renderGraph() {
 
   const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
   const options = {
+    width: '100%',
+    height: '100%',
+    autoResize: true,
     nodes: { borderWidth: 2 },
     edges: { smooth: { type: 'continuous' } },
     physics: {
-      stabilization: false,
-      barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150 }
+      solver: 'forceAtlas2Based',
+      forceAtlas2Based: {
+        gravitationalConstant: -200,
+        centralGravity: 0.01,
+        springLength: 300,
+        springConstant: 0.05,
+        damping: 0.4,
+        avoidOverlap: 1
+      },
+      stabilization: { iterations: 150 }
     },
     interaction: { hover: true, tooltipDelay: 200 }
   };
@@ -690,50 +704,6 @@ function renderGraph() {
     networkInstance.destroy();
   }
   networkInstance = new vis.Network(container, data, options);
-}
-
-// ── Import BibTeX ──
-async function handleBibtexImport(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = async (event) => {
-    try {
-      const text = event.target.result;
-      const parsed = bibtexParse.toJSON(text);
-      
-      const papers = parsed.map(entry => {
-        const tags = entry.entryTags || {};
-        return {
-          title: tags.title ? tags.title.replace(/[{}]/g, '') : 'Untitled',
-          authors: tags.author ? tags.author.replace(/[{}]/g, '') : 'Unknown',
-          year: parseInt(tags.year) || new Date().getFullYear(),
-          venue: tags.journal || tags.booktitle || tags.publisher || 'Unknown',
-          doi: tags.doi || null,
-          url: tags.url || null,
-          contribution: tags.abstract || null,
-          relevance_score: 50,
-          is_read: false
-        };
-      });
-
-      if (papers.length === 0) {
-        toast('⚠️ No valid papers found in .bib file', true);
-        return;
-      }
-
-      toast(`📚 Importing ${papers.length} papers...`);
-      await api.createPapersBulk(papers);
-      toast(`✅ Successfully imported ${papers.length} papers!`);
-      $('bibtex-upload').value = ''; // reset input
-      await loadAll();
-    } catch (err) {
-      console.error(err);
-      toast('❌ Failed to parse or import .bib file', true);
-    }
-  };
-  reader.readAsText(file);
 }
 
 // ── Export ──
