@@ -24,6 +24,14 @@ async function fetchAPI(endpoint, options = {}) {
   return await res.json();
 }
 
+export async function generatePitch(payload) {
+  return fetchAPI('/generate-pitch', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+// ── UTILS ──
 // ── DOMAINS ──
 export async function getDomains() {
   return fetchAPI('/domains');

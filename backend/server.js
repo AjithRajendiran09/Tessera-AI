@@ -117,6 +117,41 @@ app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) 
   }
 });
 
+// GENERATE PITCH (Elevator Pitch)
+app.post('/api/generate-pitch', checkSupabase, async (req, res) => {
+  try {
+    const { gapIds, idea } = req.body;
+    if (!gapIds || gapIds.length === 0) {
+      return res.status(400).json({ error: 'No research gaps provided.' });
+    }
+
+    // Fetch the specific gaps
+    const { data: gaps, error: gErr } = await supabase.from('research_gaps').select('title, description').in('id', gapIds);
+    if (gErr || !gaps) throw new Error('Failed to fetch gaps from database');
+
+    const gapsContext = gaps.map(g => `- ${g.title}: ${g.description}`).join('\n');
+
+    const prompt = `
+    You are an expert academic researcher writing an "Elevator Pitch" (Abstract / Introduction format) for a brand new PhD paper.
+    
+    The user wants to write a paper that solves the following Open Research Gaps:
+    ${gapsContext}
+    
+    ${idea ? `The researcher's proposed approach/idea to solve these is:\n"${idea}"` : 'The researcher has not provided a specific approach, so you should invent a plausible, novel, and highly academic approach to solve these gaps.'}
+    
+    Write a cohesive, synthesized 3-4 paragraph pitch. It should read like the introduction of a high-impact journal paper.
+    Format the output in clean Markdown (use headings, bold text, and bullet points where appropriate). Do not include any JSON.
+    `;
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const result = await callGeminiWithRetry(genAI, prompt);
+    res.json({ pitch: result.response.text() });
+  } catch (error) {
+    console.error('Pitch generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // PAPERS
 app.get('/api/papers', checkSupabase, async (req, res) => {
   const { data, error } = await supabase

@@ -598,8 +598,9 @@ function renderGaps() {
   $('gaps-grid').innerHTML = state.gaps.map(g => {
     const d = g.domains;
     return `
-    <div class="gap-card">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+    <div class="gap-card" style="position:relative; cursor:pointer;" onclick="const cb = this.querySelector('.gap-checkbox'); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change'));">
+      <input type="checkbox" class="gap-checkbox" data-id="${g.id}" style="position:absolute; top:15px; left:15px; transform: scale(1.3); cursor:pointer;" onclick="event.stopPropagation();">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-left: 25px;">
         <span class="gap-severity severity-${g.severity}">${g.severity}</span>
         <div style="display: flex; gap: 8px; align-items: center;">
           <span class="gap-status" style="position: static;">${g.status}</span>
@@ -627,6 +628,48 @@ function renderGaps() {
       }
     });
   });
+
+  // Handle Gap Checkboxes
+  const pitchBtn = $('btn-generate-pitch');
+  if (pitchBtn) {
+    document.querySelectorAll('.gap-checkbox').forEach(cb => {
+      cb.addEventListener('change', e => {
+        const checked = document.querySelectorAll('.gap-checkbox:checked').length;
+        if (checked > 0) {
+          pitchBtn.disabled = false;
+          pitchBtn.innerHTML = `✍️ Generate Pitch (${checked} selected)`;
+        } else {
+          pitchBtn.disabled = true;
+          pitchBtn.innerHTML = `✍️ Generate Pitch (0 selected)`;
+        }
+      });
+    });
+
+    // We only attach the pitch generation handler once (outside renderGaps ideally, but this is safe if we replace it)
+    pitchBtn.onclick = async () => {
+      const selectedGaps = Array.from(document.querySelectorAll('.gap-checkbox:checked')).map(cb => cb.dataset.id);
+      if (selectedGaps.length === 0) return;
+      
+      const pitchIdea = prompt("Optional: Briefly describe your proposed idea or solution (or leave blank and AI will figure it out):");
+      if (pitchIdea === null) return; // Cancelled
+
+      pitchBtn.disabled = true;
+      pitchBtn.innerHTML = "⏳ Generating Pitch...";
+      toast(`✨ AI is writing your Elevator Pitch. This takes ~15 seconds...`);
+
+      try {
+        const result = await api.generatePitch({ gapIds: selectedGaps, idea: pitchIdea });
+        openLitReviewModal('My Thesis Pitch', result.pitch);
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      } finally {
+        // Reset state
+        document.querySelectorAll('.gap-checkbox:checked').forEach(cb => cb.checked = false);
+        pitchBtn.disabled = true;
+        pitchBtn.innerHTML = `✍️ Generate Pitch (0 selected)`;
+      }
+    };
+  }
 }
 
 // ── Knowledge Graph ──

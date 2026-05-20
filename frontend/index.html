@@ -117,12 +117,19 @@
 
     <!-- Page: Gaps -->
     <div id="page-gaps" class="page">
-      <div class="page-header">
-        <h1>Research Gaps</h1>
-        <button class="btn btn-primary" id="btn-add-gap">＋ Add Gap</button>
+        <header class="page-header">
+          <div>
+            <h1>Research Gaps</h1>
+            <p>Select multiple gaps to write an AI Elevator Pitch for your next paper</p>
+          </div>
+          <div>
+            <button class="btn btn-primary" id="btn-generate-pitch" disabled style="background: linear-gradient(135deg, #a78bfa, #c084fc); box-shadow: 0 4px 15px rgba(167,139,250,0.3); transition: all 0.3s;">
+              ✍️ Generate Pitch (0 selected)
+            </button>
+          </div>
+        </header>
+        <div class="gaps-grid" id="gaps-grid"></div>
       </div>
-      <div class="gaps-grid" id="gaps-grid"></div>
-    </div>
 
     <!-- Page: Knowledge Graph -->
     <div id="page-graph" class="page" style="height: calc(100vh - 100px); display: flex; flex-direction: column;">
