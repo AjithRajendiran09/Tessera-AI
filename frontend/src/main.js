@@ -52,6 +52,29 @@ async function loadAll() {
 
 // ── Navigation ──
 function setupNav() {
+  // Mobile menu toggle
+  const sidebar = $('sidebar');
+  const menuBtn = $('mobile-menu-btn');
+  
+  // Create overlay element for mobile
+  const overlay = document.createElement('div');
+  overlay.className = 'sidebar-overlay';
+  overlay.id = 'sidebar-overlay';
+  document.body.appendChild(overlay);
+
+  menuBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('active');
+    menuBtn.textContent = sidebar.classList.contains('open') ? '✕' : '☰';
+  });
+
+  overlay.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+    menuBtn.textContent = '☰';
+  });
+
+  // Nav item clicks
   document.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => {
       currentPage = btn.dataset.page;
@@ -59,6 +82,10 @@ function setupNav() {
       btn.classList.add('active');
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       $('page-' + currentPage).classList.add('active');
+      // Close sidebar on mobile after nav click
+      sidebar.classList.remove('open');
+      overlay.classList.remove('active');
+      menuBtn.textContent = '☰';
     });
   });
 }
@@ -526,7 +553,7 @@ function exportToExcel(domainId, sheetLabel) {
   XLSX.utils.book_append_sheet(wb, ws, safeName);
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  const fileName = `ComplianceLit_${safeName}_${dateStr}.xlsx`;
+  const fileName = `TesseraAI_${safeName}_${dateStr}.xlsx`;
   XLSX.writeFile(wb, fileName);
   toast(`📥 Exported ${papers.length} papers to ${fileName}`);
 }
