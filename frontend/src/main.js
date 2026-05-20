@@ -500,18 +500,38 @@ function renderGaps() {
 
 // ── Export ──
 function exportPapers() {
+  // Export exactly what's visible on screen (respects domain filter + search)
+  let papers = state.papers.filter(p => {
+    const matchDomain = !domainFilter || p.domain_id === domainFilter;
+    const matchSearch = !searchQuery || p.title.toLowerCase().includes(searchQuery) ||
+      p.authors.toLowerCase().includes(searchQuery) || (p.contribution || '').toLowerCase().includes(searchQuery) ||
+      String(p.year).includes(searchQuery);
+    return matchDomain && matchSearch;
+  });
+
+  if (papers.length === 0) {
+    toast('⚠️ No papers to export', true);
+    return;
+  }
+
+  let label = 'All_Papers';
   if (domainFilter) {
     const d = state.domains.find(dd => dd.id === domainFilter);
-    exportToExcel(domainFilter, d?.name || 'Filtered');
-  } else {
-    exportToExcel(null, 'All_Papers');
+    label = d?.name || 'Filtered';
   }
+  if (searchQuery) {
+    label += `_${searchQuery}`;
+  }
+
+  exportToExcel(papers, label);
 }
 
-function exportToExcel(domainId, sheetLabel) {
-  let papers = state.papers;
-  if (domainId) {
-    papers = papers.filter(p => p.domain_id === domainId);
+function exportToExcel(papers, sheetLabel) {
+  if (typeof papers === 'string' || !Array.isArray(papers)) {
+    // Called from domain page with (domainId, label)
+    const domainId = papers;
+    papers = state.papers.filter(p => p.domain_id === domainId);
+    sheetLabel = sheetLabel || 'Papers';
   }
   if (papers.length === 0) {
     toast('⚠️ No papers to export', true);
