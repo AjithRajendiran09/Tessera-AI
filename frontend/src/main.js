@@ -246,6 +246,14 @@ function renderPapers() {
       if (p) openPaperDetail(p);
     });
   });
+
+  // Update export button label
+  const exportBtn = $('btn-export');
+  if (domainFilter || searchQuery) {
+    exportBtn.textContent = `📥 Export (${filtered.length})`;
+  } else {
+    exportBtn.textContent = '📥 Export';
+  }
 }
 
 // ── Paper Detail Modal ──
@@ -500,6 +508,7 @@ function renderGaps() {
 
 // ── Export ──
 function exportPapers() {
+  console.log('Export clicked. domainFilter:', domainFilter, 'searchQuery:', searchQuery);
   // Export exactly what's visible on screen (respects domain filter + search)
   let filtered = state.papers.filter(p => {
     const matchDomain = !domainFilter || p.domain_id === domainFilter;
@@ -508,6 +517,7 @@ function exportPapers() {
       String(p.year).includes(searchQuery);
     return matchDomain && matchSearch;
   });
+  console.log('Filtered papers count:', filtered.length, 'of', state.papers.length);
 
   let label = 'All_Papers';
   if (domainFilter) {
