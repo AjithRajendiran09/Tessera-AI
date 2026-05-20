@@ -54,6 +54,12 @@ app.post('/api/domains', checkSupabase, async (req, res) => {
   res.status(201).json(data);
 });
 
+app.delete('/api/domains/:id', checkSupabase, async (req, res) => {
+  const { error } = await supabase.from('domains').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(204).send();
+});
+
 // PAPERS
 app.get('/api/papers', checkSupabase, async (req, res) => {
   const { data, error } = await supabase
@@ -112,6 +118,12 @@ app.put('/api/gaps/:id', checkSupabase, async (req, res) => {
   const { data, error } = await supabase.from('research_gaps').update(req.body).eq('id', req.params.id).select().single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
+});
+
+app.delete('/api/gaps/:id', checkSupabase, async (req, res) => {
+  const { error } = await supabase.from('research_gaps').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(204).send();
 });
 
 // PAPER-GAP LINKS

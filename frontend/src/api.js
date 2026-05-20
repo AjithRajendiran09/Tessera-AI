@@ -29,6 +29,12 @@ export async function createDomain(domain) {
   });
 }
 
+export async function deleteDomain(id) {
+  return fetchAPI(`/domains/${id}`, {
+    method: 'DELETE'
+  });
+}
+
 // ── PAPERS ──
 export async function uploadPdf(file) {
   const formData = new FormData();
@@ -107,6 +113,12 @@ export async function updateGap(id, updates) {
   return fetchAPI(`/gaps/${id}`, {
     method: 'PUT',
     body: JSON.stringify(updates)
+  });
+}
+
+export async function deleteGap(id) {
+  return fetchAPI(`/gaps/${id}`, {
+    method: 'DELETE'
   });
 }
 

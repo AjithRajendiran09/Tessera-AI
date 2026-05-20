@@ -473,7 +473,10 @@ function renderDomains() {
   $('domain-detail-grid').innerHTML = ds.map(d => `
     <div class="domain-detail-card">
       <div class="domain-color-bar" style="background:${d.color}"></div>
-      <div style="font-size:2rem;margin-bottom:4px">${d.icon}</div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="font-size:2rem;margin-bottom:4px">${d.icon}</div>
+        <button class="btn btn-ghost btn-sm btn-delete-domain" data-id="${d.id}" style="padding: 4px 8px; font-size: 0.75rem; color: var(--accent3); border-color: rgba(255,108,140,0.3);">🗑</button>
+      </div>
       <h3>${d.name}</h3>
       <p>${d.description || 'No description'}</p>
       <div class="domain-papers"><strong>${d.paperCount}</strong> papers · <strong>${d.avgRelevance}%</strong> avg relevance</div>
@@ -489,6 +492,22 @@ function renderDomains() {
       exportDomainPapers(domainId, domainName);
     });
   });
+
+  // Attach delete handlers to each domain card
+  document.querySelectorAll('.btn-delete-domain').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!confirm('Delete this domain? Papers linked to it will lose their domain assignment.')) return;
+      try {
+        await api.deleteDomain(id);
+        toast('🗑 Domain deleted');
+        await loadAll();
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      }
+    });
+  });
 }
 
 // ── Gaps Page ──
@@ -497,13 +516,34 @@ function renderGaps() {
     const d = g.domains;
     return `
     <div class="gap-card">
-      <span class="gap-severity severity-${g.severity}">${g.severity}</span>
-      <span class="gap-status">${g.status}</span>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+        <span class="gap-severity severity-${g.severity}">${g.severity}</span>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span class="gap-status" style="position: static;">${g.status}</span>
+          <button class="btn btn-ghost btn-sm btn-delete-gap" data-id="${g.id}" style="padding: 2px 6px; font-size: 0.75rem; color: var(--accent3); border-color: rgba(255,108,140,0.3);">🗑</button>
+        </div>
+      </div>
       <h3>${g.title}</h3>
       <p>${g.description || ''}</p>
       ${d ? `<div class="gap-domain">${d.icon} ${d.name}</div>` : ''}
     </div>`;
   }).join('') || '<div class="empty-state"><p>No research gaps defined.</p></div>';
+
+  // Attach delete handlers to each gap card
+  document.querySelectorAll('.btn-delete-gap').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      if (!confirm('Delete this research gap?')) return;
+      try {
+        await api.deleteGap(id);
+        toast('🗑 Research gap deleted');
+        await loadAll();
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      }
+    });
+  });
 }
 
 // ── Export ──
