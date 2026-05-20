@@ -566,14 +566,31 @@ function openLitReviewModal(domainName, markdownText) {
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
       <h2 style="margin:0;">✨ ${domainName} - Literature Review</h2>
     </div>
-    <div style="line-height:1.6; font-size:0.95rem; color:var(--text1); max-height: 60vh; overflow-y: auto; padding-right: 8px;">
+    <div id="lit-review-content" style="line-height:1.6; font-size:0.95rem; color:var(--text1); max-height: 60vh; overflow-y: auto; padding-right: 8px;">
       ${htmlText}
     </div>
-    <div class="modal-actions" style="margin-top:20px;">
-      <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Done</button>
+    <div class="modal-actions" style="margin-top:20px; display:flex; gap:10px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="downloadLitReviewWord('${domainName.replace(/'/g, "\\'")}')">📄 Download Word</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Done</button>
     </div>
   `;
   openModal();
+}
+
+window.downloadLitReviewWord = function(domainName) {
+  const content = document.getElementById('lit-review-content').innerHTML;
+  const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Literature Review</title></head><body>";
+  const footer = "</body></html>";
+  const docHtml = header + "<h1>Tessera AI</h1><h2>Literature Review: " + domainName + "</h2><hr>" + content + footer;
+  
+  const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Tessera_AI_Lit_Review_${domainName.replace(/\\s+/g, '_')}.doc`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // ── Gaps Page ──
