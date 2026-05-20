@@ -84,7 +84,6 @@ app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) 
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
     const papersContext = papers.map(p => `
     Title: ${p.title}
@@ -110,7 +109,7 @@ app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) 
     Format the output in clean Markdown (use headings, bold text, and bullet points where appropriate). Do not include any JSON.
     `;
 
-    const result = await model.generateContent(prompt);
+    const result = await callGeminiWithRetry(genAI, prompt);
     res.json({ review: result.response.text() });
   } catch (error) {
     console.error(error);
