@@ -487,7 +487,12 @@ function renderDomains() {
       <h3>${d.name}</h3>
       <p>${d.description || 'No description'}</p>
       <div class="domain-papers"><strong>${d.paperCount}</strong> papers · <strong>${d.avgRelevance}%</strong> avg relevance</div>
-      ${d.paperCount > 0 ? `<button class="btn btn-ghost btn-sm domain-export-btn" data-domain-id="${d.id}" data-domain-name="${d.name}" style="margin-top:10px;width:100%">📥 Export to Excel</button>` : ''}
+      ${d.paperCount > 0 ? `
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-ghost btn-sm domain-export-btn" data-domain-id="${d.id}" data-domain-name="${d.name}" style="flex:1;">📥 Export</button>
+          <button class="btn btn-primary btn-sm domain-lit-btn" data-domain-id="${d.id}" data-domain-name="${d.name}" style="flex:1; background:linear-gradient(135deg,#a78bfa,#c084fc);">✨ Lit Review</button>
+        </div>
+      ` : ''}
     </div>`).join('') || '<div class="empty-state"><p>No domains yet.</p></div>';
 
   // Attach export handlers to each domain card
@@ -497,6 +502,30 @@ function renderDomains() {
       const domainId = btn.dataset.domainId;
       const domainName = btn.dataset.domainName;
       exportDomainPapers(domainId, domainName);
+    });
+  });
+
+  // Attach lit review handlers to each domain card
+  document.querySelectorAll('.domain-lit-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const domainId = btn.dataset.domainId;
+      const domainName = btn.dataset.domainName;
+      
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ Generating...';
+      btn.disabled = true;
+      toast(`✨ AI is writing a literature review for ${domainName}. This takes ~15 seconds...`);
+      
+      try {
+        const result = await api.generateLitReview(domainId);
+        openLitReviewModal(domainName, result.review);
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
     });
   });
 
@@ -515,6 +544,33 @@ function renderDomains() {
       }
     });
   });
+}
+
+function openLitReviewModal(domainName, markdownText) {
+  // Simple markdown parser for headings, bold, and lists
+  let htmlText = markdownText
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+    .replace(/^- (.*$)/gim, '<li>$1</li>')
+    .replace(/\n\n/g, '<br><br>');
+  
+  htmlText = htmlText.replace(/<li>.*<\/li>/s, match => `<ul>${match}</ul>`);
+
+  $('modal-body').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h2 style="margin:0;">✨ ${domainName} - Literature Review</h2>
+    </div>
+    <div style="line-height:1.6; font-size:0.95rem; color:var(--text1); max-height: 60vh; overflow-y: auto; padding-right: 8px;">
+      ${htmlText}
+    </div>
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Done</button>
+    </div>
+  `;
+  openModal();
 }
 
 // ── Gaps Page ──

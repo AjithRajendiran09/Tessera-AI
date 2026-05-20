@@ -35,6 +35,12 @@ export async function deleteDomain(id) {
   });
 }
 
+export async function generateLitReview(domainId) {
+  return fetchAPI(`/domains/${domainId}/generate-lit-review`, {
+    method: 'POST'
+  });
+}
+
 // ── PAPERS ──
 export async function uploadPdf(file) {
   const formData = new FormData();

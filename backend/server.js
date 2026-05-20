@@ -60,6 +60,58 @@ app.delete('/api/domains/:id', checkSupabase, async (req, res) => {
   res.status(204).send();
 });
 
+app.post('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) => {
+  try {
+    const domainId = req.params.id;
+    // Get Domain
+    const { data: domain } = await supabase.from('domains').select('*').eq('id', domainId).single();
+    if (!domain) return res.status(404).json({ error: 'Domain not found' });
+
+    // Get Papers
+    const { data: papers } = await supabase.from('papers').select('*').eq('domain_id', domainId);
+    
+    // Get Gaps
+    const { data: gaps } = await supabase.from('research_gaps').select('*').eq('domain_id', domainId);
+
+    if (!papers || papers.length === 0) {
+      return res.status(400).json({ error: 'Not enough papers in this domain to generate a literature review.' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const papersContext = papers.map(p => `
+    Title: ${p.title}
+    Authors: ${p.authors} (${p.year})
+    Contribution: ${p.contribution}
+    Limitations: ${(p.limitations || []).join(', ')}
+    `).join('\n');
+
+    const gapsContext = (gaps || []).map(g => `- ${g.title}: ${g.description}`).join('\n');
+
+    const prompt = `
+    You are an expert academic researcher writing a literature review section for a thesis or journal paper.
+    Write a cohesive, synthesized 3-4 paragraph literature review for the research domain: "${domain.name}".
+    
+    Use the following papers as your source material. Synthesize their contributions, contrast their approaches, and discuss their limitations. Do not just list them one by one; weave them into a narrative.
+    
+    Papers:
+    ${papersContext}
+    
+    Also, seamlessly weave in these identified open research gaps as future directions for this field:
+    ${gapsContext}
+    
+    Format the output in clean Markdown (use headings, bold text, and bullet points where appropriate). Do not include any JSON.
+    `;
+
+    const result = await model.generateContent(prompt);
+    res.json({ review: result.response.text() });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // PAPERS
 app.get('/api/papers', checkSupabase, async (req, res) => {
   const { data, error } = await supabase
