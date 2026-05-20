@@ -292,15 +292,13 @@ function openPaperDetail(p) {
 function openPaperForm(paper) {
   const isEdit = !!paper;
   $('modal-body').innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-      <h2 style="margin: 0;">${isEdit ? 'Edit Paper' : 'Add New Paper'}</h2>
-      ${!isEdit ? `
-        <div>
-          <input type="file" id="pdf-upload" accept="application/pdf" style="display:none">
-          <button class="btn btn-primary btn-sm" id="btn-ai-upload" style="background: linear-gradient(135deg, #a78bfa, #c084fc);">✨ Auto-fill with AI (PDF)</button>
-        </div>
-      ` : ''}
-    </div>
+    <h2 style="margin-bottom:12px">${isEdit ? 'Edit Paper' : 'Add New Paper'}</h2>
+    ${!isEdit ? `
+      <div style="margin-bottom:16px">
+        <input type="file" id="pdf-upload" accept="application/pdf" style="display:none">
+        <button class="btn btn-primary" id="btn-ai-upload" style="background:linear-gradient(135deg,#a78bfa,#c084fc);width:100%;padding:12px 16px;font-size:.9rem">✨ Auto-fill with AI (Upload PDF)</button>
+      </div>
+    ` : ''}
     <form id="paper-form">
       <div class="form-grid">
         <div class="form-group full"><label>Title *</label><input id="f-title" required value="${paper?.title || ''}" /></div>
