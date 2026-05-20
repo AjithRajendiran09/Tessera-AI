@@ -80,6 +80,12 @@ app.get('/api/papers/:id', checkSupabase, async (req, res) => {
   res.json(data);
 });
 
+app.post('/api/papers/bulk', checkSupabase, async (req, res) => {
+  const { data, error } = await supabase.from('papers').insert(req.body).select();
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(data);
+});
+
 app.post('/api/papers', checkSupabase, async (req, res) => {
   const { data, error } = await supabase.from('papers').insert(req.body).select().single();
   if (error) return res.status(400).json({ error: error.message });

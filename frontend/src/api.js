@@ -84,6 +84,13 @@ export async function createPaper(paper) {
   });
 }
 
+export async function createPapersBulk(papers) {
+  return fetchAPI('/papers/bulk', {
+    method: 'POST',
+    body: JSON.stringify(papers)
+  });
+}
+
 export async function updatePaper(id, updates) {
   return fetchAPI(`/papers/${id}`, {
     method: 'PUT',

@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNav();
   setupModalClose();
   $('btn-add-paper').addEventListener('click', () => openPaperForm());
+  $('btn-import-bib').addEventListener('click', () => $('bibtex-upload').click());
+  $('bibtex-upload').addEventListener('change', handleBibtexImport);
   $('btn-add-domain').addEventListener('click', () => openDomainForm());
   $('btn-add-gap').addEventListener('click', () => openGapForm());
   $('btn-export').addEventListener('click', exportPapers);
@@ -544,6 +546,49 @@ function renderGaps() {
       }
     });
   });
+}
+// ── Import BibTeX ──
+async function handleBibtexImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (event) => {
+    try {
+      const text = event.target.result;
+      const parsed = bibtexParse.toJSON(text);
+      
+      const papers = parsed.map(entry => {
+        const tags = entry.entryTags || {};
+        return {
+          title: tags.title ? tags.title.replace(/[{}]/g, '') : 'Untitled',
+          authors: tags.author ? tags.author.replace(/[{}]/g, '') : 'Unknown',
+          year: parseInt(tags.year) || new Date().getFullYear(),
+          venue: tags.journal || tags.booktitle || tags.publisher || 'Unknown',
+          doi: tags.doi || null,
+          url: tags.url || null,
+          contribution: tags.abstract || null,
+          relevance_score: 50,
+          is_read: false
+        };
+      });
+
+      if (papers.length === 0) {
+        toast('⚠️ No valid papers found in .bib file', true);
+        return;
+      }
+
+      toast(`📚 Importing ${papers.length} papers...`);
+      await api.createPapersBulk(papers);
+      toast(`✅ Successfully imported ${papers.length} papers!`);
+      $('bibtex-upload').value = ''; // reset input
+      await loadAll();
+    } catch (err) {
+      console.error(err);
+      toast('❌ Failed to parse or import .bib file', true);
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ── Export ──
