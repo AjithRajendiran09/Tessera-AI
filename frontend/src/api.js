@@ -34,16 +34,33 @@ export async function uploadPdf(file) {
   const formData = new FormData();
   formData.append('pdf', file);
   
-  const res = await fetch(`${API_URL}/parse-pdf`, {
-    method: 'POST',
-    body: formData
-  });
+  // Render free tier can take 30-60s to wake up, then Gemini takes 10-30s
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
   
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+  try {
+    const res = await fetch(`${API_URL}/parse-pdf`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. The server may be waking up — please try again in 30 seconds.');
+    }
+    if (err.message === 'Failed to fetch') {
+      throw new Error('Cannot reach the server. It may be starting up (takes ~30s on free tier). Please wait and try again.');
+    }
+    throw err;
   }
-  return await res.json();
 }
 
 export async function getPapers() {
