@@ -199,6 +199,8 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
     }
 
     IMPORTANT for research_gaps: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions mentioned or implied by the paper. These should be actionable gaps that a PhD researcher could investigate. If the paper doesn't clearly suggest any gaps, return an empty array [].
+    
+    IMPORTANT for relevance_score: Do not default to high scores like 85 or 90. Be highly critical. An average paper should score between 40-60. Only ground-breaking, foundational papers should score 80+. Minor incremental papers should score 20-40. Evaluate strictly based on the novelty, impact, and rigor described in the text.
 
     Paper Text:
     ${rawText}
