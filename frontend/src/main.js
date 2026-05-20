@@ -84,6 +84,11 @@ function setupNav() {
       btn.classList.add('active');
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       $('page-' + currentPage).classList.add('active');
+      
+      if (currentPage === 'graph') {
+        setTimeout(renderGraph, 50); // delay to let display:block apply
+      }
+      
       // Close sidebar on mobile after nav click
       sidebar.classList.remove('open');
       overlay.classList.remove('active');
@@ -547,6 +552,90 @@ function renderGaps() {
     });
   });
 }
+
+// ── Knowledge Graph ──
+let networkInstance = null;
+function renderGraph() {
+  const container = $('kg-network');
+  if (!container || currentPage !== 'graph') return;
+  
+  if (!window.vis) {
+    container.innerHTML = '<p style="padding:20px">Loading graph library...</p>';
+    setTimeout(renderGraph, 500);
+    return;
+  }
+
+  const nodes = [];
+  const edges = [];
+
+  // Add Domains
+  state.domains.forEach(d => {
+    nodes.push({
+      id: 'd_' + d.id,
+      label: d.name,
+      group: 'domain',
+      title: d.description || d.name,
+      font: { color: '#ffffff', size: 16 },
+      color: { background: d.color, border: d.color },
+      shape: 'box',
+      margin: 10
+    });
+  });
+
+  // Add Gaps
+  state.gaps.forEach(g => {
+    nodes.push({
+      id: 'g_' + g.id,
+      label: g.title,
+      group: 'gap',
+      title: g.description,
+      font: { color: '#ffffff', size: 12 },
+      color: { background: '#222233', border: '#444455' },
+      shape: 'ellipse'
+    });
+    // Link gap to domain
+    if (g.domain_id) {
+      edges.push({ from: 'g_' + g.id, to: 'd_' + g.domain_id, dashes: true, color: { color: '#444455' } });
+    }
+  });
+
+  // Add Papers
+  state.papers.forEach(p => {
+    const d = state.domains.find(dd => dd.id === p.domain_id);
+    nodes.push({
+      id: 'p_' + p.id,
+      label: p.title.substring(0, 25) + (p.title.length > 25 ? '...' : ''),
+      group: 'paper',
+      title: p.title + '\n' + p.authors,
+      font: { color: '#aaaaaa', size: 10 },
+      color: { background: d ? d.color + '44' : '#111111', border: d ? d.color : '#333333' },
+      shape: 'dot',
+      size: 10
+    });
+    
+    // Link paper to domain
+    if (p.domain_id) {
+      edges.push({ from: 'p_' + p.id, to: 'd_' + p.domain_id, color: { color: d ? d.color + '44' : '#333333' } });
+    }
+  });
+
+  const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+  const options = {
+    nodes: { borderWidth: 2 },
+    edges: { smooth: { type: 'continuous' } },
+    physics: {
+      stabilization: false,
+      barnesHut: { gravitationalConstant: -3000, centralGravity: 0.3, springLength: 150 }
+    },
+    interaction: { hover: true, tooltipDelay: 200 }
+  };
+
+  if (networkInstance) {
+    networkInstance.destroy();
+  }
+  networkInstance = new vis.Network(container, data, options);
+}
+
 // ── Import BibTeX ──
 async function handleBibtexImport(e) {
   const file = e.target.files[0];

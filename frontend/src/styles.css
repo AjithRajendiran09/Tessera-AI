@@ -337,3 +337,20 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   .author-divider{margin:8px auto}
   .about-footer{padding-top:20px}
 }
+
+/* Vis.js Graph Tooltips */
+.vis-tooltip {
+  position: absolute;
+  visibility: hidden;
+  padding: 8px 12px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.85rem;
+  background-color: var(--surface2);
+  color: var(--text1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  pointer-events: none;
+  z-index: 1000;
+  white-space: pre-wrap;
+}
