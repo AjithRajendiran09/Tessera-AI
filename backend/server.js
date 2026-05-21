@@ -297,19 +297,21 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
           "severity": "One of: critical, high, medium, low"
         }
       ],
-      "relevance": "A 1-2 sentence explanation of how this paper relates to the user's existing research domains: [${domainNames.join(', ')}]. If the paper is unrelated to any of these domains, explicitly state that.",
-      "relevance_score": 85,
+      "relevance": "A 1-2 sentence explanation of how this paper relates to the user's existing research domains: [${domainNames.join(', ')}]. If the paper is unrelated to ALL of these domains, say: 'This paper is NOT relevant to the user's current research focus.'",
+      "relevance_score": 15,
       "category": "One of: Foundation, Safety & Guardrails, Drift Detection, Provenance, Multi-Agent, Formal Verification"
     }
 
     IMPORTANT for research_gaps: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions mentioned or implied by the paper. These should be actionable gaps that a PhD researcher could investigate. If the paper doesn't clearly suggest any gaps, return an empty array [].
     
-    IMPORTANT for relevance_score: This score measures how relevant the paper is to the user's EXISTING research focus, which currently covers these domains: [${domainNames.join(', ')}]. 
-    - If the paper directly addresses one of these domains, score 60-90.
-    - If the paper is tangentially related (shares some methods or concepts), score 30-55.
-    - If the paper is completely unrelated to any of these domains (e.g., a paper about electrical safety training when the user studies AI compliance), score 5-20.
-    - Only truly foundational papers that directly advance one of the user's domains should score 80+.
-    - Do NOT inflate scores. A paper outside the user's research area should never exceed 25.
+    CRITICAL for relevance_score: This is NOT a quality score. This measures ONLY how relevant the paper is to the user's SPECIFIC research, which covers ONLY these domains: [${domainNames.join(', ')}].
+    Scoring rules:
+    - 80-100: Paper is a CORE paper in one of the user's exact domains (e.g., a paper about LLM agent compliance when the user studies "Compliance Drift")
+    - 50-79: Paper is DIRECTLY related — shares the same research topic but from a different angle
+    - 25-49: Paper is TANGENTIALLY related — uses similar methods or shares a sub-topic
+    - 5-24: Paper is UNRELATED — different field entirely (e.g., electrical safety training, agricultural science, etc.)
+    - DEFAULT to 15 if unsure. Never give above 50 unless you can name the exact matching domain.
+    - A paper about "electrical safety training with VR" when the user's domains are about "AI agents" and "compliance" MUST score below 15.
 
     Paper Text:
     ${rawText}
