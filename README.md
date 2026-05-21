@@ -1,6 +1,6 @@
 # ◇ Tessera AI — Research Intelligence Platform
 
-> An AI-powered research paper management and intelligence platform built for PhD scholars, researchers, and academics. Upload a PDF and let Google Gemini extract everything — title, authors, domain, gaps, and more.
+> An AI-powered research paper management and intelligence platform built for PhD scholars, researchers, and academics. Upload a PDF and let Google Gemini extract everything — title, authors, domain, gaps, and more. Then generate literature reviews, elevator pitches, and visualize your entire research landscape.
 
 *"Tessera" comes from the Latin word for a small tile used to create mosaics. Each paper you add becomes a piece of a larger intellectual mosaic — revealing patterns, gaps, and connections across your field of study.*
 
@@ -34,7 +34,9 @@ Tessera AI transforms the traditionally manual process of literature review into
 - **Analyze** your collection with visual dashboards and interactive charts
 - **Extract** metadata automatically from PDFs using Google Gemini AI
 - **Discover** research gaps identified by AI from each uploaded paper
-- **Export** domain-specific paper collections to Excel for systematic reviews
+- **Generate** AI-powered literature reviews and thesis pitch abstracts
+- **Visualize** your research landscape with an interactive Knowledge Graph
+- **Export** domain-specific paper collections to Excel or Word documents
 - **Navigate** seamlessly — click any chart bar to jump to filtered papers
 
 ---
@@ -51,11 +53,13 @@ Tessera AI transforms the traditionally manual process of literature review into
 │  • Paper Management   │       │  • /api/domains       │       │  • papers        │
 │  • Domain Explorer    │       │  • /api/gaps          │       │  • research_gaps │
 │  • Research Gaps      │       │  • /api/parse-pdf     │       │  • paper_gaps    │
-│  • About Page         │       │  • /api/dashboard     │       │                  │
+│  • Knowledge Graph    │       │  • /api/dashboard     │       │                  │
+│  • Lit Review / Pitch │       │  • /api/generate-*    │       │                  │
+│  • About Page         │       │                       │       │                  │
 │                       │       │                       │       │                  │
 └───────────────────────┘       └─────────┬─────────────┘       └──────────────────┘
                                           │
-                                          │ AI Parsing
+                                          │ AI Parsing / Generation
                                           ▼
                                  ┌──────────────────┐
                                  │  Google Gemini    │
@@ -64,6 +68,8 @@ Tessera AI transforms the traditionally manual process of literature review into
                                  │  PDF → Metadata  │
                                  │  PDF → Gaps      │
                                  │  PDF → Domain    │
+                                 │  Lit Reviews     │
+                                 │  Elevator Pitch  │
                                  └──────────────────┘
 ```
 
@@ -72,7 +78,7 @@ Tessera AI transforms the traditionally manual process of literature review into
 ## Project Structure
 
 ```
-Compliance-by-proxy/
+Tessera-AI/
 │
 ├── backend/                       # Node.js + Express API server
 │   ├── server.js                  # All routes, Gemini AI integration, retry logic
@@ -83,11 +89,12 @@ Compliance-by-proxy/
 │
 ├── frontend/                      # Vite SPA (vanilla JS)
 │   ├── index.html                 # Single-page application shell + About page
+│   ├── vercel.json                # Vercel proxy rewrites for deployment
 │   ├── public/
 │   │   └── logo.svg               # Custom AR monogram logo (SVG)
 │   ├── src/
 │   │   ├── api.js                 # HTTP client (calls backend REST API)
-│   │   ├── main.js                # App logic: routing, rendering, CRUD, AI auto-fill
+│   │   ├── main.js                # App logic: routing, rendering, CRUD, AI features
 │   │   └── styles.css             # Complete dark glassmorphic UI theme
 │   └── package.json               # Frontend dependencies
 │
@@ -100,16 +107,17 @@ Compliance-by-proxy/
 
 ## Tech Stack
 
-| Layer        | Technology                    | Purpose                                  |
-|:-------------|:------------------------------|:-----------------------------------------|
-| **Frontend** | Vite + Vanilla JS + CSS       | SPA with zero framework overhead         |
-| **Backend**  | Node.js + Express             | REST API server with AI orchestration    |
-| **Database** | Supabase (PostgreSQL)         | Cloud-hosted DB with Row Level Security  |
-| **AI**       | Google Gemini (2.5/2.0 Flash) | PDF metadata + research gap extraction   |
-| **Upload**   | Multer                        | In-memory PDF file upload handling       |
-| **PDF**      | pdf-parse                     | Extract raw text from PDF documents      |
-| **Excel**    | SheetJS (xlsx)                | Domain-filtered Excel export             |
-| **Fonts**    | Inter + JetBrains Mono        | Modern typography via Google Fonts       |
+| Layer        | Technology                    | Purpose                                      |
+|:-------------|:------------------------------|:---------------------------------------------|
+| **Frontend** | Vite + Vanilla JS + CSS       | SPA with zero framework overhead             |
+| **Backend**  | Node.js + Express             | REST API server with AI orchestration        |
+| **Database** | Supabase (PostgreSQL)         | Cloud-hosted DB with Row Level Security      |
+| **AI**       | Google Gemini (2.5/2.0 Flash) | PDF parsing, lit reviews, pitch generation   |
+| **Graph**    | vis-network                   | Interactive Knowledge Graph visualization    |
+| **Upload**   | Multer                        | In-memory PDF file upload handling           |
+| **PDF**      | pdf-parse                     | Extract raw text from PDF documents          |
+| **Excel**    | SheetJS (xlsx)                | Domain-filtered Excel export                 |
+| **Fonts**    | Inter + JetBrains Mono + Outfit | Modern typography via Google Fonts         |
 
 ---
 
@@ -135,15 +143,29 @@ Compliance-by-proxy/
 ### 🗂️ Smart Domain Management
 - **Create custom domains**: Name, emoji icon, hex color, description
 - **AI auto-creation**: If a paper doesn't fit any existing domain, the AI suggests and creates a new one automatically
-- **Per-domain Excel export**: Each domain card has a "📥 Export to Excel" button
+- **Per-domain Excel export**: Each domain card has an "📥 Export" button
+- **AI Literature Review**: Each domain card has a "✨ Lit Review" button that generates a full academic literature review
+- **Word export**: Download generated literature reviews as `.doc` Word documents with Tessera AI branding
 - **Visual stats**: Paper count and average relevance per domain
+- **Delete domains**: Remove domains that are no longer needed
 
-### 🔬 Research Gap Detection
+### 🔬 Research Gap Detection & Elevator Pitch
 - **AI-powered**: When you upload a PDF, Gemini identifies 1–3 open research gaps from the paper
 - **Auto-created**: Gaps are automatically saved to Supabase with severity, description, and domain linkage
 - **Severity levels**: Critical, High, Medium, Low
 - **Status tracking**: Open, Investigating, Addressed, Closed
 - **Source attribution**: Each gap description notes which paper it was identified from
+- **Delete gaps**: Remove gaps that have been resolved or are no longer relevant
+- **Elevator Pitch Generator**: Select 2–3 gaps → AI drafts a professional abstract/introduction for your next paper
+- **Optional idea input**: Describe your proposed solution, or let the AI invent a novel approach
+- **Word export**: Download your generated pitch as a Word document
+
+### 🕸️ Knowledge Graph
+- **Interactive visualization**: Papers, Domains, and Gaps rendered as an interconnected network
+- **Color-coded nodes**: Domains (boxes), Papers (dots), Gaps (triangles) with domain colors
+- **Physics engine**: `forceAtlas2Based` layout with smart repulsion for clear cluster visibility
+- **Full-screen rendering**: Dedicated page with locked scrolling for mobile touch support
+- **Zoom & pan**: Pinch-to-zoom and drag to explore on mobile and desktop
 
 ### ✨ AI-Powered PDF Parser
 Upload any academic paper PDF and Gemini extracts:
@@ -167,9 +189,22 @@ Upload any academic paper PDF and Gemini extracts:
 **3-model fallback chain**: `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite`  
 Auto-retries on rate limits (429) and server overload (503) with 5-second delays.
 
+### 📝 AI Literature Review Generator
+- Click "✨ Lit Review" on any domain card
+- AI synthesizes all papers in the domain into a cohesive 3–4 paragraph literature review
+- Contrasts approaches, discusses limitations, and weaves in open research gaps
+- Output rendered in rich Markdown with headings, bold, italics, and bullet points
+- **Download as Word**: One-click export to `.doc` with Tessera AI header branding
+
+### ✍️ Elevator Pitch Generator
+- Go to Research Gaps → check 2–3 gaps you want to address
+- Click "✍️ Generate Pitch" → optionally describe your proposed approach
+- AI drafts a professional abstract/introduction positioned against existing literature
+- **Download as Word**: Export your thesis pitch to a Word document instantly
+
 ### ℹ️ About Page
 - Project description and name meaning
-- Key capabilities overview
+- Key capabilities overview (6 feature cards)
 - Technology stack badges
 - Developer attribution
 - Auto-updating copyright year
@@ -191,7 +226,7 @@ Auto-retries on rate limits (429) and server overload (503) with 5-second delays
 
 ```bash
 git clone <your-repo-url>
-cd Compliance-by-proxy
+cd Tessera-AI
 ```
 
 ### Step 2: Set up Supabase database
@@ -316,28 +351,31 @@ Base URL: `http://localhost:3000/api`
 
 ### Domains
 
-| Method | Endpoint         | Description          |
-|:-------|:-----------------|:---------------------|
-| GET    | `/domains`       | List all domains     |
-| POST   | `/domains`       | Create a new domain  |
+| Method | Endpoint                            | Description                                 |
+|:-------|:------------------------------------|:--------------------------------------------|
+| GET    | `/domains`                          | List all domains                            |
+| POST   | `/domains`                          | Create a new domain                         |
+| DELETE | `/domains/:id`                      | Delete a domain                             |
+| GET    | `/domains/:id/generate-lit-review`  | AI-generated literature review for a domain |
 
 ### Papers
 
-| Method | Endpoint          | Description                      |
-|:-------|:------------------|:---------------------------------|
+| Method | Endpoint          | Description                        |
+|:-------|:------------------|:-----------------------------------|
 | GET    | `/papers`         | List all papers (with domain join) |
-| GET    | `/papers/:id`     | Get single paper                 |
-| POST   | `/papers`         | Create a new paper               |
-| PUT    | `/papers/:id`     | Update a paper                   |
-| DELETE | `/papers/:id`     | Delete a paper                   |
+| GET    | `/papers/:id`     | Get single paper                   |
+| POST   | `/papers`         | Create a new paper                 |
+| PUT    | `/papers/:id`     | Update a paper                     |
+| DELETE | `/papers/:id`     | Delete a paper                     |
 
 ### Research Gaps
 
-| Method | Endpoint      | Description           |
-|:-------|:--------------|:----------------------|
+| Method | Endpoint      | Description                    |
+|:-------|:--------------|:-------------------------------|
 | GET    | `/gaps`       | List all gaps (with domain join) |
-| POST   | `/gaps`       | Create a new gap      |
-| PUT    | `/gaps/:id`   | Update a gap          |
+| POST   | `/gaps`       | Create a new gap               |
+| PUT    | `/gaps/:id`   | Update a gap                   |
+| DELETE | `/gaps/:id`   | Delete a gap                   |
 
 ### Paper-Gap Links
 
@@ -346,17 +384,19 @@ Base URL: `http://localhost:3000/api`
 | POST   | `/paper-gaps`         | Link a paper to a gap    |
 | GET    | `/papers/:id/gaps`    | Get all gaps for a paper |
 
+### AI Features
+
+| Method | Endpoint                            | Description                                     |
+|:-------|:------------------------------------|:------------------------------------------------|
+| POST   | `/parse-pdf`                        | Upload PDF → AI metadata + auto-create domain & gaps |
+| GET    | `/domains/:id/generate-lit-review`  | Generate AI literature review for a domain      |
+| POST   | `/generate-pitch`                   | Generate elevator pitch from selected gaps      |
+
 ### Dashboard
 
 | Method | Endpoint             | Description                    |
 |:-------|:---------------------|:-------------------------------|
 | GET    | `/dashboard/stats`   | Aggregated stats for dashboard |
-
-### AI Parser
-
-| Method | Endpoint        | Body              | Description                        |
-|:-------|:----------------|:------------------|:-----------------------------------|
-| POST   | `/parse-pdf`    | `multipart/form-data` (field: `pdf`) | Upload PDF → AI metadata + auto-create domain & gaps |
 
 ---
 
@@ -401,15 +441,37 @@ Base URL: `http://localhost:3000/api`
 2. Fill in the form fields manually
 3. Click **💾 Save**
 
+### Generating a Literature Review
+1. Click **Domains** → find the domain you want
+2. Click **✨ Lit Review** on the domain card
+3. Wait ~15 seconds for AI to synthesize all papers in that domain
+4. View the formatted review in the modal
+5. Click **📄 Download Word** to export as a `.doc` file with Tessera AI branding
+
+### Generating an Elevator Pitch
+1. Click **Research Gaps**
+2. Check the boxes on 2–3 gaps you want to address in your paper
+3. Click **✍️ Generate Pitch**
+4. Optionally describe your proposed solution (or leave blank for AI to suggest one)
+5. View the generated abstract/introduction
+6. Click **📄 Download Word** to export
+
 ### Navigating via Dashboard
 - Click any **domain bar** in "Papers by Domain" → jumps to Papers filtered by that domain
 - Click any **year bar** in "Publication Timeline" → shows papers from that year
 - Click any **domain card** → jumps to Papers filtered by that domain
 - Click any **recent paper** → opens the paper detail modal
 
+### Exploring the Knowledge Graph
+1. Click **Knowledge Graph** in the sidebar
+2. Zoom in/out with scroll wheel or pinch gestures
+3. Drag nodes to rearrange the layout
+4. Hover over nodes to see details
+5. Colored clusters show how papers relate to domains and gaps
+
 ### Exporting Papers to Excel
 - **All papers**: Go to Papers page → click **📥 Export**
-- **By domain**: Go to Domains page → click **📥 Export to Excel** on any domain card
+- **By domain**: Go to Domains page → click **📥 Export** on any domain card
 
 ### Creating a Domain Manually
 1. Click **Domains** → **＋ Add Domain**
@@ -420,6 +482,22 @@ Base URL: `http://localhost:3000/api`
 1. Click **Research Gaps** → **＋ Add Gap**
 2. Select domain, severity, and describe the gap
 3. Click **💾 Save**
+
+---
+
+## Deployment
+
+### Frontend (Vercel)
+1. Push your code to GitHub
+2. Import the `frontend/` directory in [Vercel](https://vercel.com)
+3. The `vercel.json` file automatically proxies `/api/*` requests to your Render backend
+
+### Backend (Render)
+1. Create a new Web Service on [Render](https://render.com)
+2. Set the root directory to `backend/`
+3. Build command: `npm install`
+4. Start command: `node server.js`
+5. Add environment variables: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GEMINI_API_KEY`
 
 ---
 
@@ -436,13 +514,16 @@ Base URL: `http://localhost:3000/api`
 | `pdfParse is not a function` | Run `npm install pdf-parse@1.1.1` in the backend directory |
 | Port 3000 already in use | Run `lsof -ti :3000 \| xargs kill -9` then restart |
 | Frontend can't reach backend | Ensure backend runs on port 3000. Check `api.js` has correct `API_URL` |
+| Lit Review returns 500 | Check Gemini API key is valid and the domain has at least 1 paper |
+| Knowledge Graph blank on mobile | Ensure you're on the Graph tab; scrolling is locked to prevent canvas misalignment |
 
 ---
 
 ## Author
 
 **Ajith Rajendiran**  
-PhD Researcher
+Assistant Professor · Christ Academy Institute for Advanced Studies  
+PhD Scholar · Alliance University
 
 ---
 
@@ -453,4 +534,4 @@ ISC
 ---
 
 © 2026 Ajith Rajendiran. All rights reserved.  
-Tessera AI v1.0.0 · Research Intelligence Platform
+Tessera AI v2.0.0 · Research Intelligence Platform
