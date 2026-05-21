@@ -305,13 +305,11 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
     IMPORTANT for research_gaps: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions mentioned or implied by the paper. These should be actionable gaps that a PhD researcher could investigate. If the paper doesn't clearly suggest any gaps, return an empty array [].
     
     CRITICAL for relevance_score: This is NOT a quality score. This measures ONLY how relevant the paper is to the user's SPECIFIC research, which covers ONLY these domains: [${domainNames.join(', ')}].
-    Scoring rules:
-    - 80-100: Paper is a CORE paper in one of the user's exact domains (e.g., a paper about LLM agent compliance when the user studies "Compliance Drift")
-    - 50-79: Paper is DIRECTLY related — shares the same research topic but from a different angle
-    - 25-49: Paper is TANGENTIALLY related — uses similar methods or shares a sub-topic
-    - 5-24: Paper is UNRELATED — different field entirely (e.g., electrical safety training, agricultural science, etc.)
-    - DEFAULT to 15 if unsure. Never give above 50 unless you can name the exact matching domain.
-    - A paper about "electrical safety training with VR" when the user's domains are about "AI agents" and "compliance" MUST score below 15.
+    ABSOLUTE SCORING RULES:
+    1. If the paper's topic is NOT explicitly one of the domains listed above, you MUST score it between 0 and 15. Do not deviate from this.
+    2. A paper about "electrical safety", "VR training", etc. is completely unrelated to domains like "AI compliance" or "Formal Verification". Score it 10.
+    3. ONLY score above 50 if the paper is a DIRECT match for one of the provided domains.
+    4. If the domains list is empty [], default to scoring everything 10.
 
     Paper Text:
     ${rawText}
