@@ -17,225 +17,359 @@
   <div class="bg-glow bg-glow-1"></div>
   <div class="bg-glow bg-glow-2"></div>
 
-  <!-- Mobile Menu Toggle -->
-  <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">☰</button>
-
-  <!-- Sidebar Nav -->
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-brand">
-      <img src="/logo.svg" alt="Tessera AI" class="brand-logo" />
-      <span class="brand-text">Tessera AI</span>
-    </div>
-    <nav class="sidebar-nav">
-      <button class="nav-item active" data-page="dashboard">
-        <span class="nav-icon">📊</span> Dashboard
-      </button>
-      <button class="nav-item" data-page="papers">
-        <span class="nav-icon">📄</span> Papers
-      </button>
-      <button class="nav-item" data-page="domains">
-        <span class="nav-icon">🗂️</span> Domains
-      </button>
-      <button class="nav-item" data-page="gaps">
-        <span class="nav-icon">🔬</span> Research Gaps
-      </button>
-      <button class="nav-item" data-page="graph">
-        <span class="nav-icon">🕸️</span> Knowledge Graph
-      </button>
-      <button class="nav-item" data-page="about">
-        <span class="nav-icon">ℹ️</span> About
-      </button>
-    </nav>
-    <div class="sidebar-footer">
-      <span class="sidebar-badge" id="sidebar-count">0 papers</span>
-    </div>
-  </aside>
-
-  <!-- Main Content -->
-  <main id="main-content" class="main-content">
-    <!-- Page: Dashboard -->
-    <div id="page-dashboard" class="page active">
-      <div class="page-header">
-        <h1>Research Dashboard</h1>
-        <p class="page-desc">Visual overview of your literature repository</p>
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- AUTH SCREEN (Login / Register) -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-container">
+      <div class="auth-brand">
+        <img src="/logo.svg" alt="Tessera AI" class="auth-logo" />
+        <h1 class="auth-title">Tessera AI</h1>
+        <p class="auth-subtitle">Research Intelligence Platform</p>
       </div>
-      <!-- Stats Cards -->
-      <div class="stats-row" id="stats-row"></div>
-      <!-- Charts Row -->
-      <div class="charts-row">
-        <div class="chart-card" id="domain-chart-card">
-          <h3>Papers by Domain</h3>
-          <div id="domain-chart" class="bar-chart"></div>
+
+      <!-- Login Form -->
+      <div id="auth-login" class="auth-card">
+        <h2>Welcome Back</h2>
+        <p class="auth-card-desc">Sign in to access your research workspace</p>
+        <form id="login-form">
+          <div class="auth-field">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" placeholder="you@university.edu" required />
+          </div>
+          <div class="auth-field">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" placeholder="••••••••" required minlength="6" />
+          </div>
+          <button type="submit" class="btn btn-primary auth-btn" id="login-btn">Sign In</button>
+        </form>
+        <p class="auth-switch">Don't have an account? <a href="#" id="show-register">Create one</a></p>
+        <div id="login-error" class="auth-error" style="display:none"></div>
+      </div>
+
+      <!-- Register Form -->
+      <div id="auth-register" class="auth-card" style="display:none">
+        <h2>Create Account</h2>
+        <p class="auth-card-desc">Start building your research mosaic</p>
+        <form id="register-form">
+          <div class="auth-field">
+            <label for="register-name">Full Name</label>
+            <input type="text" id="register-name" placeholder="Dr. Jane Smith" required />
+          </div>
+          <div class="auth-field">
+            <label for="register-email">Email</label>
+            <input type="email" id="register-email" placeholder="you@university.edu" required />
+          </div>
+          <div class="auth-field">
+            <label for="register-password">Password</label>
+            <input type="password" id="register-password" placeholder="Min 6 characters" required minlength="6" />
+          </div>
+          <button type="submit" class="btn btn-primary auth-btn" id="register-btn">Create Account</button>
+        </form>
+        <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
+        <div id="register-error" class="auth-error" style="display:none"></div>
+        <div id="register-success" class="auth-success" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- ONBOARDING MODAL (Research Topic) -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="onboarding-overlay" class="onboarding-overlay">
+    <div class="onboarding-modal">
+      <div class="onboarding-icon">🔬</div>
+      <h2>Welcome to Tessera AI!</h2>
+      <p class="onboarding-desc">To personalize your experience and help our AI verify paper relevance, tell us about your research focus.</p>
+      <form id="onboarding-form">
+        <div class="auth-field">
+          <label for="onboarding-topic">Your Research Topic / Focus Area</label>
+          <textarea id="onboarding-topic" rows="3" placeholder="e.g. Runtime AI Governance and Compliance for Autonomous Multi-Agent Systems" required></textarea>
         </div>
-        <div class="chart-card" id="year-chart-card">
-          <h3>Publication Timeline</h3>
-          <div id="year-chart" class="bar-chart"></div>
+        <p class="onboarding-hint">💡 Be specific! This helps Gemini AI accurately score paper relevance to your work.</p>
+        <button type="submit" class="btn btn-primary auth-btn" id="onboarding-btn">🚀 Start Researching</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- MAIN APP (shown after auth) -->
+  <!-- ══════════════════════════════════════════════ -->
+  <div id="app-shell" style="display:none">
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">☰</button>
+
+    <!-- Sidebar Nav -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <img src="/logo.svg" alt="Tessera AI" class="brand-logo" />
+        <span class="brand-text">Tessera AI</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-page="dashboard">
+          <span class="nav-icon">📊</span> Dashboard
+        </button>
+        <button class="nav-item" data-page="papers">
+          <span class="nav-icon">📄</span> Papers
+        </button>
+        <button class="nav-item" data-page="domains">
+          <span class="nav-icon">🗂️</span> Domains
+        </button>
+        <button class="nav-item" data-page="gaps">
+          <span class="nav-icon">🔬</span> Research Gaps
+        </button>
+        <button class="nav-item" data-page="graph">
+          <span class="nav-icon">🕸️</span> Knowledge Graph
+        </button>
+        <!-- Admin nav item (hidden by default, shown for admin users) -->
+        <button class="nav-item nav-admin" data-page="admin" id="nav-admin" style="display:none">
+          <span class="nav-icon">👥</span> User Management
+        </button>
+        <button class="nav-item" data-page="about">
+          <span class="nav-icon">ℹ️</span> About
+        </button>
+      </nav>
+
+      <!-- User profile section in sidebar -->
+      <div class="sidebar-user" id="sidebar-user">
+        <div class="sidebar-user-info">
+          <div class="sidebar-avatar" id="sidebar-avatar">U</div>
+          <div class="sidebar-user-meta">
+            <span class="sidebar-user-name" id="sidebar-user-name">User</span>
+            <span class="sidebar-user-role" id="sidebar-user-role">researcher</span>
+          </div>
         </div>
+        <button class="btn-logout" id="btn-logout" title="Sign Out">⏻</button>
       </div>
-      <!-- Domain Cards -->
-      <h2 class="subsection-title">Research Domains</h2>
-      <div class="domain-grid" id="domain-grid"></div>
-      <!-- Recent Papers -->
-      <h2 class="subsection-title">Recent Papers</h2>
-      <div class="recent-list" id="recent-list"></div>
-    </div>
 
-    <!-- Page: Papers -->
-    <div id="page-papers" class="page">
-      <div class="page-header">
-        <h1>Paper Repository</h1>
-        <div class="page-actions">
-          <button class="btn btn-primary" id="btn-add-paper">＋ Add Paper</button>
-          <button class="btn btn-ghost" id="btn-export">📥 Export</button>
-        </div>
+      <div class="sidebar-footer">
+        <span class="sidebar-badge" id="sidebar-count">0 papers</span>
       </div>
-      <div class="filters-bar" id="papers-filters">
-        <input type="text" id="search-input" class="search-input" placeholder="Search papers..." />
-        <select id="domain-filter" class="filter-select"><option value="">All Domains</option></select>
-        <select id="sort-select" class="filter-select">
-          <option value="year-desc">Year ↓</option>
-          <option value="year-asc">Year ↑</option>
-          <option value="relevance">Relevance</option>
-          <option value="alpha">A–Z</option>
-        </select>
-      </div>
-      <div class="papers-grid" id="papers-grid"></div>
-      <div class="empty-state" id="papers-empty" style="display:none">
-        <span class="empty-icon">📭</span>
-        <p>No papers found. Add your first paper!</p>
-      </div>
-    </div>
+    </aside>
 
-    <!-- Page: Domains -->
-    <div id="page-domains" class="page">
-      <div class="page-header">
-        <h1>Research Domains</h1>
-        <button class="btn btn-primary" id="btn-add-domain">＋ Add Domain</button>
-      </div>
-      <div class="domain-detail-grid" id="domain-detail-grid"></div>
-    </div>
-
-    <!-- Page: Gaps -->
-    <div id="page-gaps" class="page">
-        <header class="page-header">
+    <!-- Main Content -->
+    <main id="main-content" class="main-content">
+      <!-- Page: Dashboard -->
+      <div id="page-dashboard" class="page active">
+        <div class="page-header">
           <div>
-            <h1>Research Gaps</h1>
-            <p>Select multiple gaps to write an AI Elevator Pitch for your next paper</p>
+            <h1>Research Dashboard</h1>
+            <p class="page-desc">Visual overview of your literature repository</p>
           </div>
-          <div>
-            <button class="btn btn-primary" id="btn-add-gap" style="margin-right: 10px;">＋ Add Gap</button>
-            <button class="btn btn-primary" id="btn-generate-pitch" disabled style="background: linear-gradient(135deg, #a78bfa, #c084fc); box-shadow: 0 4px 15px rgba(167,139,250,0.3); transition: all 0.3s;">
-              ✍️ Generate Pitch (0 selected)
-            </button>
+          <div class="research-topic-badge" id="research-topic-badge" title="Click to edit your research topic">
+            <span class="rtb-icon">🎯</span>
+            <span class="rtb-text" id="rtb-text">Loading...</span>
+            <button class="rtb-edit" id="rtb-edit">✏️</button>
           </div>
-        </header>
-        <div class="gaps-grid" id="gaps-grid"></div>
+        </div>
+        <!-- Stats Cards -->
+        <div class="stats-row" id="stats-row"></div>
+        <!-- Charts Row -->
+        <div class="charts-row">
+          <div class="chart-card" id="domain-chart-card">
+            <h3>Papers by Domain</h3>
+            <div id="domain-chart" class="bar-chart"></div>
+          </div>
+          <div class="chart-card" id="year-chart-card">
+            <h3>Publication Timeline</h3>
+            <div id="year-chart" class="bar-chart"></div>
+          </div>
+        </div>
+        <!-- Domain Cards -->
+        <h2 class="subsection-title">Research Domains</h2>
+        <div class="domain-grid" id="domain-grid"></div>
+        <!-- Recent Papers -->
+        <h2 class="subsection-title">Recent Papers</h2>
+        <div class="recent-list" id="recent-list"></div>
       </div>
 
-    <!-- Page: Knowledge Graph -->
-    <div id="page-graph" class="page">
-      <div class="page-header" style="margin-bottom: 10px; flex-shrink: 0;">
-        <h1>Knowledge Graph</h1>
-        <p class="page-desc">Interactive visualization of Papers, Domains, and Gaps.</p>
+      <!-- Page: Papers -->
+      <div id="page-papers" class="page">
+        <div class="page-header">
+          <h1>Paper Repository</h1>
+          <div class="page-actions">
+            <button class="btn btn-primary" id="btn-add-paper">＋ Add Paper</button>
+            <button class="btn btn-ghost" id="btn-export">📥 Export</button>
+          </div>
+        </div>
+        <div class="filters-bar" id="papers-filters">
+          <input type="text" id="search-input" class="search-input" placeholder="Search papers..." />
+          <select id="domain-filter" class="filter-select"><option value="">All Domains</option></select>
+          <select id="sort-select" class="filter-select">
+            <option value="year-desc">Year ↓</option>
+            <option value="year-asc">Year ↑</option>
+            <option value="relevance">Relevance</option>
+            <option value="alpha">A–Z</option>
+          </select>
+        </div>
+        <div class="papers-grid" id="papers-grid"></div>
+        <div class="empty-state" id="papers-empty" style="display:none">
+          <span class="empty-icon">📭</span>
+          <p>No papers found. Add your first paper!</p>
+        </div>
       </div>
-      <div id="kg-network" style="flex: 1; height: 100%; width: 100%; min-height: 600px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
-    </div>
 
-    <!-- Page: About -->
-    <div id="page-about" class="page">
-      <div class="about-page">
-        <div class="about-hero">
-          <img src="/logo.svg" alt="Tessera AI" class="about-logo-img" />
-          <h1 class="about-title">Tessera AI</h1>
-          <p class="about-tagline">Research Intelligence Platform</p>
+      <!-- Page: Domains -->
+      <div id="page-domains" class="page">
+        <div class="page-header">
+          <h1>Research Domains</h1>
+          <button class="btn btn-primary" id="btn-add-domain">＋ Add Domain</button>
         </div>
-
-        <div class="about-card">
-          <h2>About the Project</h2>
-          <p>
-            <strong>Tessera AI</strong> is an AI-powered research paper management and intelligence platform built for 
-            PhD scholars, researchers, and academics. It transforms the traditionally manual process of literature review 
-            into an intelligent, data-driven workflow — helping you organize, analyze, and extract insights from your 
-            entire research paper collection across any domain.
-          </p>
-          <p>
-            The name <em>Tessera</em> comes from the Latin word for a small tile used to create mosaics. Just as individual 
-            tiles come together to form a complete picture, each research paper you add becomes a piece of a larger 
-            intellectual mosaic — revealing patterns, gaps, and connections across your field of study.
-          </p>
-        </div>
-
-        <div class="about-card">
-          <h2>Key Capabilities</h2>
-          <div class="about-features">
-            <div class="about-feature">
-              <span class="about-feature-icon">🤖</span>
-              <h3>AI-Powered Parsing</h3>
-              <p>Upload any PDF and Google Gemini AI extracts title, authors, venue, DOI, URL, contribution, limitations, and auto-assigns the research domain.</p>
-            </div>
-            <div class="about-feature">
-              <span class="about-feature-icon">📊</span>
-              <h3>Visual Analytics</h3>
-              <p>Interactive dashboard with domain distribution charts, publication timelines, relevance scoring, and read-progress tracking.</p>
-            </div>
-            <div class="about-feature">
-              <span class="about-feature-icon">🗂️</span>
-              <h3>Smart Domains</h3>
-              <p>Automatically creates new research domains when papers don't fit existing categories. Export domain-specific papers to Excel.</p>
-            </div>
-            <div class="about-feature">
-              <span class="about-feature-icon">🔬</span>
-              <h3>Gap Tracking</h3>
-              <p>Systematically track research gaps with severity levels and resolution status to guide your research contributions.</p>
-            </div>
-            <div class="about-feature">
-              <span class="about-feature-icon">📝</span>
-              <h3>AI Literature Reviews</h3>
-              <p>One-click AI-generated literature reviews that synthesize all papers in a domain into a cohesive academic narrative. Downloadable as Word documents.</p>
-            </div>
-            <div class="about-feature">
-              <span class="about-feature-icon">✍️</span>
-              <h3>Elevator Pitch Generator</h3>
-              <p>Select research gaps and let AI draft a professional abstract or introduction for your next paper, perfectly positioned against existing literature.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="about-card">
-          <h2>Technology Stack</h2>
-          <div class="about-tech-grid">
-            <span class="tech-badge">Vite</span>
-            <span class="tech-badge">Node.js</span>
-            <span class="tech-badge">Express</span>
-            <span class="tech-badge">Supabase</span>
-            <span class="tech-badge">PostgreSQL</span>
-            <span class="tech-badge">Google Gemini AI</span>
-            <span class="tech-badge">vis-network</span>
-            <span class="tech-badge">SheetJS</span>
-            <span class="tech-badge">pdf-parse</span>
-          </div>
-        </div>
-
-        <div class="about-card about-author">
-          <div class="author-avatar">AR</div>
-          <div class="author-info">
-            <h2>Developed by</h2>
-            <h3 class="author-name">Ajith Rajendiran</h3>
-            <p class="author-role">Assistant Professor</p>
-            <p class="author-org">🏛️ Christ Academy Institute for Advanced Studies</p>
-            <div class="author-divider"></div>
-            <p class="author-role">PhD Scholar</p>
-            <p class="author-org">🎓 Alliance University</p>
-          </div>
-        </div>
-
-        <footer class="about-footer">
-          <p>© <span id="copyright-year"></span> Ajith Rajendiran. All rights reserved.</p>
-          <p class="about-version">Tessera AI v1.0.0 · Research Intelligence Platform</p>
-        </footer>
+        <div class="domain-detail-grid" id="domain-detail-grid"></div>
       </div>
-    </div>
-  </main>
+
+      <!-- Page: Gaps -->
+      <div id="page-gaps" class="page">
+          <header class="page-header">
+            <div>
+              <h1>Research Gaps</h1>
+              <p>Select multiple gaps to write an AI Elevator Pitch for your next paper</p>
+            </div>
+            <div>
+              <button class="btn btn-primary" id="btn-add-gap" style="margin-right: 10px;">＋ Add Gap</button>
+              <button class="btn btn-primary" id="btn-generate-pitch" disabled style="background: linear-gradient(135deg, #a78bfa, #c084fc); box-shadow: 0 4px 15px rgba(167,139,250,0.3); transition: all 0.3s;">
+                ✍️ Generate Pitch (0 selected)
+              </button>
+            </div>
+          </header>
+          <div class="gaps-grid" id="gaps-grid"></div>
+        </div>
+
+      <!-- Page: Knowledge Graph -->
+      <div id="page-graph" class="page">
+        <div class="page-header" style="margin-bottom: 10px; flex-shrink: 0;">
+          <h1>Knowledge Graph</h1>
+          <p class="page-desc">Interactive visualization of Papers, Domains, and Gaps.</p>
+        </div>
+        <div id="kg-network" style="flex: 1; height: 100%; width: 100%; min-height: 600px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
+      </div>
+
+      <!-- Page: Admin (User Management) -->
+      <div id="page-admin" class="page">
+        <div class="page-header">
+          <h1>👥 User Management</h1>
+          <p class="page-desc">Manage registered users and their roles</p>
+        </div>
+        <div class="admin-stats" id="admin-stats"></div>
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="admin-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Research Topic</th>
+                <th>Role</th>
+                <th>Papers</th>
+                <th>Domains</th>
+                <th>Gaps</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="admin-table-body"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="admin-empty" style="display:none">
+          <span class="empty-icon">👤</span>
+          <p>No users found.</p>
+        </div>
+      </div>
+
+      <!-- Page: About -->
+      <div id="page-about" class="page">
+        <div class="about-page">
+          <div class="about-hero">
+            <img src="/logo.svg" alt="Tessera AI" class="about-logo-img" />
+            <h1 class="about-title">Tessera AI</h1>
+            <p class="about-tagline">Research Intelligence Platform</p>
+          </div>
+
+          <div class="about-card">
+            <h2>About the Project</h2>
+            <p>
+              <strong>Tessera AI</strong> is an AI-powered research paper management and intelligence platform built for 
+              PhD scholars, researchers, and academics. It transforms the traditionally manual process of literature review 
+              into an intelligent, data-driven workflow — helping you organize, analyze, and extract insights from your 
+              entire research paper collection across any domain.
+            </p>
+            <p>
+              The name <em>Tessera</em> comes from the Latin word for a small tile used to create mosaics. Just as individual 
+              tiles come together to form a complete picture, each research paper you add becomes a piece of a larger 
+              intellectual mosaic — revealing patterns, gaps, and connections across your field of study.
+            </p>
+          </div>
+
+          <div class="about-card">
+            <h2>Key Capabilities</h2>
+            <div class="about-features">
+              <div class="about-feature">
+                <span class="about-feature-icon">🤖</span>
+                <h3>AI-Powered Parsing</h3>
+                <p>Upload any PDF and Google Gemini AI extracts title, authors, venue, DOI, URL, contribution, limitations, and auto-assigns the research domain.</p>
+              </div>
+              <div class="about-feature">
+                <span class="about-feature-icon">📊</span>
+                <h3>Visual Analytics</h3>
+                <p>Interactive dashboard with domain distribution charts, publication timelines, relevance scoring, and read-progress tracking.</p>
+              </div>
+              <div class="about-feature">
+                <span class="about-feature-icon">🗂️</span>
+                <h3>Smart Domains</h3>
+                <p>Automatically creates new research domains when papers don't fit existing categories. Export domain-specific papers to Excel.</p>
+              </div>
+              <div class="about-feature">
+                <span class="about-feature-icon">🔬</span>
+                <h3>Gap Tracking</h3>
+                <p>Systematically track research gaps with severity levels and resolution status to guide your research contributions.</p>
+              </div>
+              <div class="about-feature">
+                <span class="about-feature-icon">📝</span>
+                <h3>AI Literature Reviews</h3>
+                <p>One-click AI-generated literature reviews that synthesize all papers in a domain into a cohesive academic narrative. Downloadable as Word documents.</p>
+              </div>
+              <div class="about-feature">
+                <span class="about-feature-icon">✍️</span>
+                <h3>Elevator Pitch Generator</h3>
+                <p>Select research gaps and let AI draft a professional abstract or introduction for your next paper, perfectly positioned against existing literature.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="about-card">
+            <h2>Technology Stack</h2>
+            <div class="about-tech-grid">
+              <span class="tech-badge">Vite</span>
+              <span class="tech-badge">Node.js</span>
+              <span class="tech-badge">Express</span>
+              <span class="tech-badge">Supabase</span>
+              <span class="tech-badge">PostgreSQL</span>
+              <span class="tech-badge">Google Gemini AI</span>
+              <span class="tech-badge">vis-network</span>
+              <span class="tech-badge">SheetJS</span>
+              <span class="tech-badge">pdf-parse</span>
+            </div>
+          </div>
+
+          <div class="about-card about-author">
+            <div class="author-avatar">AR</div>
+            <div class="author-info">
+              <h2>Developed by</h2>
+              <h3 class="author-name">Ajith Rajendiran</h3>
+              <p class="author-role">Assistant Professor</p>
+              <p class="author-org">🏛️ Christ Academy Institute for Advanced Studies</p>
+              <div class="author-divider"></div>
+              <p class="author-role">PhD Scholar</p>
+              <p class="author-org">🎓 Alliance University</p>
+            </div>
+          </div>
+
+          <footer class="about-footer">
+            <p>© <span id="copyright-year"></span> Ajith Rajendiran. All rights reserved.</p>
+            <p class="about-version">Tessera AI v2.0.0 · Research Intelligence Platform</p>
+          </footer>
+        </div>
+      </div>
+    </main>
+  </div>
 
   <!-- Modal Container -->
   <div class="modal-overlay" id="modal-overlay">

@@ -7,6 +7,8 @@ let currentPage = 'dashboard';
 let searchQuery = '';
 let domainFilter = '';
 let sortMode = 'year-desc';
+let currentUser = null;
+let currentProfile = null;
 
 // ── DOM ──
 const $ = id => document.getElementById(id);
@@ -18,10 +20,189 @@ const toast = (msg, err) => {
   setTimeout(() => t.classList.remove('show'), 2500);
 };
 
-// ── Init ──
+// ══════════════════════════════════════════════
+// AUTH FLOW
+// ══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
-  setupNav();
+  setupAuthUI();
   setupModalClose();
+
+  // Check for existing session
+  try {
+    const session = await api.getSession();
+    if (session?.user) {
+      currentUser = session.user;
+      await handleAuthSuccess();
+    } else {
+      showAuthScreen();
+    }
+  } catch (e) {
+    showAuthScreen();
+  }
+
+  // Listen for auth state changes (e.g., token refresh)
+  api.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      currentProfile = null;
+      showAuthScreen();
+    }
+  });
+});
+
+function showAuthScreen() {
+  $('auth-screen').style.display = 'flex';
+  $('app-shell').style.display = 'none';
+  $('onboarding-overlay').style.display = 'none';
+}
+
+function showApp() {
+  $('auth-screen').style.display = 'none';
+  $('app-shell').style.display = 'block';
+  $('onboarding-overlay').style.display = 'none';
+}
+
+function showOnboarding() {
+  $('auth-screen').style.display = 'none';
+  $('app-shell').style.display = 'none';
+  $('onboarding-overlay').style.display = 'flex';
+}
+
+function setupAuthUI() {
+  // Toggle between login and register
+  $('show-register').addEventListener('click', e => {
+    e.preventDefault();
+    $('auth-login').style.display = 'none';
+    $('auth-register').style.display = 'block';
+  });
+  $('show-login').addEventListener('click', e => {
+    e.preventDefault();
+    $('auth-register').style.display = 'none';
+    $('auth-login').style.display = 'block';
+  });
+
+  // Login form
+  $('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('login-btn');
+    const errEl = $('login-error');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+      const { user } = await api.signIn(
+        $('login-email').value.trim(),
+        $('login-password').value
+      );
+      currentUser = user;
+      await handleAuthSuccess();
+    } catch (err) {
+      errEl.textContent = err.message || 'Sign in failed';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  });
+
+  // Register form
+  $('register-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('register-btn');
+    const errEl = $('register-error');
+    const successEl = $('register-success');
+    errEl.style.display = 'none';
+    successEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Creating account...';
+
+    try {
+      const result = await api.signUp(
+        $('register-email').value.trim(),
+        $('register-password').value,
+        $('register-name').value.trim()
+      );
+
+      // Check if email confirmation is required
+      if (result.user && !result.session) {
+        successEl.textContent = '✅ Account created! Check your email for a confirmation link, then sign in.';
+        successEl.style.display = 'block';
+      } else if (result.user && result.session) {
+        // Auto-confirmed, proceed
+        currentUser = result.user;
+        await handleAuthSuccess();
+      }
+    } catch (err) {
+      errEl.textContent = err.message || 'Registration failed';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+    }
+  });
+
+  // Onboarding form
+  $('onboarding-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = $('onboarding-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving...';
+
+    try {
+      const topic = $('onboarding-topic').value.trim();
+      currentProfile = await api.updateProfile({ research_topic: topic });
+      showApp();
+      await initApp();
+      toast('🎉 Welcome to Tessera AI! Start uploading papers.');
+    } catch (err) {
+      toast('❌ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🚀 Start Researching';
+    }
+  });
+}
+
+async function handleAuthSuccess() {
+  try {
+    // Fetch profile
+    currentProfile = await api.getProfile();
+
+    // Check if onboarding is needed (no research topic set)
+    if (!currentProfile.research_topic) {
+      showOnboarding();
+      return;
+    }
+
+    // Show the main app
+    showApp();
+    await initApp();
+  } catch (err) {
+    console.error('Auth success handler error:', err);
+    // Profile fetch might fail if the trigger hasn't created it yet, retry once
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      currentProfile = await api.getProfile();
+      if (!currentProfile.research_topic) {
+        showOnboarding();
+        return;
+      }
+      showApp();
+      await initApp();
+    } catch (err2) {
+      toast('❌ Failed to load profile. Please try again.', true);
+      showAuthScreen();
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+// MAIN APP INIT
+// ══════════════════════════════════════════════
+async function initApp() {
+  setupNav();
+  setupSidebarUser();
   $('btn-add-paper').addEventListener('click', () => openPaperForm());
   $('btn-add-domain').addEventListener('click', () => openDomainForm());
   $('btn-add-gap').addEventListener('click', () => openGapForm());
@@ -29,8 +210,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('search-input').addEventListener('input', e => { searchQuery = e.target.value.toLowerCase(); renderPapers(); });
   $('domain-filter').addEventListener('change', e => { domainFilter = e.target.value; renderPapers(); });
   $('sort-select').addEventListener('change', e => { sortMode = e.target.value; renderPapers(); });
+  $('btn-logout').addEventListener('click', handleLogout);
+
+  // Research topic badge
+  updateResearchTopicBadge();
+  $('rtb-edit').addEventListener('click', openEditTopicModal);
+
   await loadAll();
-});
+}
+
+function setupSidebarUser() {
+  if (currentProfile) {
+    const name = currentProfile.full_name || currentProfile.email || 'User';
+    $('sidebar-user-name').textContent = name;
+    $('sidebar-user-role').textContent = currentProfile.role === 'admin' ? '⭐ Admin' : '🔬 Researcher';
+    $('sidebar-avatar').textContent = name.charAt(0).toUpperCase();
+  }
+  // Show admin nav if admin
+  if (currentProfile?.role === 'admin') {
+    $('nav-admin').style.display = 'flex';
+  } else {
+    $('nav-admin').style.display = 'none';
+  }
+}
+
+function updateResearchTopicBadge() {
+  const text = currentProfile?.research_topic || 'Set your research topic';
+  $('rtb-text').textContent = text.length > 60 ? text.substring(0, 57) + '...' : text;
+  $('research-topic-badge').title = currentProfile?.research_topic || 'Click to set';
+}
+
+function openEditTopicModal() {
+  $('modal-body').innerHTML = `
+    <h2>✏️ Edit Research Topic</h2>
+    <p style="color:var(--text2);font-size:.88rem;margin-bottom:16px;">This is used by Gemini AI to verify paper relevance and score uploads. Be specific about your research focus.</p>
+    <form id="edit-topic-form">
+      <div class="form-group full">
+        <label>Research Topic / Focus Area</label>
+        <textarea id="edit-topic-input" rows="3" required>${currentProfile?.research_topic || ''}</textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Cancel</button>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+      </div>
+    </form>`;
+  $('edit-topic-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      currentProfile = await api.updateProfile({ research_topic: $('edit-topic-input').value.trim() });
+      updateResearchTopicBadge();
+      closeModal();
+      toast('✅ Research topic updated');
+    } catch (err) {
+      toast('❌ ' + err.message, true);
+    }
+  });
+  openModal();
+}
+
+async function handleLogout() {
+  try {
+    await api.signOut();
+    currentUser = null;
+    currentProfile = null;
+    showAuthScreen();
+    toast('👋 Signed out');
+  } catch (err) {
+    toast('❌ ' + err.message, true);
+  }
+}
 
 async function loadAll() {
   try {
@@ -57,10 +305,13 @@ function setupNav() {
   const menuBtn = $('mobile-menu-btn');
   
   // Create overlay element for mobile
-  const overlay = document.createElement('div');
-  overlay.className = 'sidebar-overlay';
-  overlay.id = 'sidebar-overlay';
-  document.body.appendChild(overlay);
+  let overlay = $('sidebar-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    overlay.id = 'sidebar-overlay';
+    document.body.appendChild(overlay);
+  }
 
   menuBtn.addEventListener('click', () => {
     sidebar.classList.toggle('open');
@@ -93,6 +344,11 @@ function setupNav() {
         }, 350); // wait for 300ms fadeIn animation to complete
       } else {
         document.body.style.overflow = ''; // Restore scrolling for other pages
+      }
+
+      // Admin page: load users
+      if (currentPage === 'admin') {
+        loadAdminUsers();
       }
       
       // Close sidebar on mobile after nav click
@@ -648,7 +904,6 @@ function renderGaps() {
       });
     });
 
-    // We only attach the pitch generation handler once (outside renderGaps ideally, but this is safe if we replace it)
     pitchBtn.onclick = async () => {
       const selectedGaps = Array.from(document.querySelectorAll('.gap-checkbox:checked')).map(cb => cb.dataset.id);
       if (selectedGaps.length === 0) return;
@@ -767,6 +1022,104 @@ function renderGraph() {
     networkInstance.destroy();
   }
   networkInstance = new vis.Network(container, data, options);
+}
+
+// ══════════════════════════════════════════════
+// ADMIN MODULE
+// ══════════════════════════════════════════════
+async function loadAdminUsers() {
+  try {
+    const users = await api.getAdminUsers();
+    renderAdminUsers(users);
+  } catch (err) {
+    toast('❌ ' + err.message, true);
+  }
+}
+
+function renderAdminUsers(users) {
+  if (!users || users.length === 0) {
+    $('admin-empty').style.display = 'block';
+    $('admin-table').style.display = 'none';
+    return;
+  }
+  $('admin-empty').style.display = 'none';
+  $('admin-table').style.display = 'table';
+
+  // Stats
+  $('admin-stats').innerHTML = `
+    <div class="stats-row" style="margin-bottom:24px">
+      <div class="stat-card">
+        <span class="stat-icon">👥</span>
+        <div class="stat-value" style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent">${users.length}</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon">⭐</span>
+        <div class="stat-value" style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent">${users.filter(u => u.role === 'admin').length}</div>
+        <div class="stat-label">Admins</div>
+      </div>
+      <div class="stat-card">
+        <span class="stat-icon">📄</span>
+        <div class="stat-value" style="background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent">${users.reduce((s, u) => s + u.paper_count, 0)}</div>
+        <div class="stat-label">Total Papers (All Users)</div>
+      </div>
+    </div>
+  `;
+
+  $('admin-table-body').innerHTML = users.map(u => `
+    <tr>
+      <td>
+        <div class="admin-user-cell">
+          <div class="admin-user-avatar">${(u.full_name || u.email || '?').charAt(0).toUpperCase()}</div>
+          <div>
+            <div class="admin-user-name">${u.full_name || '—'}</div>
+            <div class="admin-user-email">${u.email || '—'}</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="admin-topic">${u.research_topic ? (u.research_topic.length > 40 ? u.research_topic.substring(0, 37) + '...' : u.research_topic) : '<em style="color:var(--text2)">Not set</em>'}</span></td>
+      <td>
+        <select class="admin-role-select" data-user-id="${u.id}" ${u.id === currentUser.id ? 'disabled' : ''}>
+          <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+        </select>
+      </td>
+      <td><span class="admin-count">${u.paper_count}</span></td>
+      <td><span class="admin-count">${u.domain_count}</span></td>
+      <td><span class="admin-count">${u.gap_count}</span></td>
+      <td><span class="admin-date">${new Date(u.created_at).toLocaleDateString()}</span></td>
+      <td>
+        ${u.id !== currentUser.id ? `<button class="btn btn-danger btn-sm admin-delete-btn" data-user-id="${u.id}">🗑</button>` : '<span class="admin-you-badge">You</span>'}
+      </td>
+    </tr>
+  `).join('');
+
+  // Role change handlers
+  document.querySelectorAll('.admin-role-select').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      try {
+        await api.updateUserRole(sel.dataset.userId, sel.value);
+        toast('✅ Role updated');
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+        await loadAdminUsers(); // revert
+      }
+    });
+  });
+
+  // Delete handlers
+  document.querySelectorAll('.admin-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this user and ALL their data? This cannot be undone.')) return;
+      try {
+        await api.deleteUser(btn.dataset.userId);
+        toast('🗑 User deleted');
+        await loadAdminUsers();
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      }
+    });
+  });
 }
 
 // ── Export ──

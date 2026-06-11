@@ -1,12 +1,32 @@
+import { createClient } from '@supabase/supabase-js';
+
+// ── Supabase Client (for Auth) ──
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── Backend API Base ──
 const API_URL = import.meta.env.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : '/api');
 
+// ── Auth Token Helper ──
+async function getAuthToken() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token || null;
+}
+
 async function fetchAPI(endpoint, options = {}) {
+  const token = await getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${API_URL}${endpoint}`, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers
-    }
+    headers
   });
   if (!res.ok) {
     let rawText = '';
@@ -24,14 +44,73 @@ async function fetchAPI(endpoint, options = {}) {
   return await res.json();
 }
 
-export async function generatePitch(payload) {
-  return fetchAPI('/generate-pitch', {
-    method: 'POST',
-    body: JSON.stringify(payload)
+// ── AUTH ──
+export async function signUp(email, password, fullName) {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name: fullName }
+    }
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function signIn(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function signOut() {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+}
+
+export async function getSession() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return session;
+}
+
+export function onAuthStateChange(callback) {
+  return supabase.auth.onAuthStateChange(callback);
+}
+
+// ── PROFILE ──
+export async function getProfile() {
+  return fetchAPI('/profile');
+}
+
+export async function updateProfile(updates) {
+  return fetchAPI('/profile', {
+    method: 'PUT',
+    body: JSON.stringify(updates)
   });
 }
 
-// ── UTILS ──
+// ── ADMIN ──
+export async function getAdminUsers() {
+  return fetchAPI('/admin/users');
+}
+
+export async function updateUserRole(userId, role) {
+  return fetchAPI(`/admin/users/${userId}/role`, {
+    method: 'PUT',
+    body: JSON.stringify({ role })
+  });
+}
+
+export async function deleteUser(userId) {
+  return fetchAPI(`/admin/users/${userId}`, {
+    method: 'DELETE'
+  });
+}
+
 // ── DOMAINS ──
 export async function getDomains() {
   return fetchAPI('/domains');
@@ -56,6 +135,7 @@ export async function generateLitReview(domainId) {
 
 // ── PAPERS ──
 export async function uploadPdf(file) {
+  const token = await getAuthToken();
   const formData = new FormData();
   formData.append('pdf', file);
   
@@ -64,9 +144,13 @@ export async function uploadPdf(file) {
   const timeout = setTimeout(() => controller.abort(), 120000);
   
   try {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch(`${API_URL}/parse-pdf`, {
       method: 'POST',
       body: formData,
+      headers,
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -156,4 +240,12 @@ export async function getGapsForPaper(paperId) {
 // ── DASHBOARD STATS ──
 export async function getDashboardStats() {
   return fetchAPI('/dashboard/stats');
+}
+
+// ── GENERATE PITCH ──
+export async function generatePitch(payload) {
+  return fetchAPI('/generate-pitch', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
 }

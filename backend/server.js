@@ -22,13 +22,18 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Initialize Supabase client
+// Initialize Supabase clients
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
-let supabase;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabase;       // anon client (for RLS-aware queries)
+let supabaseAdmin;  // service role client (for admin-level queries, bypasses RLS)
 
 if (supabaseUrl && supabaseKey) {
   supabase = createClient(supabaseUrl, supabaseKey);
+}
+if (supabaseUrl && supabaseServiceKey) {
+  supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 }
 
 // Helper to check Supabase configuration
@@ -39,43 +44,195 @@ const checkSupabase = (req, res, next) => {
   next();
 };
 
-// --- API ROUTES ---
+// ── AUTH MIDDLEWARE ──
+// Extracts the Bearer token, verifies it with Supabase, and attaches user info to req
+async function authenticateUser(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header.' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+    req.user = user;
+    req.token = token;
+
+    // Create a user-scoped supabase client that respects RLS
+    req.supabaseUser = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+
+    next();
+  } catch (err) {
+    console.error('Auth error:', err);
+    return res.status(401).json({ error: 'Authentication failed.' });
+  }
+}
+
+// Admin-only middleware (must come after authenticateUser)
+async function requireAdmin(req, res, next) {
+  try {
+    const client = supabaseAdmin || req.supabaseUser;
+    const { data: profile, error } = await client
+      .from('profiles')
+      .select('role')
+      .eq('id', req.user.id)
+      .single();
+    if (error || !profile || profile.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+    next();
+  } catch (err) {
+    return res.status(403).json({ error: 'Admin check failed.' });
+  }
+}
+
+// ── PROFILE ROUTES ──
+app.get('/api/profile', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { data, error } = await req.supabaseUser
+      .from('profiles')
+      .select('*')
+      .eq('id', req.user.id)
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/profile', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const allowedFields = ['full_name', 'research_topic'];
+    const updates = {};
+    for (const key of allowedFields) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
+    const { data, error } = await req.supabaseUser
+      .from('profiles')
+      .update(updates)
+      .eq('id', req.user.id)
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── ADMIN ROUTES ──
+app.get('/api/admin/users', checkSupabase, authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const client = supabaseAdmin || req.supabaseUser;
+    const { data: profiles, error } = await client
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(400).json({ error: error.message });
+
+    // Enrich with paper/domain/gap counts
+    const enriched = [];
+    for (const profile of profiles) {
+      const [papersRes, domainsRes, gapsRes] = await Promise.all([
+        client.from('papers').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+        client.from('domains').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+        client.from('research_gaps').select('id', { count: 'exact', head: true }).eq('user_id', profile.id),
+      ]);
+      enriched.push({
+        ...profile,
+        paper_count: papersRes.count || 0,
+        domain_count: domainsRes.count || 0,
+        gap_count: gapsRes.count || 0,
+      });
+    }
+    res.json(enriched);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/users/:id/role', checkSupabase, authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'user'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be "admin" or "user".' });
+    }
+    const client = supabaseAdmin || req.supabaseUser;
+    const { data, error } = await client
+      .from('profiles')
+      .update({ role })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', checkSupabase, authenticateUser, requireAdmin, async (req, res) => {
+  try {
+    // Don't allow deleting yourself
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own admin account.' });
+    }
+    const client = supabaseAdmin || req.supabaseUser;
+    // Delete the profile (cascade will handle papers/domains/gaps)
+    const { error } = await client.from('profiles').delete().eq('id', req.params.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- USER-SCOPED API ROUTES ---
 
 // DOMAINS
-app.get('/api/domains', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('domains').select('*').order('name');
+app.get('/api/domains', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser.from('domains').select('*').order('name');
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
-app.post('/api/domains', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('domains').insert(req.body).select().single();
+app.post('/api/domains', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('domains')
+    .insert({ ...req.body, user_id: req.user.id })
+    .select()
+    .single();
   if (error) return res.status(400).json({ error: error.message });
   res.status(201).json(data);
 });
 
-app.delete('/api/domains/:id', checkSupabase, async (req, res) => {
-  const { error } = await supabase.from('domains').delete().eq('id', req.params.id);
+app.delete('/api/domains/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { error } = await req.supabaseUser.from('domains').delete().eq('id', req.params.id);
   if (error) return res.status(400).json({ error: error.message });
   res.status(204).send();
 });
 
-app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) => {
+app.get('/api/domains/:id/generate-lit-review', checkSupabase, authenticateUser, async (req, res) => {
   try {
     const domainId = req.params.id.trim();
     // Get Domain
-    const { data: domain, error: dErr } = await supabase.from('domains').select('*').eq('id', domainId).single();
+    const { data: domain, error: dErr } = await req.supabaseUser.from('domains').select('*').eq('id', domainId).single();
     if (dErr || !domain) {
       console.error('Domain fetch error:', dErr);
       return res.status(404).json({ error: 'Domain not found' });
     }
 
     // Get Papers
-    const { data: papers, error: pErr } = await supabase.from('papers').select('*').eq('domain_id', domainId);
+    const { data: papers, error: pErr } = await req.supabaseUser.from('papers').select('*').eq('domain_id', domainId);
     if (pErr) console.error('Papers fetch error:', pErr);
     
     // Get Gaps
-    const { data: gaps, error: gErr } = await supabase.from('research_gaps').select('*').eq('domain_id', domainId);
+    const { data: gaps, error: gErr } = await req.supabaseUser.from('research_gaps').select('*').eq('domain_id', domainId);
     if (gErr) console.error('Gaps fetch error:', gErr);
 
     if (pErr || !papers || papers.length === 0) {
@@ -118,7 +275,7 @@ app.get('/api/domains/:id/generate-lit-review', checkSupabase, async (req, res) 
 });
 
 // GENERATE PITCH (Elevator Pitch)
-app.post('/api/generate-pitch', checkSupabase, async (req, res) => {
+app.post('/api/generate-pitch', checkSupabase, authenticateUser, async (req, res) => {
   try {
     const { gapIds, idea } = req.body;
     if (!gapIds || gapIds.length === 0) {
@@ -126,7 +283,7 @@ app.post('/api/generate-pitch', checkSupabase, async (req, res) => {
     }
 
     // Fetch the specific gaps
-    const { data: gaps, error: gErr } = await supabase.from('research_gaps').select('title, description').in('id', gapIds);
+    const { data: gaps, error: gErr } = await req.supabaseUser.from('research_gaps').select('title, description').in('id', gapIds);
     if (gErr || !gaps) throw new Error('Failed to fetch gaps from database');
 
     const gapsContext = gaps.map(g => `- ${g.title}: ${g.description}`).join('\n');
@@ -153,8 +310,8 @@ app.post('/api/generate-pitch', checkSupabase, async (req, res) => {
 });
 
 // PAPERS
-app.get('/api/papers', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase
+app.get('/api/papers', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
     .from('papers')
     .select('*, domains(name, color, icon)')
     .order('year', { ascending: false });
@@ -162,8 +319,8 @@ app.get('/api/papers', checkSupabase, async (req, res) => {
   res.json(data);
 });
 
-app.get('/api/papers/:id', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase
+app.get('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
     .from('papers')
     .select('*, domains(name, color, icon)')
     .eq('id', req.params.id)
@@ -172,27 +329,36 @@ app.get('/api/papers/:id', checkSupabase, async (req, res) => {
   res.json(data);
 });
 
-app.post('/api/papers', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('papers').insert(req.body).select().single();
+app.post('/api/papers', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('papers')
+    .insert({ ...req.body, user_id: req.user.id })
+    .select()
+    .single();
   if (error) return res.status(400).json({ error: error.message });
   res.status(201).json(data);
 });
 
-app.put('/api/papers/:id', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('papers').update(req.body).eq('id', req.params.id).select().single();
+app.put('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('papers')
+    .update(req.body)
+    .eq('id', req.params.id)
+    .select()
+    .single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
-app.delete('/api/papers/:id', checkSupabase, async (req, res) => {
-  const { error } = await supabase.from('papers').delete().eq('id', req.params.id);
+app.delete('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { error } = await req.supabaseUser.from('papers').delete().eq('id', req.params.id);
   if (error) return res.status(400).json({ error: error.message });
   res.status(204).send();
 });
 
 // RESEARCH GAPS
-app.get('/api/gaps', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase
+app.get('/api/gaps', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
     .from('research_gaps')
     .select('*, domains(name, color, icon)')
     .order('created_at');
@@ -200,34 +366,43 @@ app.get('/api/gaps', checkSupabase, async (req, res) => {
   res.json(data);
 });
 
-app.post('/api/gaps', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('research_gaps').insert(req.body).select().single();
+app.post('/api/gaps', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('research_gaps')
+    .insert({ ...req.body, user_id: req.user.id })
+    .select()
+    .single();
   if (error) return res.status(400).json({ error: error.message });
   res.status(201).json(data);
 });
 
-app.put('/api/gaps/:id', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase.from('research_gaps').update(req.body).eq('id', req.params.id).select().single();
+app.put('/api/gaps/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('research_gaps')
+    .update(req.body)
+    .eq('id', req.params.id)
+    .select()
+    .single();
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
-app.delete('/api/gaps/:id', checkSupabase, async (req, res) => {
-  const { error } = await supabase.from('research_gaps').delete().eq('id', req.params.id);
+app.delete('/api/gaps/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { error } = await req.supabaseUser.from('research_gaps').delete().eq('id', req.params.id);
   if (error) return res.status(400).json({ error: error.message });
   res.status(204).send();
 });
 
 // PAPER-GAP LINKS
-app.post('/api/paper-gaps', checkSupabase, async (req, res) => {
+app.post('/api/paper-gaps', checkSupabase, authenticateUser, async (req, res) => {
   const { paper_id, gap_id } = req.body;
-  const { error } = await supabase.from('paper_gaps').insert({ paper_id, gap_id });
+  const { error } = await req.supabaseUser.from('paper_gaps').insert({ paper_id, gap_id });
   if (error) return res.status(400).json({ error: error.message });
   res.status(201).json({ success: true });
 });
 
-app.get('/api/papers/:id/gaps', checkSupabase, async (req, res) => {
-  const { data, error } = await supabase
+app.get('/api/papers/:id/gaps', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
     .from('paper_gaps')
     .select('gap_id, research_gaps(id, title, severity, status)')
     .eq('paper_id', req.params.id);
@@ -258,7 +433,7 @@ async function callGeminiWithRetry(genAI, prompt) {
   throw new Error('All Gemini models are currently rate-limited. Please wait 1 minute and try again.');
 }
 
-app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
+app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded.' });
     if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured on backend.' });
@@ -267,12 +442,18 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
     const pdfData = await pdfParse(req.file.buffer);
     const rawText = pdfData.text.substring(0, 30000);
 
-    // Fetch existing domains from Supabase for matching
+    // Fetch user's profile to get their research topic
+    const { data: profile } = await req.supabaseUser
+      .from('profiles')
+      .select('research_topic')
+      .eq('id', req.user.id)
+      .single();
+    const researchTopic = profile?.research_topic || '';
+
+    // Fetch existing domains from Supabase for matching (user-scoped)
     let domainList = [];
-    if (supabase) {
-      const { data } = await supabase.from('domains').select('id, name');
-      if (data) domainList = data;
-    }
+    const { data: domData } = await req.supabaseUser.from('domains').select('id, name');
+    if (domData) domainList = domData;
     const domainNames = domainList.map(d => d.name);
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -297,19 +478,22 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
           "severity": "One of: critical, high, medium, low"
         }
       ],
-      "relevance": "A 1-2 sentence explanation of how this paper relates to the user's existing research domains: [${domainNames.join(', ')}]. If the paper is unrelated to ALL of these domains, say: 'This paper is NOT relevant to the user's current research focus.'",
+      "relevance": "A 1-2 sentence explanation of how this paper relates to the user's specific research topic: '${researchTopic}'. If the paper is NOT relevant to this topic, say: 'This paper is NOT directly relevant to the user\\'s research focus on ${researchTopic}.'",
       "relevance_score": 15,
       "category": "One of: Foundation, Safety & Guardrails, Drift Detection, Provenance, Multi-Agent, Formal Verification"
     }
 
     IMPORTANT for research_gaps: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions mentioned or implied by the paper. These should be actionable gaps that a PhD researcher could investigate. If the paper doesn't clearly suggest any gaps, return an empty array [].
     
-    CRITICAL for relevance_score: This is NOT a quality score. This measures ONLY how relevant the paper is to the user's SPECIFIC research, which covers ONLY these domains: [${domainNames.join(', ')}].
-    ABSOLUTE SCORING RULES:
-    1. If the paper's topic is NOT explicitly one of the domains listed above, you MUST score it between 0 and 15. Do not deviate from this.
-    2. A paper about "electrical safety", "VR training", etc. is completely unrelated to domains like "AI compliance" or "Formal Verification". Score it 10.
-    3. ONLY score above 50 if the paper is a DIRECT match for one of the provided domains.
-    4. If the domains list is empty [], default to scoring everything 10.
+    CRITICAL — USER'S RESEARCH TOPIC: "${researchTopic}"
+    The user is a PhD researcher whose specific research focus is: "${researchTopic}".
+    
+    ABSOLUTE SCORING RULES for relevance_score:
+    1. If the paper's topic is NOT directly related to "${researchTopic}", you MUST score it between 0 and 20. Do not deviate.
+    2. If the paper has SOME overlap but is not a direct match, score between 20 and 50.
+    3. ONLY score above 60 if the paper is DIRECTLY relevant to "${researchTopic}".
+    4. Score above 80 ONLY if the paper is a core contribution to "${researchTopic}".
+    5. If the research topic is empty, default to scoring based on the domains list: [${domainNames.join(', ')}]. If domains list is also empty, default to 50.
 
     Paper Text:
     ${rawText}
@@ -327,28 +511,29 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
     
     const parsedData = JSON.parse(text);
 
-    // Match domain name to domain_id — or create a new domain
-    if (parsedData.domain && supabase) {
+    // Match domain name to domain_id — or create a new domain (user-scoped)
+    if (parsedData.domain) {
       const match = domainList.find(d => 
         d.name.toLowerCase() === parsedData.domain.toLowerCase()
       );
       if (match) {
         parsedData.domain_id = match.id;
       } else {
-        // Auto-create the new domain
+        // Auto-create the new domain for this user
         const domainColors = ['#7c5cff', '#06d6a0', '#ff6b6b', '#ffd166', '#118ab2', '#ef476f', '#073b4c', '#e07aff', '#06bcc1', '#f78c6b'];
         const domainIcons = ['📄', '🔬', '🛡️', '⚙️', '🧠', '📊', '🔗', '🤖', '📐', '🏗️', '📋', '💡'];
         const randomColor = domainColors[Math.floor(Math.random() * domainColors.length)];
         const randomIcon = domainIcons[Math.floor(Math.random() * domainIcons.length)];
 
-        console.log(`Creating new domain: "${parsedData.domain}"`);
-        const { data: newDomain, error: domErr } = await supabase
+        console.log(`Creating new domain for user ${req.user.id}: "${parsedData.domain}"`);
+        const { data: newDomain, error: domErr } = await req.supabaseUser
           .from('domains')
           .insert({ 
             name: parsedData.domain, 
             color: randomColor, 
             icon: randomIcon,
-            description: `Auto-created from paper: ${parsedData.title?.substring(0, 80) || 'AI-detected domain'}`
+            description: `Auto-created from paper: ${parsedData.title?.substring(0, 80) || 'AI-detected domain'}`,
+            user_id: req.user.id
           })
           .select()
           .single();
@@ -363,18 +548,19 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
       }
     }
 
-    // Auto-create research gaps in Supabase
-    if (parsedData.research_gaps && Array.isArray(parsedData.research_gaps) && parsedData.research_gaps.length > 0 && supabase) {
+    // Auto-create research gaps in Supabase (user-scoped)
+    if (parsedData.research_gaps && Array.isArray(parsedData.research_gaps) && parsedData.research_gaps.length > 0) {
       const createdGaps = [];
       for (const gap of parsedData.research_gaps) {
-        const { data: newGap, error: gapErr } = await supabase
+        const { data: newGap, error: gapErr } = await req.supabaseUser
           .from('research_gaps')
           .insert({
             title: gap.title,
             description: `${gap.description} (Identified from: ${parsedData.title?.substring(0, 60) || 'uploaded paper'})`,
             domain_id: parsedData.domain_id || null,
             severity: gap.severity || 'medium',
-            status: 'open'
+            status: 'open',
+            user_id: req.user.id
           })
           .select()
           .single();
@@ -395,17 +581,17 @@ app.post('/api/parse-pdf', upload.single('pdf'), async (req, res) => {
   }
 });
 
-// DASHBOARD STATS
-app.get('/api/dashboard/stats', checkSupabase, async (req, res) => {
+// DASHBOARD STATS (user-scoped)
+app.get('/api/dashboard/stats', checkSupabase, authenticateUser, async (req, res) => {
   try {
     const [
       { data: papers, error: pErr },
       { data: domains, error: dErr },
       { data: gaps, error: gErr }
     ] = await Promise.all([
-      supabase.from('papers').select('*, domains(name, color, icon)').order('year', { ascending: false }),
-      supabase.from('domains').select('*').order('name'),
-      supabase.from('research_gaps').select('*, domains(name, color, icon)').order('created_at')
+      req.supabaseUser.from('papers').select('*, domains(name, color, icon)').order('year', { ascending: false }),
+      req.supabaseUser.from('domains').select('*').order('name'),
+      req.supabaseUser.from('research_gaps').select('*, domains(name, color, icon)').order('created_at')
     ]);
 
     if (pErr) throw pErr;
