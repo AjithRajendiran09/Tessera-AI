@@ -111,9 +111,34 @@ export async function deleteUser(userId) {
   });
 }
 
+// ── WORKSPACES ──
+export async function getWorkspaces() {
+  return fetchAPI('/workspaces');
+}
+
+export async function createWorkspace(workspace) {
+  return fetchAPI('/workspaces', {
+    method: 'POST',
+    body: JSON.stringify(workspace)
+  });
+}
+
+export async function updateWorkspace(id, updates) {
+  return fetchAPI(`/workspaces/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates)
+  });
+}
+
+export async function deleteWorkspace(id) {
+  return fetchAPI(`/workspaces/${id}`, {
+    method: 'DELETE'
+  });
+}
+
 // ── DOMAINS ──
-export async function getDomains() {
-  return fetchAPI('/domains');
+export async function getDomains(workspaceId) {
+  return fetchAPI(workspaceId ? `/domains?workspace_id=${workspaceId}` : '/domains');
 }
 
 export async function createDomain(domain) {
@@ -134,10 +159,11 @@ export async function generateLitReview(domainId) {
 }
 
 // ── PAPERS ──
-export async function uploadPdf(file) {
+export async function uploadPdf(file, workspaceId) {
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append('pdf', file);
+  if (workspaceId) formData.append('workspace_id', workspaceId);
   
   // Render free tier can take 30-60s to wake up, then Gemini takes 10-30s
   const controller = new AbortController();
@@ -172,8 +198,8 @@ export async function uploadPdf(file) {
   }
 }
 
-export async function getPapers() {
-  return fetchAPI('/papers');
+export async function getPapers(workspaceId) {
+  return fetchAPI(workspaceId ? `/papers?workspace_id=${workspaceId}` : '/papers');
 }
 
 export async function getPaperById(id) {
@@ -201,8 +227,8 @@ export async function deletePaper(id) {
 }
 
 // ── RESEARCH GAPS ──
-export async function getGaps() {
-  return fetchAPI('/gaps');
+export async function getGaps(workspaceId) {
+  return fetchAPI(workspaceId ? `/gaps?workspace_id=${workspaceId}` : '/gaps');
 }
 
 export async function createGap(gap) {
@@ -238,8 +264,8 @@ export async function getGapsForPaper(paperId) {
 }
 
 // ── DASHBOARD STATS ──
-export async function getDashboardStats() {
-  return fetchAPI('/dashboard/stats');
+export async function getDashboardStats(workspaceId) {
+  return fetchAPI(workspaceId ? `/dashboard/stats?workspace_id=${workspaceId}` : '/dashboard/stats');
 }
 
 // ── GENERATE PITCH ──

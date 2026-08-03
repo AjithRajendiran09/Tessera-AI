@@ -194,9 +194,45 @@ app.delete('/api/admin/users/:id', checkSupabase, authenticateUser, requireAdmin
 
 // --- USER-SCOPED API ROUTES ---
 
+// WORKSPACES
+app.get('/api/workspaces', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser.from('workspaces').select('*').order('created_at');
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+app.post('/api/workspaces', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('workspaces')
+    .insert({ ...req.body, user_id: req.user.id })
+    .select()
+    .single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+app.put('/api/workspaces/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { data, error } = await req.supabaseUser
+    .from('workspaces')
+    .update(req.body)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+  if (error) return res.status(400).json({ error: error.message });
+  res.json(data);
+});
+
+app.delete('/api/workspaces/:id', checkSupabase, authenticateUser, async (req, res) => {
+  const { error } = await req.supabaseUser.from('workspaces').delete().eq('id', req.params.id);
+  if (error) return res.status(400).json({ error: error.message });
+  res.status(204).send();
+});
+
 // DOMAINS
 app.get('/api/domains', checkSupabase, authenticateUser, async (req, res) => {
-  const { data, error } = await req.supabaseUser.from('domains').select('*').order('name');
+  let query = req.supabaseUser.from('domains').select('*').order('name');
+  if (req.query.workspace_id) query = query.eq('workspace_id', req.query.workspace_id);
+  const { data, error } = await query;
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
@@ -311,10 +347,12 @@ app.post('/api/generate-pitch', checkSupabase, authenticateUser, async (req, res
 
 // PAPERS
 app.get('/api/papers', checkSupabase, authenticateUser, async (req, res) => {
-  const { data, error } = await req.supabaseUser
+  let query = req.supabaseUser
     .from('papers')
     .select('*, domains(name, color, icon)')
     .order('year', { ascending: false });
+  if (req.query.workspace_id) query = query.eq('workspace_id', req.query.workspace_id);
+  const { data, error } = await query;
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
@@ -358,10 +396,12 @@ app.delete('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) 
 
 // RESEARCH GAPS
 app.get('/api/gaps', checkSupabase, authenticateUser, async (req, res) => {
-  const { data, error } = await req.supabaseUser
+  let query = req.supabaseUser
     .from('research_gaps')
     .select('*, domains(name, color, icon)')
     .order('created_at');
+  if (req.query.workspace_id) query = query.eq('workspace_id', req.query.workspace_id);
+  const { data, error } = await query;
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
@@ -417,7 +457,10 @@ async function callGeminiWithRetry(genAI, prompt) {
   for (const modelName of MODELS_TO_TRY) {
     try {
       console.log(`Trying model: ${modelName}...`);
-      const model = genAI.getGenerativeModel({ model: modelName });
+      const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        generationConfig: { temperature: 0.0 }
+      });
       const result = await model.generateContent(prompt);
       console.log(`Success with: ${modelName}`);
       return result;
@@ -438,62 +481,112 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
     if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded.' });
     if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured on backend.' });
 
+    const workspaceId = req.body.workspace_id;
+
     // Extract text from PDF
     const pdfData = await pdfParse(req.file.buffer);
     const rawText = pdfData.text.substring(0, 30000);
 
-    // Fetch user's profile to get their research topic
+    // Fetch user's profile and workspace to get their research topic
     const { data: profile } = await req.supabaseUser
       .from('profiles')
       .select('research_topic')
       .eq('id', req.user.id)
       .single();
-    const researchTopic = profile?.research_topic || '';
+      
+    let researchTopic = profile?.research_topic || '';
+    
+    let customSchema = [];
+    if (workspaceId) {
+      const { data: workspace } = await req.supabaseUser
+        .from('workspaces')
+        .select('research_topic, custom_schema')
+        .eq('id', workspaceId)
+        .single();
+      if (workspace) {
+        if (workspace.research_topic) researchTopic = workspace.research_topic;
+        if (workspace.custom_schema && Array.isArray(workspace.custom_schema)) {
+          customSchema = workspace.custom_schema;
+        }
+      }
+    }
 
-    // Fetch existing domains from Supabase for matching (user-scoped)
+    // Fetch existing domains from Supabase for matching (scoped to workspace if provided)
     let domainList = [];
-    const { data: domData } = await req.supabaseUser.from('domains').select('id, name');
+    let domQuery = req.supabaseUser.from('domains').select('id, name');
+    if (workspaceId) domQuery = domQuery.eq('workspace_id', workspaceId);
+    const { data: domData } = await domQuery;
     if (domData) domainList = domData;
     const domainNames = domainList.map(d => d.name);
+
+    let dynamicFieldsJSON = {};
+    if (customSchema.length > 0) {
+      customSchema.forEach(field => {
+        let example = field.type === 'boolean' ? false : "Extract this based on the paper.";
+        if (field.description) example = field.description;
+        dynamicFieldsJSON[field.id] = example;
+      });
+    }
+    const customFieldsSchemaStr = JSON.stringify(dynamicFieldsJSON, null, 6);
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     const prompt = `
-    You are an expert academic research assistant. Extract the following information from the provided academic paper text.
-    Return ONLY a valid JSON object matching this schema exactly. No markdown, no comments.
+    You are an expert academic research assistant specializing in systematic literature reviews. Extract ALL of the following structured information from the provided academic paper text.
+    Return ONLY a valid JSON object matching this schema exactly. No markdown, no comments, no extra text.
+
     {
       "title": "Full title of the paper",
       "authors": "Comma separated list of authors",
       "year": 2024,
       "venue": "Conference or Journal name",
-      "doi": "DOI identifier if found in the paper (e.g. 10.1145/xxxxx). Look for patterns like 'doi:', 'DOI:', 'https://doi.org/', or '10.xxxx/'. Return null if not found.",
-      "url": "URL to the paper if found (arXiv link, publisher page, etc). Look for patterns like 'https://arxiv.org/abs/', 'https://doi.org/', conference/publisher URLs. If a DOI is found but no direct URL, construct it as 'https://doi.org/<doi>'. Return null if nothing found.",
-      "domain": "Best matching domain from this list: [${domainNames.join(', ')}]. If none fit well, suggest a NEW concise domain name (e.g. 'Cybersecurity+IoT', 'Federated Learning', 'NLP Alignment'). Use 2-4 words max.",
-      "contribution": "A concise 2-3 sentence summary of the key technical contribution",
+      "publisher": "Publisher name (e.g. IEEE, ACM, Springer, Elsevier). Return null if not found.",
+      "scopus_indexed": false,
+      "quartile": "Journal quartile if identifiable (Q1, Q2, Q3, Q4). Return null if not found or not applicable.",
+      "doi": "DOI identifier if found (e.g. 10.1145/xxxxx). Look for 'doi:', 'DOI:', 'https://doi.org/', or '10.xxxx/'. Return null if not found.",
+      "url": "URL to the paper if found. If DOI found but no URL, construct as 'https://doi.org/<doi>'. Return null if nothing found.",
+      "research_domain": "The broad research domain/area this paper belongs to (e.g. 'Privacy Compliance', 'Formal Verification', 'Multi-Agent Systems'). 2-5 words.",
+      "domain": "Best matching domain from this list: [${domainNames.join(', ')}]. If none fit well, suggest a NEW concise domain name. Use 2-4 words max.",
+      "category": "One of: Foundation, Safety & Guardrails, Drift Detection, Provenance, Multi-Agent, Formal Verification",
+      "contribution": "A concise 2-3 sentence summary of the key technical contribution.",
       "limitations": ["limitation 1", "limitation 2"],
+
+      "custom_fields": \${customFieldsSchemaStr},
+
+      "personal": {
+        "research_gap": "What research gap this paper reveals or leaves open. 1-2 sentences.",
+        "missing_component": "What key component or capability is missing from this work. 1 sentence. Return null if not applicable.",
+        "relevance_to_my_research": "How this paper relates to the user's research topic: '${researchTopic}'. If NOT relevant, say: 'This paper is NOT directly relevant to ${researchTopic}.'",
+        "relevance_score": 50,
+        "personal_notes": ""
+      },
+
       "research_gaps": [
         {
           "title": "Short gap title (5-10 words)",
-          "description": "1-2 sentence description of the open research question or unresolved challenge identified in or implied by this paper",
+          "description": "1-2 sentence description of the open research question or unresolved challenge",
           "severity": "One of: critical, high, medium, low"
         }
-      ],
-      "relevance": "A 1-2 sentence explanation of how this paper relates to the user's specific research topic: '${researchTopic}'. If the paper is NOT relevant to this topic, say: 'This paper is NOT directly relevant to the user\\'s research focus on ${researchTopic}.'",
-      "relevance_score": 15,
-      "category": "One of: Foundation, Safety & Guardrails, Drift Detection, Provenance, Multi-Agent, Formal Verification"
+      ]
     }
 
-    IMPORTANT for research_gaps: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions mentioned or implied by the paper. These should be actionable gaps that a PhD researcher could investigate. If the paper doesn't clearly suggest any gaps, return an empty array [].
-    
+    FIELD EXTRACTION RULES:
+    1. For boolean tag fields: Set to true ONLY if the paper explicitly discusses, uses, or is directly relevant to that concept. Default to false.
+    2. For "multi_llm": Set to true only if the paper uses or proposes using multiple different LLMs together.
+    3. For "scopus_indexed": Set to true only if there is explicit evidence the journal/venue is Scopus-indexed.
+    4. For "machine_verifiable" in output: Set to true only if the output can be automatically verified by a machine/tool.
+    5. For all text fields: Be concise but informative. Return null if the information is genuinely not present in the paper.
+
+    RESEARCH GAPS: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions. If none found, return an empty array [].
+
     CRITICAL — USER'S RESEARCH TOPIC: "${researchTopic}"
-    The user is a PhD researcher whose specific research focus is: "${researchTopic}".
     
-    ABSOLUTE SCORING RULES for relevance_score:
-    1. If the paper's topic is NOT directly related to "${researchTopic}", you MUST score it between 0 and 20. Do not deviate.
-    2. If the paper has SOME overlap but is not a direct match, score between 20 and 50.
-    3. ONLY score above 60 if the paper is DIRECTLY relevant to "${researchTopic}".
-    4. Score above 80 ONLY if the paper is a core contribution to "${researchTopic}".
-    5. If the research topic is empty, default to scoring based on the domains list: [${domainNames.join(', ')}]. If domains list is also empty, default to 50.
+    ABSOLUTE SCORING RULES for personal.relevance_score:
+    1. If the paper's topic is NOT directly related to "${researchTopic}", score 0-20.
+    2. If SOME overlap but not a direct match, score 20-50.
+    3. Score above 60 ONLY if DIRECTLY relevant to "${researchTopic}".
+    4. Score above 80 ONLY if a core contribution to "${researchTopic}".
+    5. If research topic is empty, default to scoring based on domains list: [${domainNames.join(', ')}]. If empty, default to 50.
 
     Paper Text:
     ${rawText}
@@ -510,6 +603,26 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
     }
     
     const parsedData = JSON.parse(text);
+
+    // ── Flatten top-level fields for backward compatibility ──
+    // Map personal.relevance_score and relevance_to_my_research to top-level
+    if (parsedData.personal) {
+      if (parsedData.personal.relevance_score !== undefined) {
+        parsedData.relevance_score = parsedData.personal.relevance_score;
+      }
+      if (parsedData.personal.relevance_to_my_research) {
+        parsedData.relevance = parsedData.personal.relevance_to_my_research;
+      }
+      if (parsedData.personal.personal_notes) {
+        parsedData.notes = parsedData.personal.personal_notes;
+      }
+    }
+
+    // ── Build extended_metadata JSONB ──
+    parsedData.extended_metadata = {
+      custom_fields: parsedData.custom_fields || {},
+      personal: parsedData.personal || {}
+    };
 
     // Match domain name to domain_id — or create a new domain (user-scoped)
     if (parsedData.domain) {
@@ -533,7 +646,8 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
             color: randomColor, 
             icon: randomIcon,
             description: `Auto-created from paper: ${parsedData.title?.substring(0, 80) || 'AI-detected domain'}`,
-            user_id: req.user.id
+            user_id: req.user.id,
+            workspace_id: workspaceId || null
           })
           .select()
           .single();
@@ -548,7 +662,7 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
       }
     }
 
-    // Auto-create research gaps in Supabase (user-scoped)
+    // Auto-create research gaps in Supabase (scoped)
     if (parsedData.research_gaps && Array.isArray(parsedData.research_gaps) && parsedData.research_gaps.length > 0) {
       const createdGaps = [];
       for (const gap of parsedData.research_gaps) {
@@ -560,7 +674,8 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
             domain_id: parsedData.domain_id || null,
             severity: gap.severity || 'medium',
             status: 'open',
-            user_id: req.user.id
+            user_id: req.user.id,
+            workspace_id: workspaceId || null
           })
           .select()
           .single();
@@ -581,18 +696,24 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
   }
 });
 
-// DASHBOARD STATS (user-scoped)
+// DASHBOARD STATS (scoped)
 app.get('/api/dashboard/stats', checkSupabase, authenticateUser, async (req, res) => {
   try {
+    let pQuery = req.supabaseUser.from('papers').select('*, domains(name, color, icon)').order('year', { ascending: false });
+    let dQuery = req.supabaseUser.from('domains').select('*').order('name');
+    let gQuery = req.supabaseUser.from('research_gaps').select('*, domains(name, color, icon)').order('created_at');
+    
+    if (req.query.workspace_id) {
+      pQuery = pQuery.eq('workspace_id', req.query.workspace_id);
+      dQuery = dQuery.eq('workspace_id', req.query.workspace_id);
+      gQuery = gQuery.eq('workspace_id', req.query.workspace_id);
+    }
+
     const [
       { data: papers, error: pErr },
       { data: domains, error: dErr },
       { data: gaps, error: gErr }
-    ] = await Promise.all([
-      req.supabaseUser.from('papers').select('*, domains(name, color, icon)').order('year', { ascending: false }),
-      req.supabaseUser.from('domains').select('*').order('name'),
-      req.supabaseUser.from('research_gaps').select('*, domains(name, color, icon)').order('created_at')
-    ]);
+    ] = await Promise.all([ pQuery, dQuery, gQuery ]);
 
     if (pErr) throw pErr;
     if (dErr) throw dErr;

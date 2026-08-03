@@ -105,6 +105,25 @@
         <img src="/logo.svg" alt="Tessera AI" class="brand-logo" />
         <span class="brand-text">Tessera AI</span>
       </div>
+
+      <!-- Workspace Switcher -->
+      <div class="workspace-switcher-container">
+        <div class="workspace-switcher" id="workspace-switcher">
+          <span class="ws-icon" id="ws-icon">📁</span>
+          <span class="ws-name" id="ws-name">Default Workspace</span>
+          <span class="ws-chevron">▼</span>
+        </div>
+        <div class="workspace-dropdown" id="workspace-dropdown">
+          <div class="workspace-list" id="workspace-list">
+            <!-- Workspaces injected here -->
+          </div>
+          <div class="workspace-dropdown-divider"></div>
+          <button class="ws-add-btn" id="btn-add-workspace">
+            <span class="ws-add-icon">＋</span> Create Workspace
+          </button>
+        </div>
+      </div>
+
       <nav class="sidebar-nav">
         <button class="nav-item active" data-page="dashboard">
           <span class="nav-icon">📊</span> Dashboard

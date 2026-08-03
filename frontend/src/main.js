@@ -2,7 +2,8 @@ import * as api from './api.js';
 import * as XLSX from 'xlsx';
 
 // ── State ──
-let state = { papers: [], domains: [], gaps: [], stats: null };
+let state = { workspaces: [], papers: [], domains: [], gaps: [], stats: null };
+let currentWorkspace = null;
 let currentPage = 'dashboard';
 let searchQuery = '';
 let domainFilter = '';
@@ -152,6 +153,17 @@ function setupAuthUI() {
     try {
       const topic = $('onboarding-topic').value.trim();
       currentProfile = await api.updateProfile({ research_topic: topic });
+      
+      // Create first workspace
+      const newWs = await api.createWorkspace({
+        name: 'Default Workspace',
+        description: 'Auto-created during onboarding',
+        research_topic: topic,
+        icon: '📁',
+        is_default: true
+      });
+      currentWorkspace = newWs;
+      
       showApp();
       await initApp();
       toast('🎉 Welcome to Tessera AI! Start uploading papers.');
@@ -211,6 +223,20 @@ async function initApp() {
   $('domain-filter').addEventListener('change', e => { domainFilter = e.target.value; renderPapers(); });
   $('sort-select').addEventListener('change', e => { sortMode = e.target.value; renderPapers(); });
   $('btn-logout').addEventListener('click', handleLogout);
+  
+  // Workspace Switcher
+  $('workspace-switcher').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('workspace-dropdown').classList.toggle('active');
+    $('workspace-switcher').classList.toggle('active');
+  });
+  document.addEventListener('click', () => {
+    $('workspace-dropdown').classList.remove('active');
+    $('workspace-switcher').classList.remove('active');
+  });
+  $('btn-add-workspace').addEventListener('click', () => {
+    openWorkspaceForm();
+  });
 
   // Research topic badge
   updateResearchTopicBadge();
@@ -235,19 +261,19 @@ function setupSidebarUser() {
 }
 
 function updateResearchTopicBadge() {
-  const text = currentProfile?.research_topic || 'Set your research topic';
+  const text = currentWorkspace?.research_topic || currentProfile?.research_topic || 'Set your research topic';
   $('rtb-text').textContent = text.length > 60 ? text.substring(0, 57) + '...' : text;
-  $('research-topic-badge').title = currentProfile?.research_topic || 'Click to set';
+  $('research-topic-badge').title = currentWorkspace?.research_topic || currentProfile?.research_topic || 'Click to set';
 }
 
 function openEditTopicModal() {
   $('modal-body').innerHTML = `
-    <h2>✏️ Edit Research Topic</h2>
+    <h2>✏️ Edit Workspace Research Topic</h2>
     <p style="color:var(--text2);font-size:.88rem;margin-bottom:16px;">This is used by Gemini AI to verify paper relevance and score uploads. Be specific about your research focus.</p>
     <form id="edit-topic-form">
       <div class="form-group full">
         <label>Research Topic / Focus Area</label>
-        <textarea id="edit-topic-input" rows="3" required>${currentProfile?.research_topic || ''}</textarea>
+        <textarea id="edit-topic-input" rows="3" required>${currentWorkspace?.research_topic || currentProfile?.research_topic || ''}</textarea>
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Cancel</button>
@@ -257,7 +283,11 @@ function openEditTopicModal() {
   $('edit-topic-form').addEventListener('submit', async e => {
     e.preventDefault();
     try {
-      currentProfile = await api.updateProfile({ research_topic: $('edit-topic-input').value.trim() });
+      if (currentWorkspace) {
+        currentWorkspace = await api.updateWorkspace(currentWorkspace.id, { research_topic: $('edit-topic-input').value.trim() });
+      } else {
+        currentProfile = await api.updateProfile({ research_topic: $('edit-topic-input').value.trim() });
+      }
       updateResearchTopicBadge();
       closeModal();
       toast('✅ Research topic updated');
@@ -282,7 +312,19 @@ async function handleLogout() {
 
 async function loadAll() {
   try {
-    state.stats = await api.getDashboardStats();
+    // Load Workspaces first
+    state.workspaces = await api.getWorkspaces();
+    if (state.workspaces.length > 0) {
+      // Keep selected workspace if it still exists, else use the first one
+      if (!currentWorkspace || !state.workspaces.find(w => w.id === currentWorkspace.id)) {
+        currentWorkspace = state.workspaces.find(w => w.is_default) || state.workspaces[0];
+      }
+      renderWorkspaceSwitcher();
+      updateResearchTopicBadge();
+    }
+    
+    const wsId = currentWorkspace ? currentWorkspace.id : null;
+    state.stats = await api.getDashboardStats(wsId);
     state.papers = state.stats.papers;
     state.domains = state.stats.domains;
     state.gaps = state.stats.gaps;
@@ -297,6 +339,167 @@ async function loadAll() {
     toast('❌ Failed to load data. Check Supabase config.', true);
   }
 }
+
+// ══════════════════════════════════════════════
+// WORKSPACES
+// ══════════════════════════════════════════════
+function renderWorkspaceSwitcher() {
+  if (!currentWorkspace) return;
+  
+  $('ws-icon').textContent = currentWorkspace.icon || '📁';
+  $('ws-name').textContent = currentWorkspace.name;
+  
+  const list = $('workspace-list');
+  list.innerHTML = '';
+  
+  state.workspaces.forEach(ws => {
+    const div = document.createElement('div');
+    div.className = 'workspace-item' + (ws.id === currentWorkspace.id ? ' active' : '');
+    div.innerHTML = `
+      <span class="workspace-item-icon">${ws.icon || '📁'}</span>
+      <span class="workspace-item-name">${ws.name}</span>
+      <button class="workspace-item-settings" title="Edit Workspace" onclick="event.stopPropagation(); openWorkspaceForm('${ws.id}')">⚙️</button>
+    `;
+    div.addEventListener('click', () => {
+      currentWorkspace = ws;
+      $('workspace-dropdown').classList.remove('active');
+      $('workspace-switcher').classList.remove('active');
+      loadAll(); // Reload everything for new workspace
+    });
+    list.appendChild(div);
+  });
+}
+
+function openWorkspaceForm(id = null) {
+  const ws = id ? state.workspaces.find(w => w.id === id) : null;
+  const isEdit = !!ws;
+  
+  $('modal-body').innerHTML = `
+    <h2>${isEdit ? '✏️ Edit Workspace' : '➕ New Workspace'}</h2>
+    <form id="workspace-form">
+      <div class="form-group full">
+        <label>Workspace Name</label>
+        <input type="text" id="ws-name-input" required value="${ws ? ws.name : ''}" placeholder="e.g. PhD Thesis, Literature Review" />
+      </div>
+      <div class="form-group full">
+        <label>Research Topic / Focus Area (for AI relevance scoring)</label>
+        <textarea id="ws-topic-input" rows="3">${ws ? (ws.research_topic || '') : (currentProfile?.research_topic || '')}</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Icon</label>
+          <input type="text" id="ws-icon-input" value="${ws ? (ws.icon || '📁') : '📁'}" style="width:80px; text-align:center" />
+        </div>
+      </div>
+      <div class="form-group full">
+        <label>Custom Extraction Fields (For AI PDF Parsing)</label>
+        <p style="font-size: 0.8rem; color: var(--text2); margin-top: 0;">Define specific fields you want the AI to extract from papers in this workspace.</p>
+        <div id="schema-builder-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <button type="button" class="btn btn-ghost" onclick="addSchemaField()" style="align-self:flex-start;font-size:0.8rem;">➕ Add Field</button>
+      </div>
+
+      <div class="form-actions" style="margin-top:24px;">
+        ${isEdit && !ws.is_default ? `<button type="button" class="btn btn-ghost" style="color:var(--danger)" onclick="deleteWorkspace('${ws.id}')">🗑️ Delete</button>` : '<div></div>'}
+        <div style="display:flex;gap:12px;">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-ws">${isEdit ? '💾 Save Changes' : '➕ Create Workspace'}</button>
+        </div>
+      </div>
+    </form>
+  `;
+  
+  window.currentSchemaFields = ws && ws.custom_schema ? [...ws.custom_schema] : [];
+  
+  window.renderSchemaBuilder = () => {
+    const list = $('schema-builder-list');
+    list.innerHTML = '';
+    window.currentSchemaFields.forEach((field, index) => {
+      list.innerHTML += `
+        <div style="display:flex;gap:8px;align-items:flex-start;background:var(--bg);padding:10px;border-radius:8px;border:1px solid var(--border);">
+          <div style="flex:1;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:8px;">
+              <input type="text" placeholder="Field Name (e.g. AI Models)" value="${field.name}" onchange="updateSchemaField(${index}, 'name', this.value)" style="flex:1;" required />
+              <select onchange="updateSchemaField(${index}, 'type', this.value)" style="width:120px;">
+                <option value="text" ${field.type === 'text' ? 'selected' : ''}>Text</option>
+                <option value="boolean" ${field.type === 'boolean' ? 'selected' : ''}>Yes/No</option>
+              </select>
+            </div>
+            <input type="text" placeholder="Prompt instruction (e.g. Extract the names of models used)" value="${field.description || ''}" onchange="updateSchemaField(${index}, 'description', this.value)" style="width:100%;" />
+          </div>
+          <button type="button" class="btn btn-ghost" onclick="removeSchemaField(${index})" style="color:var(--danger);padding:8px;">🗑️</button>
+        </div>
+      `;
+    });
+  };
+
+  window.addSchemaField = () => {
+    window.currentSchemaFields.push({ id: 'f_' + Date.now(), name: '', type: 'text', description: '' });
+    renderSchemaBuilder();
+  };
+
+  window.updateSchemaField = (index, key, value) => {
+    window.currentSchemaFields[index][key] = value;
+  };
+
+  window.removeSchemaField = (index) => {
+    window.currentSchemaFields.splice(index, 1);
+    renderSchemaBuilder();
+  };
+
+  renderSchemaBuilder();
+
+  $('workspace-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('btn-save-ws');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving...';
+    
+    try {
+      // Validate schema fields have names
+      const validSchema = window.currentSchemaFields.filter(f => f.name.trim() !== '');
+
+      const payload = {
+        name: $('ws-name-input').value.trim(),
+        research_topic: $('ws-topic-input').value.trim(),
+        icon: $('ws-icon-input').value.trim() || '📁',
+        custom_schema: validSchema
+      };
+      
+      if (isEdit) {
+        await api.updateWorkspace(ws.id, payload);
+        toast('✅ Workspace updated');
+      } else {
+        const newWs = await api.createWorkspace(payload);
+        currentWorkspace = newWs;
+        toast('✅ Workspace created');
+      }
+      closeModal();
+      await loadAll();
+    } catch (err) {
+      toast('❌ ' + err.message, true);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = isEdit ? '💾 Save Changes' : '➕ Create Workspace';
+    }
+  });
+  
+  openModal();
+}
+
+window.deleteWorkspace = async (id) => {
+  if (!confirm('Are you sure you want to delete this workspace? All papers, domains, and research gaps inside it will be PERMANENTLY deleted!')) return;
+  try {
+    await api.deleteWorkspace(id);
+    if (currentWorkspace?.id === id) {
+      currentWorkspace = null; // Will fallback to default in loadAll
+    }
+    closeModal();
+    toast('🗑️ Workspace deleted');
+    await loadAll();
+  } catch (err) {
+    toast('❌ ' + err.message, true);
+  }
+};
 
 // ── Navigation ──
 function setupNav() {
@@ -529,22 +732,101 @@ function renderPapers() {
 function openPaperDetail(p) {
   const d = state.domains.find(dd => dd.id === p.domain_id);
   const relColor = (p.relevance_score || 0) >= 90 ? 'var(--green)' : (p.relevance_score || 0) >= 75 ? 'var(--accent2)' : 'var(--orange)';
+  const em = p.extended_metadata || {};
+  const rc = em.research_context || {};
+  const meth = em.methodology || {};
+  const ds = em.dataset || {};
+  const ev = em.evaluation || {};
+  const out = em.output || {};
+  const asmt = em.assessment || {};
+  const tags = em.tags || {};
+  const pers = em.personal || {};
+
+  // Helper to render a field row
+  const field = (label, value) => {
+    if (value === null || value === undefined || value === '') {
+      return `<div class="meta-field"><span class="meta-field-label">${label}</span><span class="meta-field-value empty">—</span></div>`;
+    }
+    if (typeof value === 'boolean') {
+      return `<div class="meta-field"><span class="meta-field-label">${label}</span><span class="meta-field-value">${value ? '✅ Yes' : '❌ No'}</span></div>`;
+    }
+    if (Array.isArray(value)) {
+      return `<div class="meta-field"><span class="meta-field-label">${label}</span><span class="meta-field-value">${value.join('; ') || '—'}</span></div>`;
+    }
+    return `<div class="meta-field"><span class="meta-field-label">${label}</span><span class="meta-field-value">${value}</span></div>`;
+  };
+
+  // Helper to render a collapsible section
+  const section = (icon, title, content, openByDefault = false) => `
+    <div class="meta-section${openByDefault ? ' open' : ''}">
+      <div class="meta-section-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="meta-section-icon">${icon}</span>
+        <span class="meta-section-title">${title}</span>
+        <span class="meta-section-chevron">▶</span>
+      </div>
+      <div class="meta-section-body">${content}</div>
+    </div>`;
+
+  // Build tag chips
+  const tagLabels = {
+    privacy_policy: 'Privacy Policy', rule_extraction: 'Rule Extraction', policy_formalization: 'Policy Formalization',
+    formal_logic: 'Formal Logic', datalog: 'Datalog', prolog: 'Prolog', compliance_constraints: 'Compliance Constraints',
+    llm: 'LLM', multi_llm: 'Multi-LLM', consensus: 'Consensus', byzantine_fault_tolerance: 'Byzantine Fault Tolerance',
+    explainability: 'Explainability', gdpr: 'GDPR', dpdp: 'DPDP'
+  };
+  const tagChips = Object.entries(tagLabels).map(([key, label]) => {
+    const active = tags[key] === true;
+    return `<span class="tag-chip ${active ? 'active' : 'inactive'}"><span class="tag-chip-dot"></span>${label}</span>`;
+  }).join('');
+
   $('modal-body').innerHTML = `
     <h2>${p.title}</h2>
     <div class="meta-row">
       <span class="meta-tag" style="background:${d ? d.color + '22' : ''};color:${d?.color || ''}">${d?.icon || ''} ${d?.name || p.category}</span>
       <span class="meta-tag">📅 ${p.year}</span>
       <span class="meta-tag">📄 ${p.venue}</span>
+      ${p.publisher ? `<span class="meta-tag">🏢 ${p.publisher}</span>` : ''}
       ${p.doi ? `<span class="meta-tag">🔗 ${p.doi}</span>` : ''}
+      ${p.quartile ? `<span class="meta-tag">🏅 ${p.quartile}</span>` : ''}
+      ${p.scopus_indexed ? `<span class="meta-tag" style="background:rgba(76,218,140,.12);color:var(--green)">✓ Scopus</span>` : ''}
       <span class="meta-tag read-badge ${p.is_read ? 'read' : 'unread'}">${p.is_read ? '✓ Read' : '📌 Unread'}</span>
     </div>
     ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link">📄 Read Paper →</a>` : ''}
-    <h3>Authors</h3><p>${p.authors}</p>
-    <h3>Key Contribution</h3><p>${p.contribution || '—'}</p>
-    <h3>Limitations</h3>
-    <ul>${(p.limitations || []).map(l => `<li>${l}</li>`).join('') || '<li>—</li>'}</ul>
-    <h3>Relevance to Research</h3><p>${p.relevance || '—'}</p>
-    ${p.notes ? `<h3>Personal Notes</h3><p>${p.notes}</p>` : ''}
+    
+    <div class="meta-accordion">
+      ${section('📋', 'Bibliographic Info', `
+        ${field('Authors', p.authors)}
+        ${field('Year', p.year)}
+        ${field('Venue', p.venue)}
+        ${field('Publisher', p.publisher)}
+        ${field('DOI', p.doi)}
+        ${field('Scopus Indexed', p.scopus_indexed)}
+        ${field('Quartile', p.quartile)}
+        ${field('Research Domain', p.research_domain)}
+        ${field('Category', p.category)}
+      `, true)}
+
+      <!-- ═══ CUSTOM EXTRACTION FIELDS (collapsible) ═══ -->
+      ${(currentWorkspace?.custom_schema || []).length > 0 ? section('✨', 'Custom Fields',
+        (currentWorkspace.custom_schema).map(f => {
+          const val = (em.custom_fields && em.custom_fields[f.id] !== undefined) ? em.custom_fields[f.id] : null;
+          return field(f.name, val);
+        }).join('')
+      ) : ''}
+
+      ${section('⭐', 'Assessment', `
+        ${field('Key Contribution', p.contribution)}
+        ${field('Limitations', p.limitations)}
+      `, true)}
+
+      ${section('🧑‍🔬', 'Personal Assessment', `
+        ${field('Research Gap', pers.research_gap)}
+        ${field('Missing Component', pers.missing_component)}
+        ${field('Relevance to Research', pers.relevance_to_my_research || p.relevance)}
+        ${field('Personal Notes', pers.personal_notes || p.notes)}
+      `)}
+    </div>
+
     <div class="relevance-bar" style="margin-top:14px">
       <span>Score</span><div class="rel-track"><div class="rel-fill" style="width:${p.relevance_score || 0}%;background:${relColor}"></div></div><span style="font-weight:700">${p.relevance_score || 0}%</span>
     </div>
@@ -568,30 +850,80 @@ function openPaperDetail(p) {
 // ── Paper Form ──
 function openPaperForm(paper) {
   const isEdit = !!paper;
+  const em = paper?.extended_metadata || {};
+  const rc = em.research_context || {};
+  const meth = em.methodology || {};
+  const ds = em.dataset || {};
+  const ev = em.evaluation || {};
+  const out = em.output || {};
+  const asmt = em.assessment || {};
+  const tags = em.tags || {};
+  const pers = em.personal || {};
+
+  // Helper for collapsible form sections
+  const formSection = (id, icon, label, fieldsHtml) => `
+    <div class="form-section-divider" id="fsd-${id}" onclick="this.classList.toggle('open');document.getElementById('fsc-${id}').classList.toggle('open')">
+      <span class="section-line"></span>
+      <span class="section-label">${icon} ${label} <span class="section-chevron">▶</span></span>
+      <span class="section-line"></span>
+    </div>
+    <div class="form-section-collapse" id="fsc-${id}">
+      ${fieldsHtml}
+    </div>`;
+
+  // Helper for tag toggles
+  const tagToggle = (id, label, checked) => `
+    <label class="form-toggle ${checked ? 'active' : ''}" id="ft-${id}" onclick="this.classList.toggle('active');this.querySelector('input').checked=!this.querySelector('input').checked">
+      <input type="checkbox" id="f-tag-${id}" ${checked ? 'checked' : ''}>${label}
+    </label>`;
+
   $('modal-body').innerHTML = `
     <h2 style="margin-bottom:12px">${isEdit ? 'Edit Paper' : 'Add New Paper'}</h2>
     ${!isEdit ? `
       <div style="margin-bottom:16px">
-        <input type="file" id="pdf-upload" accept="application/pdf" style="display:none">
+        <input type="file" id="paper-pdf" accept="application/pdf" style="display:none">
         <button class="btn btn-primary" id="btn-ai-upload" style="background:linear-gradient(135deg,#a78bfa,#c084fc);width:100%;padding:12px 16px;font-size:.9rem">✨ Auto-fill with AI (Upload PDF)</button>
+        <div id="parse-loader" style="display:none;margin-top:10px;text-align:center">⏳ AI is parsing your PDF...</div>
       </div>
     ` : ''}
     <form id="paper-form">
       <div class="form-grid">
+        <!-- ═══ CORE BIBLIOGRAPHIC (always visible) ═══ -->
         <div class="form-group full"><label>Title *</label><input id="f-title" required value="${paper?.title || ''}" /></div>
         <div class="form-group full"><label>Authors *</label><input id="f-authors" required value="${paper?.authors || ''}" /></div>
         <div class="form-group"><label>Year *</label><input type="number" id="f-year" required min="1990" max="2030" value="${paper?.year || 2024}" /></div>
         <div class="form-group"><label>Venue *</label><input id="f-venue" required value="${paper?.venue || ''}" /></div>
-        <div class="form-group"><label>Domain</label><select id="f-domain"><option value="">— None —</option>${state.domains.map(d => `<option value="${d.id}" ${paper?.domain_id === d.id ? 'selected' : ''}>${d.icon} ${d.name}</option>`).join('')}</select></div>
-        <div class="form-group"><label>Relevance (0–100)</label><input type="number" id="f-rel" min="0" max="100" value="${paper?.relevance_score || 75}" /></div>
+        <div class="form-group"><label>Publisher</label><input id="f-publisher" value="${paper?.publisher || ''}" /></div>
+        <div class="form-group"><label>DOI</label><input id="f-doi" value="${paper?.doi || ''}" /></div>
         <div class="form-group full"><label>Paper URL</label><input type="url" id="f-url" value="${paper?.url || ''}" /></div>
-        <div class="form-group full"><label>DOI</label><input id="f-doi" value="${paper?.doi || ''}" /></div>
-        <div class="form-group full"><label>Key Contribution *</label><textarea id="f-cont" rows="3" required>${paper?.contribution || ''}</textarea></div>
-        <div class="form-group full"><label>Limitations (one per line)</label><textarea id="f-lim" rows="3">${(paper?.limitations || []).join('\n')}</textarea></div>
-        <div class="form-group full"><label>Relevance to Research</label><textarea id="f-reltext" rows="2">${paper?.relevance || ''}</textarea></div>
-        <div class="form-group full"><label>Personal Notes</label><textarea id="f-notes" rows="2">${paper?.notes || ''}</textarea></div>
-        <div class="form-group"><label>Read?</label><select id="f-read"><option value="false" ${!paper?.is_read ? 'selected' : ''}>Not yet</option><option value="true" ${paper?.is_read ? 'selected' : ''}>Yes, read</option></select></div>
+        <div class="form-group"><label>Domain</label><select id="f-domain"><option value="">— None —</option>${state.domains.map(d => `<option value="${d.id}" ${paper?.domain_id === d.id ? 'selected' : ''}>${d.icon} ${d.name}</option>`).join('')}</select></div>
         <div class="form-group"><label>Category</label><input id="f-cat" value="${paper?.category || 'Foundation'}" /></div>
+        <div class="form-group"><label>Quartile</label><select id="f-quartile"><option value="">—</option>${['Q1','Q2','Q3','Q4'].map(q => `<option value="${q}" ${paper?.quartile === q ? 'selected' : ''}>${q}</option>`).join('')}</select></div>
+        <div class="form-group"><label>Scopus Indexed</label><select id="f-scopus"><option value="false" ${!paper?.scopus_indexed ? 'selected' : ''}>No</option><option value="true" ${paper?.scopus_indexed ? 'selected' : ''}>Yes</option></select></div>
+        <div class="form-group"><label>Research Domain</label><input id="f-research-domain" value="${paper?.research_domain || ''}" /></div>
+        <div class="form-group"><label>Relevance (0–100)</label><input type="number" id="f-rel" min="0" max="100" value="${paper?.relevance_score || 75}" /></div>
+        <div class="form-group"><label>Read?</label><select id="f-read"><option value="false" ${!paper?.is_read ? 'selected' : ''}>Not yet</option><option value="true" ${paper?.is_read ? 'selected' : ''}>Yes, read</option></select></div>
+        <div class="form-group full"><label>Key Contribution *</label><textarea id="f-cont" rows="3" required>${paper?.contribution || ''}</textarea></div>
+
+        <!-- ═══ CUSTOM EXTRACTION FIELDS (collapsible) ═══ -->
+        ${(currentWorkspace?.custom_schema || []).length > 0 ? formSection('custom', '✨', 'Custom Fields', 
+          (currentWorkspace.custom_schema).map(f => {
+            const val = (em.custom_fields && em.custom_fields[f.id] !== undefined) ? em.custom_fields[f.id] : '';
+            if (f.type === 'boolean') {
+              return `<div class="form-group"><label>${f.name}</label><select id="f-custom-${f.id}"><option value="false" ${!val ? 'selected' : ''}>No</option><option value="true" ${val ? 'selected' : ''}>Yes</option></select></div>`;
+            } else {
+              return `<div class="form-group full"><label>${f.name}</label><textarea id="f-custom-${f.id}" rows="2">${val}</textarea></div>`;
+            }
+          }).join('')
+        ) : ''}
+
+        <!-- ═══ PERSONAL ASSESSMENT (collapsible) ═══ -->
+        ${formSection('pers', '🧑‍🔬', 'Personal Assessment', `
+          <div class="form-group full"><label>Research Gap</label><textarea id="f-pers-gap" rows="2">${pers.research_gap || ''}</textarea></div>
+          <div class="form-group full"><label>Missing Component</label><input id="f-pers-missing" value="${pers.missing_component || ''}" /></div>
+          <div class="form-group full"><label>Relevance to Research</label><textarea id="f-reltext" rows="2">${pers.relevance_to_my_research || paper?.relevance || ''}</textarea></div>
+          <div class="form-group full"><label>Personal Notes</label><textarea id="f-notes" rows="2">${pers.personal_notes || paper?.notes || ''}</textarea></div>
+        `)}
       </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Cancel</button>
@@ -600,8 +932,8 @@ function openPaperForm(paper) {
     </form>`;
 
   if (!isEdit) {
-    $('btn-ai-upload').addEventListener('click', () => $('pdf-upload').click());
-    $('pdf-upload').addEventListener('change', async (e) => {
+    $('btn-ai-upload').addEventListener('click', () => $('paper-pdf').click());
+    $('paper-pdf').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       
@@ -612,22 +944,95 @@ function openPaperForm(paper) {
       toast('Sending to Gemini AI for parsing...');
       
       try {
-        const parsed = await api.uploadPdf(file);
+        const parsed = await api.uploadPdf(file, currentWorkspace?.id);
         
-        // Auto-fill fields
+        // ── Auto-fill Core Bibliographic Fields ──
         if (parsed.title) $('f-title').value = parsed.title;
         if (parsed.authors) $('f-authors').value = parsed.authors;
         if (parsed.year) $('f-year').value = parsed.year;
         if (parsed.venue) $('f-venue').value = parsed.venue;
+        if (parsed.publisher) $('f-publisher').value = parsed.publisher;
         if (parsed.url) $('f-url').value = parsed.url;
         if (parsed.doi) $('f-doi').value = parsed.doi;
         if (parsed.contribution) $('f-cont').value = parsed.contribution;
-        if (parsed.limitations && Array.isArray(parsed.limitations)) {
-          $('f-lim').value = parsed.limitations.join('\n');
-        }
         if (parsed.relevance_score) $('f-rel').value = parsed.relevance_score;
         if (parsed.category) $('f-cat').value = parsed.category;
-        if (parsed.relevance) $('f-reltext').value = parsed.relevance;
+        if (parsed.quartile) $('f-quartile').value = parsed.quartile;
+        if (parsed.scopus_indexed) $('f-scopus').value = 'true';
+        if (parsed.research_domain) $('f-research-domain').value = parsed.research_domain;
+
+        // ── Auto-fill Extended Metadata ──
+        const emd = parsed.extended_metadata || {};
+
+        // Research Context
+        const prc = emd.research_context || parsed.research_context || {};
+        if (prc.research_problem) $('f-rc-problem').value = prc.research_problem;
+        if (prc.research_objective) $('f-rc-objective').value = prc.research_objective;
+        if (prc.motivation) $('f-rc-motivation').value = prc.motivation;
+
+        // Methodology
+        const pmeth = emd.methodology || parsed.methodology || {};
+        if (pmeth.methodology) $('f-meth-methodology').value = pmeth.methodology;
+        if (pmeth.ai_technique) $('f-meth-ai').value = pmeth.ai_technique;
+        if (pmeth.model_llm_used) $('f-meth-llm').value = pmeth.model_llm_used;
+        if (pmeth.multi_llm) $('f-meth-multi-llm').value = 'true';
+        if (pmeth.consensus_mechanism) $('f-meth-consensus').value = pmeth.consensus_mechanism;
+        if (pmeth.formal_method) $('f-meth-formal').value = pmeth.formal_method;
+        if (pmeth.formal_language) $('f-meth-formal-lang').value = pmeth.formal_language;
+        if (pmeth.rule_extraction_technique) $('f-meth-rule-extract').value = pmeth.rule_extraction_technique;
+        if (pmeth.rule_representation) $('f-meth-rule-repr').value = pmeth.rule_representation;
+
+        // Dataset
+        const pds = emd.dataset || parsed.dataset || {};
+        if (pds.dataset_name) $('f-ds-name').value = pds.dataset_name;
+        if (pds.dataset_source) $('f-ds-source').value = pds.dataset_source;
+        if (pds.dataset_type) $('f-ds-type').value = pds.dataset_type;
+        if (pds.dataset_size) $('f-ds-size').value = pds.dataset_size;
+        if (pds.domain) $('f-ds-domain').value = pds.domain;
+        if (pds.regulation) $('f-ds-regulation').value = pds.regulation;
+
+        // Evaluation
+        const pev = emd.evaluation || parsed.evaluation || {};
+        if (pev.evaluation_method) $('f-ev-method').value = pev.evaluation_method;
+        if (pev.baseline_method) $('f-ev-baseline').value = pev.baseline_method;
+        if (pev.evaluation_metrics) $('f-ev-metrics').value = pev.evaluation_metrics;
+        if (pev.results) $('f-ev-results').value = pev.results;
+
+        // Output & Verification
+        const pout = emd.output || parsed.output || {};
+        if (pout.output) $('f-out-output').value = pout.output;
+        if (pout.machine_verifiable) $('f-out-machine').value = 'true';
+        if (pout.compliance_verification) $('f-out-compliance').value = pout.compliance_verification;
+        if (pout.runtime_verification) $('f-out-runtime').value = pout.runtime_verification;
+
+        // Assessment
+        const pasmt = emd.assessment || parsed.assessment || {};
+        if (pasmt.novelty) $('f-asmt-novelty').value = pasmt.novelty;
+        if (pasmt.strengths) $('f-asmt-strengths').value = pasmt.strengths;
+        if (pasmt.limitations && Array.isArray(pasmt.limitations)) {
+          $('f-lim').value = pasmt.limitations.join('\n');
+        } else if (parsed.limitations && Array.isArray(parsed.limitations)) {
+          $('f-lim').value = parsed.limitations.join('\n');
+        }
+        if (pasmt.future_work) $('f-asmt-future').value = pasmt.future_work;
+
+        // Tags
+        const ptags = emd.tags || parsed.tags || {};
+        const tagKeys = ['privacy_policy','rule_extraction','policy_formalization','formal_logic','datalog','prolog',
+          'compliance_constraints','llm','multi_llm','consensus','byzantine_fault_tolerance','explainability','gdpr','dpdp'];
+        tagKeys.forEach(key => {
+          if (ptags[key]) {
+            const checkbox = $(`f-tag-${key}`);
+            if (checkbox) { checkbox.checked = true; checkbox.parentElement.classList.add('active'); }
+          }
+        });
+
+        // Personal Assessment
+        const ppers = emd.personal || parsed.personal || {};
+        if (ppers.research_gap) $('f-pers-gap').value = ppers.research_gap;
+        if (ppers.missing_component) $('f-pers-missing').value = ppers.missing_component;
+        if (ppers.relevance_to_my_research || parsed.relevance) $('f-reltext').value = ppers.relevance_to_my_research || parsed.relevance;
+        if (ppers.personal_notes) $('f-notes').value = ppers.personal_notes;
         
         // Auto-select domain dropdown (refresh if new domain was created)
         if (parsed.domain_id) {
@@ -642,6 +1047,13 @@ function openPaperForm(paper) {
           $('f-domain').value = parsed.domain_id;
         }
         
+        // Open filled sections so user can see the AI-extracted data
+        ['rc','meth','ds','ev','out','asmt','tags','pers'].forEach(id => {
+          const divider = $(`fsd-${id}`);
+          const collapse = $(`fsc-${id}`);
+          if (divider && collapse) { divider.classList.add('open'); collapse.classList.add('open'); }
+        });
+
         let toastMsg = '✨ Successfully auto-filled all fields!';
         if (parsed.domain_created) toastMsg += ` New domain "${parsed.domain}" created!`;
         if (parsed.gaps_created) toastMsg += ` ${parsed.gaps_created} research gap${parsed.gaps_created > 1 ? 's' : ''} detected & added!`;
@@ -659,6 +1071,31 @@ function openPaperForm(paper) {
   $('paper-form').addEventListener('submit', async e => {
     e.preventDefault();
     const limText = $('f-lim').value.trim();
+    const limitations = limText ? limText.split('\n').map(s => s.trim()).filter(Boolean) : [];
+
+    // Collect custom field values
+    const custom_fields = {};
+    if (currentWorkspace && currentWorkspace.custom_schema) {
+      currentWorkspace.custom_schema.forEach(f => {
+        const el = $(`f-custom-${f.id}`);
+        if (el) {
+          custom_fields[f.id] = f.type === 'boolean' ? el.value === 'true' : (el.value.trim() || null);
+        }
+      });
+    }
+
+    // Build extended_metadata JSONB
+    const extended_metadata = {
+      custom_fields: custom_fields,
+      personal: {
+        research_gap: $('f-pers-gap').value.trim() || null,
+        missing_component: $('f-pers-missing').value.trim() || null,
+        relevance_to_my_research: $('f-reltext').value.trim() || null,
+        relevance_score: parseInt($('f-rel').value) || 75,
+        personal_notes: $('f-notes').value.trim() || null
+      }
+    };
+
     const data = {
       title: $('f-title').value.trim(),
       authors: $('f-authors').value.trim(),
@@ -669,11 +1106,17 @@ function openPaperForm(paper) {
       url: $('f-url').value.trim() || null,
       doi: $('f-doi').value.trim() || null,
       contribution: $('f-cont').value.trim(),
-      limitations: limText ? limText.split('\n').map(s => s.trim()).filter(Boolean) : [],
+      limitations: limitations,
       relevance: $('f-reltext').value.trim() || null,
       notes: $('f-notes').value.trim() || null,
       is_read: $('f-read').value === 'true',
-      category: $('f-cat').value.trim() || 'Foundation'
+      category: $('f-cat').value.trim() || 'Foundation',
+      publisher: $('f-publisher').value.trim() || null,
+      scopus_indexed: $('f-scopus').value === 'true',
+      quartile: $('f-quartile').value || null,
+      research_domain: $('f-research-domain').value.trim() || null,
+      extended_metadata,
+      workspace_id: currentWorkspace?.id || null
     };
     try {
       if (isEdit) { await api.updatePaper(paper.id, data); toast('✅ Paper updated'); }
@@ -1156,23 +1599,100 @@ function exportToExcel(papers, sheetLabel) {
     return;
   }
 
-  // Build clean rows for Excel
+  // Build comprehensive rows for Excel with all metadata fields
   const rows = papers.map((p, i) => {
     const d = state.domains.find(dd => dd.id === p.domain_id);
+    const em = p.extended_metadata || {};
+    const rc = em.research_context || {};
+    const meth = em.methodology || {};
+    const ds = em.dataset || {};
+    const ev = em.evaluation || {};
+    const out = em.output || {};
+    const asmt = em.assessment || {};
+    const tags = em.tags || {};
+    const pers = em.personal || {};
+
     return {
+      // ── Bibliographic ──
       '#': i + 1,
       'Title': p.title,
       'Authors': p.authors,
       'Year': p.year,
       'Venue': p.venue,
-      'Domain': d?.name || p.category || '—',
+      'Publisher': p.publisher || '—',
+      'Scopus Indexed': p.scopus_indexed ? 'Yes' : 'No',
+      'Quartile': p.quartile || '—',
       'DOI': p.doi || '—',
       'URL': p.url || '—',
-      'Key Contribution': p.contribution || '—',
-      'Limitations': (p.limitations || []).join('; '),
-      'Relevance': p.relevance || '—',
-      'Score': p.relevance_score || 0,
+      'Research Domain': p.research_domain || '—',
+      'Domain': d?.name || p.category || '—',
       'Category': p.category || '—',
+
+      // ── Research Context ──
+      'Research Problem': rc.research_problem || '—',
+      'Research Objective': rc.research_objective || '—',
+      'Motivation': rc.motivation || '—',
+
+      // ── Methodology ──
+      'Methodology': meth.methodology || '—',
+      'AI Technique': meth.ai_technique || '—',
+      'Model / LLM Used': meth.model_llm_used || '—',
+      'Multi-LLM': meth.multi_llm ? 'Yes' : 'No',
+      'Consensus Mechanism': meth.consensus_mechanism || '—',
+      'Formal Method': meth.formal_method || '—',
+      'Formal Language': meth.formal_language || '—',
+      'Rule Extraction Technique': meth.rule_extraction_technique || '—',
+      'Rule Representation': meth.rule_representation || '—',
+
+      // ── Dataset ──
+      'Dataset Name': ds.dataset_name || '—',
+      'Dataset Source': ds.dataset_source || '—',
+      'Dataset Type': ds.dataset_type || '—',
+      'Dataset Size': ds.dataset_size || '—',
+      'Dataset Domain': ds.domain || '—',
+      'Regulation': ds.regulation || '—',
+
+      // ── Evaluation ──
+      'Evaluation Method': ev.evaluation_method || '—',
+      'Baseline Method': ev.baseline_method || '—',
+      'Evaluation Metrics': ev.evaluation_metrics || '—',
+      'Results': ev.results || '—',
+
+      // ── Output & Verification ──
+      'Output': out.output || '—',
+      'Machine Verifiable': out.machine_verifiable ? 'Yes' : 'No',
+      'Compliance Verification': out.compliance_verification || '—',
+      'Runtime Verification': out.runtime_verification || '—',
+
+      // ── Assessment ──
+      'Key Contribution': asmt.key_contribution || p.contribution || '—',
+      'Novelty': asmt.novelty || '—',
+      'Strengths': asmt.strengths || '—',
+      'Limitations': (asmt.limitations || p.limitations || []).join('; ') || '—',
+      'Future Work': asmt.future_work || '—',
+
+      // ── Tags ──
+      'Tag: Privacy Policy': tags.privacy_policy ? '✓' : '',
+      'Tag: Rule Extraction': tags.rule_extraction ? '✓' : '',
+      'Tag: Policy Formalization': tags.policy_formalization ? '✓' : '',
+      'Tag: Formal Logic': tags.formal_logic ? '✓' : '',
+      'Tag: Datalog': tags.datalog ? '✓' : '',
+      'Tag: Prolog': tags.prolog ? '✓' : '',
+      'Tag: Compliance Constraints': tags.compliance_constraints ? '✓' : '',
+      'Tag: LLM': tags.llm ? '✓' : '',
+      'Tag: Multi-LLM': tags.multi_llm ? '✓' : '',
+      'Tag: Consensus': tags.consensus ? '✓' : '',
+      'Tag: Byzantine Fault Tolerance': tags.byzantine_fault_tolerance ? '✓' : '',
+      'Tag: Explainability': tags.explainability ? '✓' : '',
+      'Tag: GDPR': tags.gdpr ? '✓' : '',
+      'Tag: DPDP': tags.dpdp ? '✓' : '',
+
+      // ── Personal ──
+      'Research Gap': pers.research_gap || '—',
+      'Missing Component': pers.missing_component || '—',
+      'Relevance to Research': pers.relevance_to_my_research || p.relevance || '—',
+      'Relevance Score': p.relevance_score || 0,
+      'Personal Notes': pers.personal_notes || p.notes || '—',
       'Read': p.is_read ? 'Yes' : 'No'
     };
   });
@@ -1207,3 +1727,5 @@ function setupModalClose() {
   $('modal-overlay').addEventListener('click', e => { if (e.target === $('modal-overlay')) closeModal(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 }
+window.openWorkspaceForm = openWorkspaceForm;
+window.closeModal = closeModal;
