@@ -520,11 +520,12 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
     const domainNames = domainList.map(d => d.name);
 
     let dynamicFieldsJSON = {};
+    let customFieldsInstructions = "";
     if (customSchema.length > 0) {
       customSchema.forEach(field => {
-        let example = field.type === 'boolean' ? false : "Extract this based on the paper.";
-        if (field.description) example = field.description;
+        let example = field.type === 'boolean' ? false : "extracted text";
         dynamicFieldsJSON[field.id] = example;
+        customFieldsInstructions += `\n    - For custom_fields.${field.id} ("${field.name}"): ${field.description || "Extract this based on the paper."}`;
       });
     }
     const customFieldsSchemaStr = JSON.stringify(dynamicFieldsJSON, null, 6);
@@ -576,6 +577,7 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
     3. For "scopus_indexed": Set to true only if there is explicit evidence the journal/venue is Scopus-indexed.
     4. For "machine_verifiable" in output: Set to true only if the output can be automatically verified by a machine/tool.
     5. For all text fields: Be concise but informative. Return null if the information is genuinely not present in the paper.
+    6. CUSTOM FIELDS INSTRUCTIONS: ${customFieldsInstructions || "None."}
 
     RESEARCH GAPS: Identify 1-3 genuine open research questions, unresolved challenges, or future work directions. If none found, return an empty array [].
 
