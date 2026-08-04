@@ -1759,7 +1759,7 @@ function exportToExcel(papers, sheetLabel) {
     const tags = em.tags || {};
     const pers = em.personal || {};
 
-    return {
+    let row = {
       // ── Bibliographic ──
       '#': i + 1,
       'Title': p.title,
@@ -1842,6 +1842,20 @@ function exportToExcel(papers, sheetLabel) {
       'Personal Notes': pers.personal_notes || p.notes || '—',
       'Read': p.is_read ? 'Yes' : 'No'
     };
+
+    // ── Custom Fields ──
+    if (currentWorkspace && currentWorkspace.custom_schema) {
+      currentWorkspace.custom_schema.forEach(f => {
+        const val = em.custom_fields ? em.custom_fields[f.id] : undefined;
+        if (f.type === 'boolean') {
+          row[`[Custom] ${f.name}`] = val ? 'Yes' : 'No';
+        } else {
+          row[`[Custom] ${f.name}`] = val || '—';
+        }
+      });
+    }
+
+    return row;
   });
 
   const ws = XLSX.utils.json_to_sheet(rows);
