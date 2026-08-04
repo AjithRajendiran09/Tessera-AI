@@ -1038,6 +1038,21 @@ function openPaperForm(paper) {
         // ── Auto-fill Extended Metadata ──
         const emd = parsed.extended_metadata || {};
 
+        // Custom Fields
+        const pcustom = emd.custom_fields || parsed.custom_fields || {};
+        if (currentWorkspace && currentWorkspace.custom_schema) {
+          currentWorkspace.custom_schema.forEach(f => {
+            const el = $(`f-custom-${f.id}`);
+            if (el && pcustom[f.id] !== undefined && pcustom[f.id] !== null) {
+              if (f.type === 'boolean') {
+                el.value = pcustom[f.id] ? 'true' : 'false';
+              } else {
+                el.value = pcustom[f.id];
+              }
+            }
+          });
+        }
+
         // Research Context
         const prc = emd.research_context || parsed.research_context || {};
         if (prc.research_problem) $('f-rc-problem').value = prc.research_problem;
@@ -1122,7 +1137,7 @@ function openPaperForm(paper) {
         }
         
         // Open filled sections so user can see the AI-extracted data
-        ['rc','meth','ds','ev','out','asmt','tags','pers'].forEach(id => {
+        ['custom','rc','meth','ds','ev','out','asmt','tags','pers'].forEach(id => {
           const divider = $(`fsd-${id}`);
           const collapse = $(`fsc-${id}`);
           if (divider && collapse) { divider.classList.add('open'); collapse.classList.add('open'); }
