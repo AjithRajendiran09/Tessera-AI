@@ -917,6 +917,80 @@ function openPaperForm(paper) {
           }).join('')
         ) : ''}
 
+        <!-- ═══ RESEARCH CONTEXT (collapsible) ═══ -->
+        ${formSection('rc', '🔍', 'Research Context', `
+          <div class="form-group full"><label>Research Problem</label><textarea id="f-rc-problem" rows="2">${rc.research_problem || ''}</textarea></div>
+          <div class="form-group full"><label>Research Objective</label><textarea id="f-rc-objective" rows="2">${rc.research_objective || ''}</textarea></div>
+          <div class="form-group full"><label>Motivation</label><textarea id="f-rc-motivation" rows="2">${rc.motivation || ''}</textarea></div>
+        `)}
+
+        <!-- ═══ METHODOLOGY (collapsible) ═══ -->
+        ${formSection('meth', '⚙️', 'Methodology', `
+          <div class="form-group full"><label>Methodology</label><textarea id="f-meth-methodology" rows="2">${meth.methodology || ''}</textarea></div>
+          <div class="form-group"><label>AI Technique</label><input id="f-meth-ai" value="${meth.ai_technique || ''}" /></div>
+          <div class="form-group"><label>Model / LLM Used</label><input id="f-meth-llm" value="${meth.model_llm_used || ''}" /></div>
+          <div class="form-group"><label>Multi-LLM</label><select id="f-meth-multi-llm"><option value="false" ${!meth.multi_llm ? 'selected' : ''}>No</option><option value="true" ${meth.multi_llm ? 'selected' : ''}>Yes</option></select></div>
+          <div class="form-group"><label>Consensus Mechanism</label><input id="f-meth-consensus" value="${meth.consensus_mechanism || ''}" /></div>
+          <div class="form-group"><label>Formal Method</label><input id="f-meth-formal" value="${meth.formal_method || ''}" /></div>
+          <div class="form-group"><label>Formal Language</label><input id="f-meth-formal-lang" value="${meth.formal_language || ''}" /></div>
+          <div class="form-group"><label>Rule Extraction Technique</label><input id="f-meth-rule-extract" value="${meth.rule_extraction_technique || ''}" /></div>
+          <div class="form-group"><label>Rule Representation</label><input id="f-meth-rule-repr" value="${meth.rule_representation || ''}" /></div>
+        `)}
+
+        <!-- ═══ DATASET (collapsible) ═══ -->
+        ${formSection('ds', '📊', 'Dataset', `
+          <div class="form-group"><label>Dataset Name</label><input id="f-ds-name" value="${ds.dataset_name || ''}" /></div>
+          <div class="form-group"><label>Dataset Source</label><input id="f-ds-source" value="${ds.dataset_source || ''}" /></div>
+          <div class="form-group"><label>Dataset Type</label><input id="f-ds-type" value="${ds.dataset_type || ''}" /></div>
+          <div class="form-group"><label>Dataset Size</label><input id="f-ds-size" value="${ds.dataset_size || ''}" /></div>
+          <div class="form-group"><label>Domain</label><input id="f-ds-domain" value="${ds.domain || ''}" /></div>
+          <div class="form-group"><label>Regulation</label><input id="f-ds-regulation" value="${ds.regulation || ''}" /></div>
+        `)}
+
+        <!-- ═══ EVALUATION (collapsible) ═══ -->
+        ${formSection('ev', '📉', 'Evaluation', `
+          <div class="form-group"><label>Evaluation Method</label><input id="f-ev-method" value="${ev.evaluation_method || ''}" /></div>
+          <div class="form-group"><label>Baseline Method</label><input id="f-ev-baseline" value="${ev.baseline_method || ''}" /></div>
+          <div class="form-group full"><label>Evaluation Metrics</label><input id="f-ev-metrics" value="${ev.evaluation_metrics || ''}" /></div>
+          <div class="form-group full"><label>Results</label><textarea id="f-ev-results" rows="2">${ev.results || ''}</textarea></div>
+        `)}
+
+        <!-- ═══ OUTPUT & VERIFICATION (collapsible) ═══ -->
+        ${formSection('out', '✅', 'Output & Verification', `
+          <div class="form-group full"><label>Output</label><textarea id="f-out-output" rows="2">${out.output || ''}</textarea></div>
+          <div class="form-group"><label>Machine Verifiable</label><select id="f-out-machine"><option value="false" ${!out.machine_verifiable ? 'selected' : ''}>No</option><option value="true" ${out.machine_verifiable ? 'selected' : ''}>Yes</option></select></div>
+          <div class="form-group"><label>Compliance Verification</label><input id="f-out-compliance" value="${out.compliance_verification || ''}" /></div>
+          <div class="form-group"><label>Runtime Verification</label><input id="f-out-runtime" value="${out.runtime_verification || ''}" /></div>
+        `)}
+
+        <!-- ═══ ASSESSMENT (collapsible) ═══ -->
+        ${formSection('asmt', '⚖️', 'Assessment', `
+          <div class="form-group full"><label>Novelty</label><textarea id="f-asmt-novelty" rows="2">${asmt.novelty || ''}</textarea></div>
+          <div class="form-group full"><label>Strengths</label><textarea id="f-asmt-strengths" rows="2">${asmt.strengths || ''}</textarea></div>
+          <div class="form-group full"><label>Limitations</label><textarea id="f-lim" rows="2">${(asmt.limitations || paper?.limitations || []).join('\\n')}</textarea></div>
+          <div class="form-group full"><label>Future Work</label><textarea id="f-asmt-future" rows="2">${asmt.future_work || ''}</textarea></div>
+        `)}
+
+        <!-- ═══ TAGS (collapsible) ═══ -->
+        ${formSection('tags', '🏷️', 'Tags', `
+          <div class="tags-container" style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;">
+            ${tagToggle('privacy_policy', 'Privacy Policy', tags.privacy_policy)}
+            ${tagToggle('rule_extraction', 'Rule Extraction', tags.rule_extraction)}
+            ${tagToggle('policy_formalization', 'Policy Formalization', tags.policy_formalization)}
+            ${tagToggle('formal_logic', 'Formal Logic', tags.formal_logic)}
+            ${tagToggle('datalog', 'Datalog', tags.datalog)}
+            ${tagToggle('prolog', 'Prolog', tags.prolog)}
+            ${tagToggle('compliance_constraints', 'Compliance Constraints', tags.compliance_constraints)}
+            ${tagToggle('llm', 'LLM', tags.llm)}
+            ${tagToggle('multi_llm', 'Multi-LLM', tags.multi_llm)}
+            ${tagToggle('consensus', 'Consensus', tags.consensus)}
+            ${tagToggle('byzantine_fault_tolerance', 'Byzantine Fault Tolerance', tags.byzantine_fault_tolerance)}
+            ${tagToggle('explainability', 'Explainability', tags.explainability)}
+            ${tagToggle('gdpr', 'GDPR', tags.gdpr)}
+            ${tagToggle('dpdp', 'DPDP', tags.dpdp)}
+          </div>
+        `)}
+
         <!-- ═══ PERSONAL ASSESSMENT (collapsible) ═══ -->
         ${formSection('pers', '🧑‍🔬', 'Personal Assessment', `
           <div class="form-group full"><label>Research Gap</label><textarea id="f-pers-gap" rows="2">${pers.research_gap || ''}</textarea></div>
@@ -1086,13 +1160,71 @@ function openPaperForm(paper) {
 
     // Build extended_metadata JSONB
     const extended_metadata = {
+      research_context: {
+        research_problem: $('f-rc-problem')?.value.trim() || null,
+        research_objective: $('f-rc-objective')?.value.trim() || null,
+        motivation: $('f-rc-motivation')?.value.trim() || null
+      },
+      methodology: {
+        methodology: $('f-meth-methodology')?.value.trim() || null,
+        ai_technique: $('f-meth-ai')?.value.trim() || null,
+        model_llm_used: $('f-meth-llm')?.value.trim() || null,
+        multi_llm: $('f-meth-multi-llm')?.value === 'true',
+        consensus_mechanism: $('f-meth-consensus')?.value.trim() || null,
+        formal_method: $('f-meth-formal')?.value.trim() || null,
+        formal_language: $('f-meth-formal-lang')?.value.trim() || null,
+        rule_extraction_technique: $('f-meth-rule-extract')?.value.trim() || null,
+        rule_representation: $('f-meth-rule-repr')?.value.trim() || null
+      },
+      dataset: {
+        dataset_name: $('f-ds-name')?.value.trim() || null,
+        dataset_source: $('f-ds-source')?.value.trim() || null,
+        dataset_type: $('f-ds-type')?.value.trim() || null,
+        dataset_size: $('f-ds-size')?.value.trim() || null,
+        domain: $('f-ds-domain')?.value.trim() || null,
+        regulation: $('f-ds-regulation')?.value.trim() || null
+      },
+      evaluation: {
+        evaluation_method: $('f-ev-method')?.value.trim() || null,
+        baseline_method: $('f-ev-baseline')?.value.trim() || null,
+        evaluation_metrics: $('f-ev-metrics')?.value.trim() || null,
+        results: $('f-ev-results')?.value.trim() || null
+      },
+      output: {
+        output: $('f-out-output')?.value.trim() || null,
+        machine_verifiable: $('f-out-machine')?.value === 'true',
+        compliance_verification: $('f-out-compliance')?.value.trim() || null,
+        runtime_verification: $('f-out-runtime')?.value.trim() || null
+      },
+      assessment: {
+        novelty: $('f-asmt-novelty')?.value.trim() || null,
+        strengths: $('f-asmt-strengths')?.value.trim() || null,
+        limitations: limitations,
+        future_work: $('f-asmt-future')?.value.trim() || null
+      },
+      tags: {
+        privacy_policy: $('f-tag-privacy_policy')?.checked || false,
+        rule_extraction: $('f-tag-rule_extraction')?.checked || false,
+        policy_formalization: $('f-tag-policy_formalization')?.checked || false,
+        formal_logic: $('f-tag-formal_logic')?.checked || false,
+        datalog: $('f-tag-datalog')?.checked || false,
+        prolog: $('f-tag-prolog')?.checked || false,
+        compliance_constraints: $('f-tag-compliance_constraints')?.checked || false,
+        llm: $('f-tag-llm')?.checked || false,
+        multi_llm: $('f-tag-multi_llm')?.checked || false,
+        consensus: $('f-tag-consensus')?.checked || false,
+        byzantine_fault_tolerance: $('f-tag-byzantine_fault_tolerance')?.checked || false,
+        explainability: $('f-tag-explainability')?.checked || false,
+        gdpr: $('f-tag-gdpr')?.checked || false,
+        dpdp: $('f-tag-dpdp')?.checked || false
+      },
       custom_fields: custom_fields,
       personal: {
-        research_gap: $('f-pers-gap').value.trim() || null,
-        missing_component: $('f-pers-missing').value.trim() || null,
-        relevance_to_my_research: $('f-reltext').value.trim() || null,
-        relevance_score: parseInt($('f-rel').value) || 75,
-        personal_notes: $('f-notes').value.trim() || null
+        research_gap: $('f-pers-gap')?.value.trim() || null,
+        missing_component: $('f-pers-missing')?.value.trim() || null,
+        relevance_to_my_research: $('f-reltext')?.value.trim() || null,
+        relevance_score: parseInt($('f-rel')?.value) || 75,
+        personal_notes: $('f-notes')?.value.trim() || null
       }
     };
 
