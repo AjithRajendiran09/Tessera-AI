@@ -451,7 +451,7 @@ app.get('/api/papers/:id/gaps', checkSupabase, authenticateUser, async (req, res
 });
 
 // --- AI PARSER ---
-const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
 
 async function callGeminiWithRetry(genAI, prompt) {
   for (const modelName of MODELS_TO_TRY) {
