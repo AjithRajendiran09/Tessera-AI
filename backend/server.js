@@ -451,7 +451,7 @@ app.get('/api/papers/:id/gaps', checkSupabase, authenticateUser, async (req, res
 });
 
 // --- AI PARSER ---
-const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'];
+const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite'];
 
 async function callGeminiWithRetry(genAI, prompt) {
   for (const modelName of MODELS_TO_TRY) {
@@ -467,13 +467,13 @@ async function callGeminiWithRetry(genAI, prompt) {
     } catch (err) {
       const status = err.status || err.httpStatusCode || 0;
       console.log(`${modelName} failed (${status}): ${err.message?.substring(0, 100)}`);
-      // Only retry on 429 (rate limit) or 503 (overloaded) — other errors are fatal
-      if (status !== 429 && status !== 503) throw err;
-      // Wait 5s before trying next model
-      await new Promise(r => setTimeout(r, 5000));
+      // Wait briefly on 429 / 503 before trying next model
+      if (status === 429 || status === 503) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
   }
-  throw new Error('All Gemini models are currently rate-limited. Please wait 1 minute and try again.');
+  throw new Error('All Gemini models are currently busy or unavailable. Please try again in a moment.');
 }
 
 app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser, async (req, res) => {
@@ -718,12 +718,51 @@ function reconstructAbstract(invertedIndex) {
   return words.join(' ');
 }
 
+const SCOPUS_PUBLISHERS = [
+  'elsevier', 'springer', 'ieee', 'acm', 'wiley', 'taylor & francis',
+  'oxford university press', 'cambridge university press', 'sage',
+  'iop publishing', 'nature', 'frontiers', 'mdpi', 'plos', 'keai',
+  'american chemical society', 'royal society', 'biomed central',
+  'emerald', 'world scientific', 'de gruyter', 'inderscience', 'bmj',
+  'cell press', 'cell', 'lancet', 'clarivate', 'kluwer'
+];
+
+/**
+ * Fast deterministic check for Scopus indexing based on publisher and venue data.
+ */
+function checkScopusIndexingFast(venueName, publisher, isCore, indexedIn = []) {
+  if (indexedIn && indexedIn.includes('scopus')) {
+    return { is_scopus: true, confidence: 'high', quartile: 'Q1' };
+  }
+
+  const pub = (publisher || '').toLowerCase();
+  const venue = (venueName || '').toLowerCase();
+
+  const isKnownPublisher = SCOPUS_PUBLISHERS.some(p => pub.includes(p));
+  const isKnownVenue = venue.includes('ieee') || venue.includes('acm') || 
+                       venue.includes('springer') || venue.includes('elsevier') || 
+                       venue.includes('nature') || venue.includes('science') ||
+                       venue.includes('transactions on') || venue.includes('proceedings of the') ||
+                       venue.includes('cognitive computing in engineering');
+
+  if (isKnownPublisher || isKnownVenue || isCore) {
+    const quartile = (isKnownPublisher || isKnownVenue) ? 'Q1' : 'Q2';
+    return {
+      is_scopus: true,
+      confidence: 'high',
+      quartile
+    };
+  }
+
+  return null;
+}
+
 /**
  * Use Gemini AI to check if a journal/venue is Scopus-indexed.
  * Results are cached per venue name to avoid redundant API calls.
  */
 async function checkScopusIndexing(venueName, issn) {
-  if (!venueName) return { is_scopus: false, confidence: 'unknown' };
+  if (!venueName) return { is_scopus: false, confidence: 'unknown', quartile: null };
   
   const cacheKey = (venueName || '').toLowerCase().trim();
   if (scopusJournalCache.has(cacheKey)) {
@@ -761,9 +800,8 @@ Rules:
     return parsed;
   } catch (err) {
     console.error('Scopus check error:', err.message?.substring(0, 100));
-    const fallback = { is_scopus: false, confidence: 'unknown' };
-    scopusJournalCache.set(cacheKey, fallback);
-    return fallback;
+    // Do not permanently cache rate-limit or transient failures as false
+    return { is_scopus: false, confidence: 'unknown', quartile: null };
   }
 }
 
@@ -872,8 +910,11 @@ function normalizeOpenAlexResult(work) {
   
   const venue = work.primary_location?.source?.display_name || null;
   const issn = work.primary_location?.source?.issn_l || null;
+  const publisher = work.primary_location?.source?.host_organization_name || null;
+  const isCore = work.primary_location?.source?.is_core === true;
   const doi = work.doi ? work.doi.replace('https://doi.org/', '') : null;
   const abstract = reconstructAbstract(work.abstract_inverted_index);
+  const fastScopus = checkScopusIndexingFast(venue, publisher, isCore, work.indexed_in);
   
   return {
     title: work.display_name || work.title || 'Untitled',
@@ -887,12 +928,13 @@ function normalizeOpenAlexResult(work) {
     is_open_access: work.open_access?.is_oa || false,
     oa_status: work.open_access?.oa_status || null,
     indexed_in: work.indexed_in || [],
-    scopus_status: null, // Will be filled by Gemini check
+    scopus_status: fastScopus, // Pre-populated from authoritative metadata
     source: 'openalex',
     openalex_id: work.id || null,
     scopus_id: null,
     issn: issn,
-    publisher: work.primary_location?.source?.host_organization_name || null,
+    publisher: publisher,
+    is_core: isCore,
     topics: (work.topics || []).map(t => t.display_name),
     fwci: work.fwci || null
   };
@@ -944,32 +986,32 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
       apiSource = 'openalex';
       console.log(`[Discover] OpenAlex returned ${results.length} results (total: ${total})`);
       
-      // Check Scopus indexing status via Gemini for OpenAlex results (deduplicated by venue)
-      if (process.env.GEMINI_API_KEY && results.length > 0) {
-        const uniqueVenuesMap = new Map();
-        for (const r of results) {
-          if (r.venue) {
-            const key = r.venue.toLowerCase().trim();
-            if (!uniqueVenuesMap.has(key)) {
-              uniqueVenuesMap.set(key, { venue: r.venue, issn: r.issn });
-            }
+      // Check Scopus indexing for any papers whose status could not be determined deterministically
+      const unknownVenuesMap = new Map();
+      results.forEach(r => {
+        if (!r.scopus_status && r.venue) {
+          const key = r.venue.toLowerCase().trim();
+          if (!unknownVenuesMap.has(key)) {
+            unknownVenuesMap.set(key, { venue: r.venue, issn: r.issn });
           }
         }
+      });
 
-        const venuesToCheck = Array.from(uniqueVenuesMap.values()).slice(0, 50);
+      if (process.env.GEMINI_API_KEY && unknownVenuesMap.size > 0) {
+        const venuesToCheck = Array.from(unknownVenuesMap.values()).slice(0, 15);
         const scopusChecks = await Promise.allSettled(
           venuesToCheck.map(v => checkScopusIndexing(v.venue, v.issn))
         );
 
         const venueStatusMap = new Map();
         venuesToCheck.forEach((v, i) => {
-          if (scopusChecks[i].status === 'fulfilled') {
+          if (scopusChecks[i].status === 'fulfilled' && scopusChecks[i].value) {
             venueStatusMap.set(v.venue.toLowerCase().trim(), scopusChecks[i].value);
           }
         });
 
         results.forEach((r) => {
-          if (r.venue) {
+          if (!r.scopus_status && r.venue) {
             const status = venueStatusMap.get(r.venue.toLowerCase().trim());
             if (status) {
               r.scopus_status = status;
@@ -977,6 +1019,13 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
           }
         });
       }
+
+      // Default any remaining unclassified papers to not-scopus
+      results.forEach(r => {
+        if (!r.scopus_status) {
+          r.scopus_status = { is_scopus: false, confidence: 'unknown', quartile: null };
+        }
+      });
     }
     
     // Check which papers are already in the user's library (by DOI match)
