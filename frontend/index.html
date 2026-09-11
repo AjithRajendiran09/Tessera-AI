@@ -140,6 +140,9 @@
         <button class="nav-item" data-page="graph">
           <span class="nav-icon">🕸️</span> Knowledge Graph
         </button>
+        <button class="nav-item" data-page="discover">
+          <span class="nav-icon">🔍</span> Discover Papers
+        </button>
         <!-- Admin nav item (hidden by default, shown for admin users) -->
         <button class="nav-item nav-admin" data-page="admin" id="nav-admin" style="display:none">
           <span class="nav-icon">👥</span> User Management
@@ -261,6 +264,67 @@
           <p class="page-desc">Interactive visualization of Papers, Domains, and Gaps.</p>
         </div>
         <div id="kg-network" style="flex: 1; height: 100%; width: 100%; min-height: 600px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
+      </div>
+
+      <!-- Page: Discover Papers -->
+      <div id="page-discover" class="page">
+        <div class="page-header">
+          <div>
+            <h1>🔍 Discover Papers</h1>
+            <p class="page-desc">Search for Scopus-indexed papers by keyword or research domain</p>
+          </div>
+        </div>
+        <div class="discover-search-container" id="discover-search-container">
+          <div class="discover-search-bar">
+            <div class="discover-search-input-wrap">
+              <span class="discover-search-icon">🔎</span>
+              <input type="text" id="discover-query" class="discover-query-input" placeholder="Enter keyword, topic, or research domain..." />
+            </div>
+            <button class="btn btn-primary discover-search-btn" id="btn-discover-search">Search</button>
+          </div>
+          <div class="discover-filters">
+            <div class="discover-filter-group">
+              <label for="discover-year-from">From</label>
+              <input type="number" id="discover-year-from" class="discover-filter-input" placeholder="2020" min="1900" max="2030" />
+            </div>
+            <div class="discover-filter-group">
+              <label for="discover-year-to">To</label>
+              <input type="number" id="discover-year-to" class="discover-filter-input" placeholder="2026" min="1900" max="2030" />
+            </div>
+            <div class="discover-filter-group">
+              <label for="discover-sort">Sort by</label>
+              <select id="discover-sort" class="discover-filter-select">
+                <option value="relevance">Relevance</option>
+                <option value="date">Newest First</option>
+                <option value="cited_by_count">Most Cited</option>
+              </select>
+            </div>
+            <div class="discover-filter-group">
+              <label for="discover-per-page">Per page</label>
+              <select id="discover-per-page" class="discover-filter-select">
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="25">25</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="discover-meta" id="discover-meta" style="display:none">
+          <span id="discover-total-text"></span>
+          <span id="discover-source-badge" class="discover-source-badge"></span>
+        </div>
+        <div class="discover-results" id="discover-results"></div>
+        <div class="discover-pagination" id="discover-pagination"></div>
+        <div class="discover-loading" id="discover-loading" style="display:none">
+          <div class="discover-spinner"></div>
+          <p>Searching across millions of academic papers...</p>
+          <p class="discover-loading-sub">AI is verifying Scopus indexing status</p>
+        </div>
+        <div class="empty-state" id="discover-empty">
+          <span class="empty-icon">🔎</span>
+          <p>Enter a keyword or research domain to discover Scopus-indexed papers</p>
+          <p class="discover-empty-hint">Try: "deep learning", "natural language processing", "blockchain security"</p>
+        </div>
       </div>
 
       <!-- Page: Admin (User Management) -->

@@ -698,7 +698,366 @@ app.post('/api/parse-pdf', upload.single('pdf'), checkSupabase, authenticateUser
   }
 });
 
+// ── DISCOVER PAPERS (Scopus-indexed paper search) ──
+
+// In-memory cache for Scopus-indexing status per journal (persists for server lifetime)
+const scopusJournalCache = new Map();
+
+/**
+ * Reconstruct abstract from OpenAlex inverted index format.
+ * OpenAlex stores abstracts as { word: [position1, position2, ...], ... }
+ */
+function reconstructAbstract(invertedIndex) {
+  if (!invertedIndex) return null;
+  const words = [];
+  for (const [word, positions] of Object.entries(invertedIndex)) {
+    for (const pos of positions) {
+      words[pos] = word;
+    }
+  }
+  return words.join(' ');
+}
+
+/**
+ * Use Gemini AI to check if a journal/venue is Scopus-indexed.
+ * Results are cached per venue name to avoid redundant API calls.
+ */
+async function checkScopusIndexing(venueName, issn) {
+  if (!venueName) return { is_scopus: false, confidence: 'unknown' };
+  
+  const cacheKey = (venueName || '').toLowerCase().trim();
+  if (scopusJournalCache.has(cacheKey)) {
+    return scopusJournalCache.get(cacheKey);
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const prompt = `You are an expert academic librarian. Determine if the following journal/venue is indexed in Scopus (Elsevier's abstract and citation database).
+
+Journal/Venue: "${venueName}"
+${issn ? `ISSN: ${issn}` : ''}
+
+Respond with ONLY a valid JSON object:
+{"is_scopus": true/false, "confidence": "high"/"medium"/"low", "quartile": "Q1"/"Q2"/"Q3"/"Q4"/null}
+
+Rules:
+- Set is_scopus to true only if you are confident this journal is indexed in Scopus.
+- Set confidence to "high" if you are very sure, "medium" if somewhat sure, "low" if guessing.
+- Set quartile to the SJR/Scopus quartile if known, null otherwise.
+- Well-known journals from IEEE, ACM, Springer, Elsevier, Wiley, Nature, Science are usually Scopus-indexed.
+- Conference proceedings from major publishers (IEEE, ACM, Springer LNCS) are often Scopus-indexed.
+- Preprint servers (arXiv, SSRN, bioRxiv) are NOT Scopus-indexed.
+- Unknown or obscure repositories are NOT Scopus-indexed.`;
+
+    const result = await callGeminiWithRetry(genAI, prompt);
+    let text = result.response.text();
+    const jsonStart = text.indexOf('{');
+    const jsonEnd = text.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      text = text.slice(jsonStart, jsonEnd + 1);
+    }
+    const parsed = JSON.parse(text);
+    scopusJournalCache.set(cacheKey, parsed);
+    return parsed;
+  } catch (err) {
+    console.error('Scopus check error:', err.message?.substring(0, 100));
+    const fallback = { is_scopus: false, confidence: 'unknown' };
+    scopusJournalCache.set(cacheKey, fallback);
+    return fallback;
+  }
+}
+
+/**
+ * Search OpenAlex API for papers matching a keyword query.
+ */
+async function searchOpenAlex(query, options = {}) {
+  const { page = 1, perPage = 10, yearFrom, yearTo, sort = 'relevance' } = options;
+  
+  const email = process.env.OPENALEX_EMAIL || '';
+  let url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&filter=type:article`;
+  
+  if (yearFrom) url += `,from_publication_date:${yearFrom}-01-01`;
+  if (yearTo) url += `,to_publication_date:${yearTo}-12-31`;
+  
+  // Sort mapping
+  const sortMap = {
+    'relevance': 'relevance_score:desc',
+    'date': 'publication_date:desc',
+    'cited_by_count': 'cited_by_count:desc'
+  };
+  if (sort && sort !== 'relevance') {
+    url += `&sort=${sortMap[sort] || 'relevance_score:desc'}`;
+  }
+  
+  url += `&page=${page}&per_page=${perPage}`;
+  if (email) url += `&mailto=${encodeURIComponent(email)}`;
+  
+  console.log(`[Discover] OpenAlex query: ${url}`);
+  
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`OpenAlex API error: ${response.status} ${response.statusText}`);
+  }
+  return await response.json();
+}
+
+/**
+ * Search Scopus API (requires SCOPUS_API_KEY).
+ */
+async function searchScopus(query, options = {}) {
+  const { page = 1, perPage = 10, yearFrom, yearTo, sort = 'relevance' } = options;
+  const apiKey = process.env.SCOPUS_API_KEY;
+  if (!apiKey) throw new Error('SCOPUS_API_KEY not configured');
+  
+  const start = (page - 1) * perPage;
+  let scopusQuery = `TITLE-ABS-KEY(${query})`;
+  if (yearFrom) scopusQuery += ` AND PUBYEAR > ${yearFrom - 1}`;
+  if (yearTo) scopusQuery += ` AND PUBYEAR < ${yearTo + 1}`;
+  
+  const sortMap = {
+    'relevance': 'relevancy',
+    'date': '-date',
+    'cited_by_count': '-citedby-count'
+  };
+  
+  const url = `https://api.elsevier.com/content/search/scopus?query=${encodeURIComponent(scopusQuery)}&start=${start}&count=${perPage}&sort=${sortMap[sort] || 'relevancy'}`;
+  
+  console.log(`[Discover] Scopus query: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'X-ELS-APIKey': apiKey,
+      'Accept': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Scopus API error: ${response.status} — ${errorText.substring(0, 200)}`);
+  }
+  return await response.json();
+}
+
+/**
+ * Normalize a Scopus API result entry into Tessera format.
+ */
+function normalizeScopusResult(entry) {
+  return {
+    title: entry['dc:title'] || 'Untitled',
+    authors: entry['dc:creator'] || 'Unknown',
+    year: entry['prism:coverDate'] ? parseInt(entry['prism:coverDate'].split('-')[0]) : null,
+    venue: entry['prism:publicationName'] || null,
+    doi: entry['prism:doi'] || null,
+    url: entry['prism:doi'] ? `https://doi.org/${entry['prism:doi']}` : (entry.link?.find(l => l['@ref'] === 'scopus')?.['@href'] || null),
+    abstract: entry['dc:description'] || null,
+    cited_by_count: parseInt(entry['citedby-count']) || 0,
+    is_open_access: false,
+    indexed_in: ['scopus'],
+    scopus_status: { is_scopus: true, confidence: 'high', quartile: null },
+    source: 'scopus',
+    openalex_id: null,
+    scopus_id: entry['dc:identifier'] || null
+  };
+}
+
+/**
+ * Normalize an OpenAlex API result entry into Tessera format.
+ */
+function normalizeOpenAlexResult(work) {
+  const authors = (work.authorships || [])
+    .map(a => a.author?.display_name)
+    .filter(Boolean)
+    .join(', ');
+  
+  const venue = work.primary_location?.source?.display_name || null;
+  const issn = work.primary_location?.source?.issn_l || null;
+  const doi = work.doi ? work.doi.replace('https://doi.org/', '') : null;
+  const abstract = reconstructAbstract(work.abstract_inverted_index);
+  
+  return {
+    title: work.display_name || work.title || 'Untitled',
+    authors: authors || 'Unknown',
+    year: work.publication_year || null,
+    venue: venue,
+    doi: doi,
+    url: work.doi || work.primary_location?.landing_page_url || null,
+    abstract: abstract,
+    cited_by_count: work.cited_by_count || 0,
+    is_open_access: work.open_access?.is_oa || false,
+    oa_status: work.open_access?.oa_status || null,
+    indexed_in: work.indexed_in || [],
+    scopus_status: null, // Will be filled by Gemini check
+    source: 'openalex',
+    openalex_id: work.id || null,
+    scopus_id: null,
+    issn: issn,
+    publisher: work.primary_location?.source?.host_organization_name || null,
+    topics: (work.topics || []).map(t => t.display_name),
+    fwci: work.fwci || null
+  };
+}
+
+// ── GET /api/discover — Search for papers by keyword ──
+app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { query, page = 1, per_page = 10, year_from, year_to, sort = 'relevance', workspace_id } = req.query;
+    
+    if (!query || query.trim().length === 0) {
+      return res.status(400).json({ error: 'Search query is required.' });
+    }
+    
+    const options = {
+      page: parseInt(page),
+      perPage: Math.min(parseInt(per_page) || 10, 25),
+      yearFrom: year_from ? parseInt(year_from) : undefined,
+      yearTo: year_to ? parseInt(year_to) : undefined,
+      sort
+    };
+    
+    let results = [];
+    let total = 0;
+    let apiSource = 'openalex';
+    
+    // Try Scopus first if API key is configured
+    if (process.env.SCOPUS_API_KEY) {
+      try {
+        const scopusData = await searchScopus(query, options);
+        const entries = scopusData['search-results']?.entry || [];
+        total = parseInt(scopusData['search-results']?.['opensearch:totalResults']) || 0;
+        results = entries
+          .filter(e => e['dc:title']) // Skip error entries
+          .map(normalizeScopusResult);
+        apiSource = 'scopus';
+        console.log(`[Discover] Scopus returned ${results.length} results (total: ${total})`);
+      } catch (scopusErr) {
+        console.log(`[Discover] Scopus failed, falling back to OpenAlex: ${scopusErr.message?.substring(0, 100)}`);
+        // Fall through to OpenAlex
+      }
+    }
+    
+    // Use OpenAlex if Scopus not available or failed
+    if (results.length === 0 && apiSource !== 'scopus') {
+      const oaData = await searchOpenAlex(query, options);
+      total = oaData.meta?.count || 0;
+      results = (oaData.results || []).map(normalizeOpenAlexResult);
+      apiSource = 'openalex';
+      console.log(`[Discover] OpenAlex returned ${results.length} results (total: ${total})`);
+      
+      // Check Scopus indexing status via Gemini for OpenAlex results (batch)
+      if (process.env.GEMINI_API_KEY && results.length > 0) {
+        const scopusChecks = await Promise.allSettled(
+          results.map(r => checkScopusIndexing(r.venue, r.issn))
+        );
+        results.forEach((r, i) => {
+          if (scopusChecks[i].status === 'fulfilled') {
+            r.scopus_status = scopusChecks[i].value;
+          }
+        });
+      }
+    }
+    
+    // Check which papers are already in the user's library (by DOI match)
+    const dois = results.filter(r => r.doi).map(r => r.doi);
+    if (dois.length > 0) {
+      const { data: existingPapers } = await req.supabaseUser
+        .from('papers')
+        .select('doi')
+        .in('doi', dois);
+      
+      const existingDois = new Set((existingPapers || []).map(p => p.doi));
+      results.forEach(r => {
+        r.already_imported = r.doi ? existingDois.has(r.doi) : false;
+      });
+    }
+    
+    res.json({
+      results,
+      total,
+      page: options.page,
+      per_page: options.perPage,
+      total_pages: Math.ceil(total / options.perPage),
+      source: apiSource,
+      query: query.trim()
+    });
+    
+  } catch (error) {
+    console.error('[Discover] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to search for papers.' });
+  }
+});
+
+// ── POST /api/discover/import — Import a discovered paper ──
+app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { paper, workspace_id } = req.body;
+    
+    if (!paper || !paper.title) {
+      return res.status(400).json({ error: 'Paper data with at least a title is required.' });
+    }
+    
+    // Check for duplicate by DOI
+    if (paper.doi) {
+      let dupeQuery = req.supabaseUser.from('papers').select('id').eq('doi', paper.doi);
+      if (workspace_id) dupeQuery = dupeQuery.eq('workspace_id', workspace_id);
+      const { data: existing } = await dupeQuery;
+      if (existing && existing.length > 0) {
+        return res.status(409).json({ error: 'This paper is already in your library.', paper_id: existing[0].id });
+      }
+    }
+    
+    // Try to match to an existing domain
+    let domainId = null;
+    if (paper.venue || paper.topics?.length > 0) {
+      let domQuery = req.supabaseUser.from('domains').select('id, name');
+      if (workspace_id) domQuery = domQuery.eq('workspace_id', workspace_id);
+      const { data: domains } = await domQuery;
+      
+      if (domains && domains.length > 0) {
+        // Simple fuzzy match: check if any domain name appears in venue or topics
+        const searchText = `${paper.venue || ''} ${(paper.topics || []).join(' ')}`.toLowerCase();
+        const match = domains.find(d => searchText.includes(d.name.toLowerCase()));
+        if (match) domainId = match.id;
+      }
+    }
+    
+    // Build the paper record
+    const paperRecord = {
+      title: paper.title,
+      authors: paper.authors || null,
+      year: paper.year || null,
+      venue: paper.venue || null,
+      doi: paper.doi || null,
+      url: paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : null),
+      domain_id: domainId,
+      contribution: paper.abstract ? paper.abstract.substring(0, 500) : null,
+      relevance_score: null,
+      is_read: false,
+      user_id: req.user.id,
+      workspace_id: workspace_id || null
+    };
+    
+    const { data: newPaper, error: pErr } = await req.supabaseUser
+      .from('papers')
+      .insert(paperRecord)
+      .select()
+      .single();
+    
+    if (pErr) {
+      console.error('[Discover Import] Error:', pErr);
+      return res.status(400).json({ error: pErr.message });
+    }
+    
+    console.log(`[Discover Import] Paper imported: "${newPaper.title}" (${newPaper.id})`);
+    res.status(201).json(newPaper);
+    
+  } catch (error) {
+    console.error('[Discover Import] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to import paper.' });
+  }
+});
+
 // DASHBOARD STATS (scoped)
+
 app.get('/api/dashboard/stats', checkSupabase, authenticateUser, async (req, res) => {
   try {
     let pQuery = req.supabaseUser.from('papers').select('*, domains(name, color, icon)').order('year', { ascending: false });

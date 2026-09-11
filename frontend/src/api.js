@@ -275,3 +275,22 @@ export async function generatePitch(payload) {
     body: JSON.stringify(payload)
   });
 }
+
+// ── DISCOVER PAPERS (Scopus Search) ──
+export async function discoverPapers(query, options = {}) {
+  const params = new URLSearchParams({ query });
+  if (options.page) params.set('page', options.page);
+  if (options.per_page) params.set('per_page', options.per_page);
+  if (options.year_from) params.set('year_from', options.year_from);
+  if (options.year_to) params.set('year_to', options.year_to);
+  if (options.sort) params.set('sort', options.sort);
+  if (options.workspace_id) params.set('workspace_id', options.workspace_id);
+  return fetchAPI(`/discover?${params.toString()}`);
+}
+
+export async function importDiscoveredPaper(paper, workspaceId) {
+  return fetchAPI('/discover/import', {
+    method: 'POST',
+    body: JSON.stringify({ paper, workspace_id: workspaceId })
+  });
+}

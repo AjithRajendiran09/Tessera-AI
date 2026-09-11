@@ -553,6 +553,11 @@ function setupNav() {
       if (currentPage === 'admin') {
         loadAdminUsers();
       }
+
+      // Discover page: setup search
+      if (currentPage === 'discover') {
+        setupDiscoverPage();
+      }
       
       // Close sidebar on mobile after nav click
       sidebar.classList.remove('open');
@@ -1879,6 +1884,320 @@ function exportToExcel(papers, sheetLabel) {
   XLSX.writeFile(wb, fileName);
   toast(`📥 Exported ${papers.length} papers to ${fileName}`);
 }
+
+// ══════════════════════════════════════════════
+// DISCOVER PAPERS PAGE
+// ══════════════════════════════════════════════
+
+let discoverState = {
+  results: [],
+  total: 0,
+  page: 1,
+  perPage: 10,
+  totalPages: 0,
+  source: '',
+  query: '',
+  isLoading: false,
+  initialized: false
+};
+
+function setupDiscoverPage() {
+  if (discoverState.initialized) return;
+  discoverState.initialized = true;
+
+  // Search button
+  $('btn-discover-search').addEventListener('click', () => handleDiscoverSearch());
+
+  // Enter key on search input
+  $('discover-query').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleDiscoverSearch();
+    }
+  });
+
+  // Focus the search input
+  $('discover-query').focus();
+}
+
+async function handleDiscoverSearch(page = 1) {
+  const query = $('discover-query').value.trim();
+  if (!query) {
+    toast('Please enter a search keyword', true);
+    $('discover-query').focus();
+    return;
+  }
+
+  discoverState.isLoading = true;
+  discoverState.query = query;
+  discoverState.page = page;
+
+  // Show loading, hide other states
+  $('discover-loading').style.display = 'flex';
+  $('discover-results').innerHTML = '';
+  $('discover-pagination').innerHTML = '';
+  $('discover-meta').style.display = 'none';
+  $('discover-empty').style.display = 'none';
+  $('btn-discover-search').disabled = true;
+  $('btn-discover-search').textContent = 'Searching...';
+
+  try {
+    const options = {
+      page,
+      per_page: $('discover-per-page').value || 10,
+      sort: $('discover-sort').value || 'relevance',
+      workspace_id: currentWorkspace?.id || undefined
+    };
+
+    const yearFrom = $('discover-year-from').value;
+    const yearTo = $('discover-year-to').value;
+    if (yearFrom) options.year_from = yearFrom;
+    if (yearTo) options.year_to = yearTo;
+
+    const data = await api.discoverPapers(query, options);
+
+    discoverState.results = data.results || [];
+    discoverState.total = data.total || 0;
+    discoverState.totalPages = data.total_pages || 0;
+    discoverState.source = data.source || 'openalex';
+    discoverState.perPage = parseInt(options.per_page);
+
+    renderDiscoverResults();
+    renderDiscoverPagination();
+
+    // Show meta info
+    $('discover-meta').style.display = 'flex';
+    $('discover-total-text').textContent = `${formatNumber(discoverState.total)} results for "${query}"`;
+    const badge = $('discover-source-badge');
+    badge.className = `discover-source-badge source-${discoverState.source}`;
+    badge.textContent = discoverState.source === 'scopus' ? '⚡ Scopus API' : '🌐 OpenAlex';
+
+    if (discoverState.results.length === 0) {
+      $('discover-empty').style.display = 'block';
+      $('discover-empty').querySelector('p').textContent = `No papers found for "${query}"`;
+    }
+
+  } catch (err) {
+    console.error('Discover error:', err);
+    toast(`Search failed: ${err.message}`, true);
+    $('discover-empty').style.display = 'block';
+  } finally {
+    discoverState.isLoading = false;
+    $('discover-loading').style.display = 'none';
+    $('btn-discover-search').disabled = false;
+    $('btn-discover-search').textContent = 'Search';
+  }
+}
+
+function formatNumber(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function formatCitations(count) {
+  if (!count) return '0';
+  if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
+  return String(count);
+}
+
+function renderDiscoverResults() {
+  const container = $('discover-results');
+  if (!discoverState.results.length) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = discoverState.results.map((paper, i) => {
+    const scopus = paper.scopus_status;
+    const isScopus = scopus?.is_scopus;
+    const confidence = scopus?.confidence || 'unknown';
+    const quartile = scopus?.quartile;
+
+    // Build badges
+    let badges = '';
+
+    // Scopus badge
+    if (paper.source === 'scopus') {
+      badges += `<span class="discover-badge discover-badge-scopus confidence-high">✅ Scopus Indexed</span>`;
+    } else if (isScopus) {
+      const confClass = `confidence-${confidence}`;
+      const confLabel = confidence === 'high' ? '✅' : confidence === 'medium' ? '⚠️' : '❓';
+      badges += `<span class="discover-badge discover-badge-scopus ${confClass}">${confLabel} Scopus ${confidence !== 'unknown' ? `(${confidence})` : ''}</span>`;
+    } else if (scopus && !isScopus) {
+      badges += `<span class="discover-badge discover-badge-not-scopus">Not Scopus-indexed</span>`;
+    }
+
+    // Quartile badge
+    if (quartile) {
+      badges += `<span class="discover-badge discover-badge-quartile">${quartile}</span>`;
+    }
+
+    // Open Access badge
+    if (paper.is_open_access) {
+      badges += `<span class="discover-badge discover-badge-oa">🔓 Open Access</span>`;
+    }
+
+    // Citation count badge
+    if (paper.cited_by_count > 0) {
+      badges += `<span class="discover-badge discover-badge-citations">📊 ${formatCitations(paper.cited_by_count)} citations</span>`;
+    }
+
+    // Indexed in badges
+    if (paper.indexed_in && paper.indexed_in.length > 0) {
+      paper.indexed_in.forEach(idx => {
+        badges += `<span class="discover-badge discover-badge-indexed">${idx}</span>`;
+      });
+    }
+
+    // Abstract section
+    let abstractHtml = '';
+    if (paper.abstract) {
+      const abstractId = `abstract-${i}`;
+      abstractHtml = `
+        <div class="discover-card-abstract" id="${abstractId}">${escapeHtml(paper.abstract)}</div>
+        <button class="discover-abstract-toggle" onclick="toggleAbstract('${abstractId}', this)">Show more ▼</button>
+      `;
+    }
+
+    // DOI link
+    const doiLink = paper.doi ? `<a href="https://doi.org/${paper.doi}" target="_blank" class="discover-card-doi" title="DOI">DOI: ${paper.doi}</a>` : '';
+
+    // Venue
+    const venueHtml = paper.venue ? `<span class="discover-card-venue">📖 ${escapeHtml(paper.venue)}</span>` : '';
+
+    // Action links
+    let links = '';
+    if (paper.url) {
+      links += `<a href="${paper.url}" target="_blank" class="discover-card-link">📄 View Paper</a>`;
+    }
+    if (paper.doi) {
+      links += `<a href="https://doi.org/${paper.doi}" target="_blank" class="discover-card-link">🔗 DOI</a>`;
+    }
+
+    // Import button
+    const isImported = paper.already_imported;
+    const importBtn = isImported
+      ? `<button class="btn-import imported" disabled>✅ In Library</button>`
+      : `<button class="btn-import" onclick="importPaper(${i})" id="import-btn-${i}">➕ Import</button>`;
+
+    return `
+      <div class="discover-card" style="animation-delay: ${i * 0.04}s">
+        <div class="discover-card-header">
+          <h3 class="discover-card-title">
+            ${paper.url ? `<a href="${paper.url}" target="_blank">${escapeHtml(paper.title)}</a>` : escapeHtml(paper.title)}
+          </h3>
+        </div>
+        <div class="discover-card-meta">
+          <span class="discover-card-authors">${escapeHtml(paper.authors)}</span>
+          ${paper.year ? `<span class="discover-card-year">${paper.year}</span>` : ''}
+          ${venueHtml}
+          ${doiLink}
+        </div>
+        <div class="discover-card-badges">${badges}</div>
+        ${abstractHtml}
+        <div class="discover-card-actions">
+          <div class="discover-card-links">${links}</div>
+          ${importBtn}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Make toggle function global for inline onclick
+window.toggleAbstract = function(id, btn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('expanded');
+  btn.textContent = el.classList.contains('expanded') ? 'Show less ▲' : 'Show more ▼';
+};
+
+// Make import function global for inline onclick
+window.importPaper = async function(index) {
+  const paper = discoverState.results[index];
+  if (!paper) return;
+
+  const btn = document.getElementById(`import-btn-${index}`);
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Importing...';
+
+  try {
+    await api.importDiscoveredPaper(paper, currentWorkspace?.id || null);
+    btn.className = 'btn-import imported';
+    btn.textContent = '✅ In Library';
+    paper.already_imported = true;
+    toast(`📄 Imported: "${paper.title.substring(0, 50)}..."`);
+
+    // Refresh papers state in background
+    try {
+      state.papers = await api.getPapers(currentWorkspace?.id || null);
+    } catch (e) { /* silent */ }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '➕ Import';
+    if (err.message.includes('already in your library')) {
+      btn.className = 'btn-import imported';
+      btn.textContent = '✅ In Library';
+      paper.already_imported = true;
+      toast('This paper is already in your library');
+    } else {
+      toast(`Import failed: ${err.message}`, true);
+    }
+  }
+};
+
+function renderDiscoverPagination() {
+  const container = $('discover-pagination');
+  if (discoverState.totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const { page, totalPages } = discoverState;
+  let html = '';
+
+  // Previous button
+  html += `<button class="discover-page-btn" ${page <= 1 ? 'disabled' : ''} onclick="discoverGoToPage(${page - 1})">← Prev</button>`;
+
+  // Page numbers (show max 7 pages around current)
+  const startPage = Math.max(1, page - 3);
+  const endPage = Math.min(totalPages, page + 3);
+
+  if (startPage > 1) {
+    html += `<button class="discover-page-btn" onclick="discoverGoToPage(1)">1</button>`;
+    if (startPage > 2) html += `<span class="discover-page-info">...</span>`;
+  }
+
+  for (let p = startPage; p <= endPage; p++) {
+    html += `<button class="discover-page-btn ${p === page ? 'active' : ''}" onclick="discoverGoToPage(${p})">${p}</button>`;
+  }
+
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) html += `<span class="discover-page-info">...</span>`;
+    html += `<button class="discover-page-btn" onclick="discoverGoToPage(${totalPages})">${totalPages}</button>`;
+  }
+
+  // Next button
+  html += `<button class="discover-page-btn" ${page >= totalPages ? 'disabled' : ''} onclick="discoverGoToPage(${page + 1})">Next →</button>`;
+
+  container.innerHTML = html;
+}
+
+window.discoverGoToPage = function(page) {
+  handleDiscoverSearch(page);
+  // Scroll to top of results
+  $('discover-search-container').scrollIntoView({ behavior: 'smooth' });
+};
 
 // ── Modal Helpers ──
 function openModal() { $('modal-overlay').classList.add('active'); document.body.style.overflow = 'hidden'; }
