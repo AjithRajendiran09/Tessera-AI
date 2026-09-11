@@ -831,6 +831,156 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   border: 1px solid rgba(255, 184, 76, 0.25);
 }
 
+/* In-results filter toolbar */
+.discover-filter-bar {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.25s ease;
+}
+
+.discover-filter-bar-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.discover-local-search-wrap {
+  flex: 1;
+  min-width: 260px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.discover-local-search-icon {
+  position: absolute;
+  left: 12px;
+  font-size: 0.9rem;
+  color: var(--text2);
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.discover-local-filter-input {
+  width: 100%;
+  padding: 9px 34px 9px 36px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-family: var(--font);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.discover-local-filter-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.15);
+  background: rgba(124, 92, 255, 0.03);
+}
+
+.discover-local-clear-btn {
+  position: absolute;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: var(--text2);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.discover-local-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.discover-filter-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.discover-filter-count-badge {
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(124, 92, 255, 0.1);
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Quick filter chips */
+.discover-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.discover-chip {
+  padding: 5px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text2);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.discover-chip:hover {
+  background: var(--surface2);
+  color: var(--text);
+  border-color: rgba(124, 92, 255, 0.3);
+}
+
+.discover-chip.active {
+  background: rgba(124, 92, 255, 0.15);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.discover-filter-empty {
+  text-align: center;
+  padding: 40px 20px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  color: var(--text2);
+  font-size: 0.9rem;
+}
+
+.discover-filter-empty p {
+  margin-bottom: 12px;
+}
+
+.discover-highlight {
+  background: rgba(255, 184, 76, 0.25);
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
 /* Results grid */
 .discover-results {
   display: flex;

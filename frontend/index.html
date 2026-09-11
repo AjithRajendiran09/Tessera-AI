@@ -303,15 +303,39 @@
               <label for="discover-per-page">Per page</label>
               <select id="discover-per-page" class="discover-filter-select">
                 <option value="10">10</option>
-                <option value="15">15</option>
                 <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
               </select>
             </div>
           </div>
         </div>
         <div class="discover-meta" id="discover-meta" style="display:none">
-          <span id="discover-total-text"></span>
-          <span id="discover-source-badge" class="discover-source-badge"></span>
+          <div class="discover-meta-left">
+            <span id="discover-total-text"></span>
+            <span id="discover-source-badge" class="discover-source-badge"></span>
+          </div>
+        </div>
+
+        <!-- In-results live search and filter toolbar -->
+        <div class="discover-filter-bar" id="discover-filter-bar" style="display:none">
+          <div class="discover-filter-bar-header">
+            <div class="discover-local-search-wrap">
+              <span class="discover-local-search-icon">🔎</span>
+              <input type="text" id="discover-local-filter" class="discover-local-filter-input" placeholder="Type to search within these fetched papers (title, author, venue, abstract, DOI)..." autocomplete="off" spellcheck="false" />
+              <button type="button" id="btn-clear-local-filter" class="discover-local-clear-btn" title="Clear filter" style="display:none">✕</button>
+            </div>
+            <div class="discover-filter-stats">
+              <span id="discover-filter-count-badge" class="discover-filter-count-badge"></span>
+            </div>
+          </div>
+          <div class="discover-quick-chips">
+            <button type="button" class="discover-chip active" data-filter="all">All (<span id="count-chip-all">0</span>)</button>
+            <button type="button" class="discover-chip" data-filter="scopus">✅ Scopus Only (<span id="count-chip-scopus">0</span>)</button>
+            <button type="button" class="discover-chip" data-filter="oa">🔓 Open Access (<span id="count-chip-oa">0</span>)</button>
+            <button type="button" class="discover-chip" data-filter="not-imported">➕ Not in Library (<span id="count-chip-not-imported">0</span>)</button>
+          </div>
         </div>
         <div class="discover-results" id="discover-results"></div>
         <div class="discover-pagination" id="discover-pagination"></div>

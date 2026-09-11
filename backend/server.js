@@ -809,7 +809,8 @@ async function searchScopus(query, options = {}) {
   const apiKey = process.env.SCOPUS_API_KEY;
   if (!apiKey) throw new Error('SCOPUS_API_KEY not configured');
   
-  const start = (page - 1) * perPage;
+  const count = Math.min(perPage, 25);
+  const start = (page - 1) * count;
   let scopusQuery = `TITLE-ABS-KEY(${query})`;
   if (yearFrom) scopusQuery += ` AND PUBYEAR > ${yearFrom - 1}`;
   if (yearTo) scopusQuery += ` AND PUBYEAR < ${yearTo + 1}`;
@@ -820,7 +821,7 @@ async function searchScopus(query, options = {}) {
     'cited_by_count': '-citedby-count'
   };
   
-  const url = `https://api.elsevier.com/content/search/scopus?query=${encodeURIComponent(scopusQuery)}&start=${start}&count=${perPage}&sort=${sortMap[sort] || 'relevancy'}`;
+  const url = `https://api.elsevier.com/content/search/scopus?query=${encodeURIComponent(scopusQuery)}&start=${start}&count=${count}&sort=${sortMap[sort] || 'relevancy'}`;
   
   console.log(`[Discover] Scopus query: ${url}`);
   
@@ -908,7 +909,7 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
     
     const options = {
       page: parseInt(page),
-      perPage: Math.min(parseInt(per_page) || 10, 25),
+      perPage: Math.min(Math.max(parseInt(per_page) || 10, 1), 200),
       yearFrom: year_from ? parseInt(year_from) : undefined,
       yearTo: year_to ? parseInt(year_to) : undefined,
       sort
@@ -943,14 +944,36 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
       apiSource = 'openalex';
       console.log(`[Discover] OpenAlex returned ${results.length} results (total: ${total})`);
       
-      // Check Scopus indexing status via Gemini for OpenAlex results (batch)
+      // Check Scopus indexing status via Gemini for OpenAlex results (deduplicated by venue)
       if (process.env.GEMINI_API_KEY && results.length > 0) {
+        const uniqueVenuesMap = new Map();
+        for (const r of results) {
+          if (r.venue) {
+            const key = r.venue.toLowerCase().trim();
+            if (!uniqueVenuesMap.has(key)) {
+              uniqueVenuesMap.set(key, { venue: r.venue, issn: r.issn });
+            }
+          }
+        }
+
+        const venuesToCheck = Array.from(uniqueVenuesMap.values()).slice(0, 50);
         const scopusChecks = await Promise.allSettled(
-          results.map(r => checkScopusIndexing(r.venue, r.issn))
+          venuesToCheck.map(v => checkScopusIndexing(v.venue, v.issn))
         );
-        results.forEach((r, i) => {
+
+        const venueStatusMap = new Map();
+        venuesToCheck.forEach((v, i) => {
           if (scopusChecks[i].status === 'fulfilled') {
-            r.scopus_status = scopusChecks[i].value;
+            venueStatusMap.set(v.venue.toLowerCase().trim(), scopusChecks[i].value);
+          }
+        });
+
+        results.forEach((r) => {
+          if (r.venue) {
+            const status = venueStatusMap.get(r.venue.toLowerCase().trim());
+            if (status) {
+              r.scopus_status = status;
+            }
           }
         });
       }
