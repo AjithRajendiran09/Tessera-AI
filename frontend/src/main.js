@@ -2283,7 +2283,7 @@ window.toggleAbstract = function(id, btn) {
 
 // Make import function global for inline onclick
 window.importPaper = async function(index) {
-  const paper = discoverState.results[index];
+  const paper = discoverState.results.find(p => p._idx === index) || discoverState.results[index];
   if (!paper) return;
 
   const btn = document.getElementById(`import-btn-${index}`);
@@ -2302,16 +2302,18 @@ window.importPaper = async function(index) {
     updateDiscoverFilterStats();
     toast(`📄 Imported: "${paper.title.substring(0, 50)}..."`);
 
-    // Refresh papers state in background
+    // Reload all library state, dashboard stats, and sidebar count
     try {
-      state.papers = await api.getPapers(currentWorkspace?.id || null);
-    } catch (e) { /* silent */ }
+      await loadAll();
+    } catch (e) {
+      console.warn('loadAll after import warning:', e);
+    }
   } catch (err) {
     if (btn) {
       btn.disabled = false;
       btn.textContent = '➕ Import';
     }
-    if (err.message.includes('already in your library')) {
+    if (err.message && err.message.includes('already in your library')) {
       if (btn) {
         btn.className = 'btn-import imported';
         btn.textContent = '✅ In Library';

@@ -1088,46 +1088,84 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
       }
     }
     
-    // Try to match to an existing domain
+    // Try to match or assign to an existing domain
     let domainId = null;
-    if (paper.venue || paper.topics?.length > 0) {
-      let domQuery = req.supabaseUser.from('domains').select('id, name');
-      if (workspace_id) domQuery = domQuery.eq('workspace_id', workspace_id);
-      const { data: domains } = await domQuery;
-      
-      if (domains && domains.length > 0) {
-        // Simple fuzzy match: check if any domain name appears in venue or topics
-        const searchText = `${paper.venue || ''} ${(paper.topics || []).join(' ')}`.toLowerCase();
-        const match = domains.find(d => searchText.includes(d.name.toLowerCase()));
-        if (match) domainId = match.id;
+    let domQuery = req.supabaseUser.from('domains').select('id, name');
+    if (workspace_id) domQuery = domQuery.eq('workspace_id', workspace_id);
+    const { data: domains } = await domQuery;
+    
+    if (domains && domains.length > 0) {
+      const searchText = `${paper.venue || ''} ${(paper.topics || []).join(' ')} ${paper.title || ''}`.toLowerCase();
+      const match = domains.find(d => searchText.includes(d.name.toLowerCase()));
+      if (match) {
+        domainId = match.id;
+      } else {
+        domainId = domains[0].id; // Assign to user's first domain in workspace
       }
     }
+
+    const isScopus = Boolean(paper.scopus_status?.is_scopus || paper.source === 'scopus');
+    const quartile = paper.scopus_status?.quartile || (isScopus ? 'Q1' : null);
+    const researchDomain = (paper.topics && paper.topics.length > 0) 
+      ? paper.topics[0] 
+      : (paper.venue || 'Research Domain');
     
-    // Build the paper record
+    // Build comprehensive paper record matching database schema
     const paperRecord = {
       title: paper.title,
-      authors: paper.authors || null,
-      year: paper.year || null,
-      venue: paper.venue || null,
+      authors: paper.authors || 'Unknown Authors',
+      year: parseInt(paper.year) || new Date().getFullYear(),
+      venue: paper.venue || 'Academic Journal',
       doi: paper.doi || null,
       url: paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : null),
       domain_id: domainId,
-      contribution: paper.abstract ? paper.abstract.substring(0, 500) : null,
-      relevance_score: null,
+      category: 'Foundation',
+      contribution: paper.abstract ? paper.abstract.substring(0, 500) : (paper.title || null),
+      relevance_score: paper.relevance_score || (paper.cited_by_count > 50 ? 90 : 80),
       is_read: false,
+      publisher: paper.publisher || null,
+      scopus_indexed: isScopus,
+      quartile: quartile,
+      research_domain: researchDomain,
+      notes: paper.abstract || null,
+      extended_metadata: {
+        abstract: paper.abstract || null,
+        citations: paper.cited_by_count || 0,
+        is_open_access: paper.is_open_access || false,
+        openalex_id: paper.openalex_id || null,
+        scopus_status: paper.scopus_status || null,
+        topics: paper.topics || [],
+        source: paper.source || 'discover'
+      },
       user_id: req.user.id,
       workspace_id: workspace_id || null
     };
     
-    const { data: newPaper, error: pErr } = await req.supabaseUser
+    let { data: newPaper, error: pErr } = await req.supabaseUser
       .from('papers')
       .insert(paperRecord)
-      .select()
+      .select('*, domains(name, color, icon)')
       .single();
     
     if (pErr) {
-      console.error('[Discover Import] Error:', pErr);
-      return res.status(400).json({ error: pErr.message });
+      console.error('[Discover Import] Insert error with full schema, trying fallback:', pErr.message);
+      // Fallback in case table doesn't have extended columns
+      if (pErr.message?.includes('column') || pErr.code === '42703') {
+        delete paperRecord.publisher;
+        delete paperRecord.scopus_indexed;
+        delete paperRecord.quartile;
+        delete paperRecord.research_domain;
+        delete paperRecord.extended_metadata;
+        const fallbackRes = await req.supabaseUser
+          .from('papers')
+          .insert(paperRecord)
+          .select('*, domains(name, color, icon)')
+          .single();
+        if (fallbackRes.error) return res.status(400).json({ error: fallbackRes.error.message });
+        newPaper = fallbackRes.data;
+      } else {
+        return res.status(400).json({ error: pErr.message });
+      }
     }
     
     console.log(`[Discover Import] Paper imported: "${newPaper.title}" (${newPaper.id})`);
