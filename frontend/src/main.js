@@ -2081,10 +2081,12 @@ async function handleDiscoverSearch(page = 1) {
   $('btn-discover-search').textContent = 'Searching...';
 
   try {
+    const isScopusOnly = $('discover-index-filter') ? ($('discover-index-filter').value === 'scopus') : true;
     const options = {
       page,
       per_page: $('discover-per-page').value || 200,
       sort: $('discover-sort').value || 'relevance',
+      scopus_only: isScopusOnly,
       workspace_id: currentWorkspace?.id || undefined
     };
 
@@ -2107,10 +2109,11 @@ async function handleDiscoverSearch(page = 1) {
 
     // Show meta info
     $('discover-meta').style.display = 'flex';
-    $('discover-total-text').textContent = `${formatNumber(discoverState.total)} results for "${query}" (fetched ${discoverState.results.length})`;
+    const indexLabel = isScopusOnly ? 'Scopus-indexed' : 'academic';
+    $('discover-total-text').textContent = `${formatNumber(discoverState.total)} ${indexLabel} results for "${query}" (fetched ${discoverState.results.length})`;
     const badge = $('discover-source-badge');
     badge.className = `discover-source-badge source-${discoverState.source}`;
-    badge.textContent = discoverState.source === 'scopus' ? '⚡ Scopus API' : '🌐 OpenAlex';
+    badge.textContent = isScopusOnly ? '✅ Scopus Indexed' : (discoverState.source === 'scopus' ? '⚡ Scopus API' : '🌐 OpenAlex');
 
     if (discoverState.results.length === 0) {
       $('discover-empty').style.display = 'block';

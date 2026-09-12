@@ -284,6 +284,7 @@ export async function discoverPapers(query, options = {}) {
   if (options.year_from) params.set('year_from', options.year_from);
   if (options.year_to) params.set('year_to', options.year_to);
   if (options.sort) params.set('sort', options.sort);
+  if (options.scopus_only !== undefined) params.set('scopus_only', options.scopus_only);
   if (options.workspace_id) params.set('workspace_id', options.workspace_id);
   return fetchAPI(`/discover?${params.toString()}`);
 }

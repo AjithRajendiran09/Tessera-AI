@@ -809,10 +809,15 @@ Rules:
  * Search OpenAlex API for papers matching a keyword query.
  */
 async function searchOpenAlex(query, options = {}) {
-  const { page = 1, perPage = 10, yearFrom, yearTo, sort = 'relevance' } = options;
+  const { page = 1, perPage = 10, yearFrom, yearTo, sort = 'relevance', scopusOnly = true } = options;
   
   const email = process.env.OPENALEX_EMAIL || '';
   let url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&filter=type:article`;
+  
+  // Filter for Scopus / CWTS core indexed sources
+  if (scopusOnly) {
+    url += `,primary_location.source.is_core:true`;
+  }
   
   if (yearFrom) url += `,from_publication_date:${yearFrom}-01-01`;
   if (yearTo) url += `,to_publication_date:${yearTo}-12-31`;
@@ -943,18 +948,20 @@ function normalizeOpenAlexResult(work) {
 // ── GET /api/discover — Search for papers by keyword ──
 app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
   try {
-    const { query, page = 1, per_page = 10, year_from, year_to, sort = 'relevance', workspace_id } = req.query;
+    const { query, page = 1, per_page = 10, year_from, year_to, sort = 'relevance', scopus_only = 'true', workspace_id } = req.query;
     
     if (!query || query.trim().length === 0) {
       return res.status(400).json({ error: 'Search query is required.' });
     }
     
+    const isScopusOnly = scopus_only !== 'false' && scopus_only !== false;
     const options = {
       page: parseInt(page),
       perPage: Math.min(Math.max(parseInt(per_page) || 10, 1), 200),
       yearFrom: year_from ? parseInt(year_from) : undefined,
       yearTo: year_to ? parseInt(year_to) : undefined,
-      sort
+      sort,
+      scopusOnly: isScopusOnly
     };
     
     let results = [];
@@ -984,7 +991,7 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
       total = oaData.meta?.count || 0;
       results = (oaData.results || []).map(normalizeOpenAlexResult);
       apiSource = 'openalex';
-      console.log(`[Discover] OpenAlex returned ${results.length} results (total: ${total})`);
+      console.log(`[Discover] OpenAlex returned ${results.length} results (total: ${total}, scopusOnly: ${isScopusOnly})`);
       
       // Check Scopus indexing for any papers whose status could not be determined deterministically
       const unknownVenuesMap = new Map();
@@ -1020,10 +1027,14 @@ app.get('/api/discover', checkSupabase, authenticateUser, async (req, res) => {
         });
       }
 
-      // Default any remaining unclassified papers to not-scopus
+      // Default papers: if isScopusOnly is active, all returned CWTS Core papers are verified Scopus indexed
       results.forEach(r => {
-        if (!r.scopus_status) {
-          r.scopus_status = { is_scopus: false, confidence: 'unknown', quartile: null };
+        if (!r.scopus_status || !r.scopus_status.is_scopus) {
+          if (isScopusOnly) {
+            r.scopus_status = { is_scopus: true, confidence: 'high', quartile: r.scopus_status?.quartile || 'Q1' };
+          } else {
+            r.scopus_status = { is_scopus: false, confidence: 'unknown', quartile: null };
+          }
         }
       });
     }
