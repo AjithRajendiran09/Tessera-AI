@@ -220,6 +220,19 @@ export async function updatePaper(id, updates) {
   });
 }
 
+export async function autofillPaper(id) {
+  return fetchAPI(`/papers/${id}/autofill`, {
+    method: 'POST'
+  });
+}
+
+export async function previewAutofill(payload) {
+  return fetchAPI('/papers/autofill-preview', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function deletePaper(id) {
   return fetchAPI(`/papers/${id}`, {
     method: 'DELETE'

@@ -303,6 +303,11 @@ async function handleLogout() {
     await api.signOut();
     currentUser = null;
     currentProfile = null;
+    currentWorkspace = null;
+    state.workspaces = [];
+    state.papers = [];
+    state.domains = [];
+    state.gaps = [];
     showAuthScreen();
     toast('👋 Signed out');
   } catch (err) {
@@ -312,15 +317,17 @@ async function handleLogout() {
 
 async function loadAll() {
   try {
-    // Load Workspaces first
+    // Load Workspaces first (strictly scoped to currently logged-in user)
     state.workspaces = await api.getWorkspaces();
-    if (state.workspaces.length > 0) {
-      // Keep selected workspace if it still exists, else use the first one
+    if (state.workspaces && state.workspaces.length > 0) {
+      // Keep selected workspace if it belongs to this user, else use default or first
       if (!currentWorkspace || !state.workspaces.find(w => w.id === currentWorkspace.id)) {
         currentWorkspace = state.workspaces.find(w => w.is_default) || state.workspaces[0];
       }
       renderWorkspaceSwitcher();
       updateResearchTopicBadge();
+    } else {
+      currentWorkspace = null;
     }
     
     const wsId = currentWorkspace ? currentWorkspace.id : null;
@@ -797,6 +804,12 @@ function openPaperDetail(p) {
       <span class="meta-tag read-badge ${p.is_read ? 'read' : 'unread'}">${p.is_read ? '✓ Read' : '📌 Unread'}</span>
     </div>
     ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link">📄 Read Paper →</a>` : ''}
+
+    ${(!p.limitations || p.limitations.length === 0 || !pers.research_gap) ? `
+      <div class="autofill-banner" id="md-autofill-banner">
+        <span class="autofill-banner-text">⚡ Assessment, Limitations & Research Gap details not generated yet.</span>
+        <button class="btn btn-sm btn-autofill-magic" id="btn-banner-autofill">✨ Auto-Fill with AI</button>
+      </div>` : ''}
     
     <div class="meta-accordion">
       ${section('📋', 'Bibliographic Info', `
@@ -829,17 +842,47 @@ function openPaperDetail(p) {
         ${field('Missing Component', pers.missing_component)}
         ${field('Relevance to Research', pers.relevance_to_my_research || p.relevance)}
         ${field('Personal Notes', pers.personal_notes || p.notes)}
-      `)}
+      `, true)}
     </div>
 
     <div class="relevance-bar" style="margin-top:14px">
       <span>Score</span><div class="rel-track"><div class="rel-fill" style="width:${p.relevance_score || 0}%;background:${relColor}"></div></div><span style="font-weight:700">${p.relevance_score || 0}%</span>
     </div>
     <div class="modal-actions">
+      <button class="btn btn-sm btn-autofill-magic" id="md-autofill">✨ Auto-Fill with AI</button>
       <button class="btn btn-ghost btn-sm" id="md-toggle-read">${p.is_read ? '📌 Mark Unread' : '✅ Mark Read'}</button>
       <button class="btn btn-ghost btn-sm" id="md-edit">✏️ Edit</button>
       <button class="btn btn-danger btn-sm" id="md-delete">🗑 Delete</button>
     </div>`;
+
+  const handleAutoFill = async (btn) => {
+    if (!btn) return;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '⏳ Analyzing with AI...';
+    btn.disabled = true;
+    toast('Generating paper assessment, limitations & research gaps with Gemini AI...');
+    try {
+      const updatedPaper = await api.autofillPaper(p.id);
+      toast('✨ All details automatically filled!');
+      if (state.papers) {
+        const idx = state.papers.findIndex(x => x.id === p.id);
+        if (idx !== -1) state.papers[idx] = updatedPaper;
+      }
+      openPaperModal(updatedPaper);
+      loadAll();
+    } catch (err) {
+      console.error('Autofill error:', err);
+      toast(err.message || 'Failed to auto-fill details', true);
+      btn.innerHTML = origText;
+      btn.disabled = false;
+    }
+  };
+
+  const bannerBtn = $('btn-banner-autofill');
+  if (bannerBtn) bannerBtn.addEventListener('click', () => handleAutoFill(bannerBtn));
+  const autofillBtn = $('md-autofill');
+  if (autofillBtn) autofillBtn.addEventListener('click', () => handleAutoFill(autofillBtn));
+
   $('md-toggle-read').addEventListener('click', async () => {
     await api.updatePaper(p.id, { is_read: !p.is_read });
     closeModal(); await loadAll(); toast(p.is_read ? '📌 Marked unread' : '✅ Marked as read');
@@ -884,13 +927,14 @@ function openPaperForm(paper) {
 
   $('modal-body').innerHTML = `
     <h2 style="margin-bottom:12px">${isEdit ? 'Edit Paper' : 'Add New Paper'}</h2>
-    ${!isEdit ? `
-      <div style="margin-bottom:16px">
+    <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
+      ${!isEdit ? `
         <input type="file" id="paper-pdf" accept="application/pdf" style="display:none">
-        <button class="btn btn-primary" id="btn-ai-upload" style="background:linear-gradient(135deg,#a78bfa,#c084fc);width:100%;padding:12px 16px;font-size:.9rem">✨ Auto-fill with AI (Upload PDF)</button>
-        <div id="parse-loader" style="display:none;margin-top:10px;text-align:center">⏳ AI is parsing your PDF...</div>
-      </div>
-    ` : ''}
+        <button type="button" class="btn btn-primary" id="btn-ai-upload" style="background:linear-gradient(135deg,#a78bfa,#c084fc);flex:1;padding:12px 14px;font-size:.85rem">📄 Auto-fill via PDF Upload</button>
+      ` : ''}
+      <button type="button" class="btn btn-autofill-magic" id="btn-ai-autofill-form" style="flex:1;padding:12px 14px;font-size:.85rem;justify-content:center">✨ Auto-Fill All Details with AI</button>
+    </div>
+    <div id="parse-loader" style="display:none;margin-top:10px;text-align:center">⏳ AI is synthesizing paper and generating all fields...</div>
     <form id="paper-form">
       <div class="form-grid">
         <!-- ═══ CORE BIBLIOGRAPHIC (always visible) ═══ -->
@@ -1158,6 +1202,61 @@ function openPaperForm(paper) {
         btn.innerHTML = originalText;
         btn.disabled = false;
         e.target.value = ''; // Reset input
+      }
+    });
+  }
+
+  // ── Auto-Fill All Details with AI Button Handler ──
+  const autofillFormBtn = $('btn-ai-autofill-form');
+  if (autofillFormBtn) {
+    autofillFormBtn.addEventListener('click', async () => {
+      const title = $('f-title')?.value.trim();
+      if (!title) {
+        toast('Please enter at least the paper title to auto-fill details', true);
+        $('f-title')?.focus();
+        return;
+      }
+      const origText = autofillFormBtn.innerHTML;
+      autofillFormBtn.innerHTML = '⏳ Analyzing with AI...';
+      autofillFormBtn.disabled = true;
+      toast('Synthesizing paper assessment, limitations & research gaps with Gemini AI...');
+      try {
+        const payload = {
+          title,
+          authors: $('f-authors')?.value.trim(),
+          venue: $('f-venue')?.value.trim(),
+          year: $('f-year')?.value,
+          doi: $('f-doi')?.value.trim(),
+          abstract: $('f-notes')?.value.trim() || null,
+          workspace_id: currentWorkspace?.id
+        };
+        const ai = await api.previewAutofill(payload);
+        if (ai) {
+          if (ai.contribution) $('f-cont').value = ai.contribution;
+          if (ai.category) $('f-cat').value = ai.category;
+          if (ai.research_domain) $('f-research-domain').value = ai.research_domain;
+          if (ai.limitations && Array.isArray(ai.limitations)) $('f-lim').value = ai.limitations.join('\n');
+          if (ai.personal) {
+            if (ai.personal.research_gap) $('f-pers-gap').value = ai.personal.research_gap;
+            if (ai.personal.missing_component) $('f-pers-missing').value = ai.personal.missing_component;
+            if (ai.personal.relevance_to_my_research) $('f-reltext').value = ai.personal.relevance_to_my_research;
+            if (ai.personal.relevance_score) $('f-rel').value = ai.personal.relevance_score;
+            if (ai.personal.personal_notes) $('f-notes').value = ai.personal.personal_notes;
+          }
+          // Open assessment, personal & custom sections
+          ['asmt', 'pers', 'custom'].forEach(id => {
+            const divider = $(`fsd-${id}`);
+            const collapse = $(`fsc-${id}`);
+            if (divider && collapse) { divider.classList.add('open'); collapse.classList.add('open'); }
+          });
+          toast('✨ All details automatically filled by AI!');
+        }
+      } catch (err) {
+        console.error('Form autofill error:', err);
+        toast(err.message || 'Failed to auto-fill details', true);
+      } finally {
+        autofillFormBtn.innerHTML = origText;
+        autofillFormBtn.disabled = false;
       }
     });
   }
@@ -1889,14 +1988,22 @@ function exportToExcel(papers, sheetLabel) {
 // DISCOVER PAPERS PAGE
 // ══════════════════════════════════════════════
 
-let discoverState = {
+const discoverState = {
+
   results: [],
   filteredResults: [],
   localFilter: '',
-  activeFilterChip: 'all',
+  selectedFacets: {
+    year: new Set(),
+    quartile: new Set(),
+    venue: new Set(),
+    doctype: new Set(),
+    oa: new Set()
+  },
+  selectedPapers: new Set(),
   total: 0,
   page: 1,
-  perPage: 200,
+  perPage: 25,
   totalPages: 0,
   source: '',
   query: '',
@@ -1909,135 +2016,326 @@ function setupDiscoverPage() {
   discoverState.initialized = true;
 
   // Search button
-  $('btn-discover-search').addEventListener('click', () => handleDiscoverSearch());
+  const searchBtn = $('btn-discover-search');
+  if (searchBtn) searchBtn.addEventListener('click', () => handleDiscoverSearch());
 
   // Enter key on search input
-  $('discover-query').addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleDiscoverSearch();
-    }
-  });
+  const queryInput = $('discover-query');
+  if (queryInput) {
+    queryInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDiscoverSearch();
+      }
+    });
+  }
+
+  // Clear query button
+  const clearQueryBtn = $('btn-clear-discover-query');
+  if (clearQueryBtn) {
+    clearQueryBtn.addEventListener('click', () => {
+      queryInput.value = '';
+      clearQueryBtn.style.display = 'none';
+      queryInput.focus();
+    });
+    queryInput.addEventListener('input', () => {
+      clearQueryBtn.style.display = queryInput.value ? 'block' : 'none';
+    });
+  }
 
   // In-results live search / filter input
   const localFilterInput = $('discover-local-filter');
   if (localFilterInput) {
     localFilterInput.addEventListener('input', e => {
       discoverState.localFilter = e.target.value;
+      const clearBtn = $('btn-clear-local-filter');
+      if (clearBtn) clearBtn.style.display = e.target.value ? 'block' : 'none';
       applyDiscoverFilter();
     });
   }
 
   // Clear in-results filter button
-  const clearBtn = $('btn-clear-local-filter');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
+  const clearLocalBtn = $('btn-clear-local-filter');
+  if (clearLocalBtn) {
+    clearLocalBtn.addEventListener('click', () => {
       clearDiscoverLocalFilter();
     });
   }
 
-  // Quick filter chips (All, Scopus Only, Open Access, Not Imported)
-  document.querySelectorAll('.discover-chip').forEach(chip => {
+  // Reset all facets
+  const resetFacetsBtn = $('scopus-reset-facets');
+  if (resetFacetsBtn) {
+    resetFacetsBtn.addEventListener('click', () => {
+      resetScopusFacets();
+    });
+  }
+
+  // Sort dropdown
+  const sortSelect = $('scopus-sort-select');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', e => {
+      if ($('discover-sort')) $('discover-sort').value = e.target.value;
+      handleDiscoverSearch(1);
+    });
+  }
+
+  // Select all checkbox
+  const selectAll = $('scopus-select-all');
+  if (selectAll) {
+    selectAll.addEventListener('change', e => {
+      const isChecked = e.target.checked;
+      discoverState.selectedPapers.clear();
+      if (isChecked) {
+        discoverState.filteredResults.forEach(p => discoverState.selectedPapers.add(p._idx));
+      }
+      updateScopusSelectedCount();
+      renderDiscoverResults();
+    });
+  }
+
+  // Batch import button
+  const batchImportBtn = $('scopus-btn-batch-import');
+  if (batchImportBtn) {
+    batchImportBtn.addEventListener('click', async () => {
+      await batchImportSelectedPapers();
+    });
+  }
+
+  // Export CSV button
+  const exportCsvBtn = $('scopus-btn-export-csv');
+  if (exportCsvBtn) {
+    exportCsvBtn.addEventListener('click', () => {
+      exportDiscoverResultsToCSV();
+    });
+  }
+
+  // Suggested chip handlers
+  document.querySelectorAll('.scopus-suggest-chip').forEach(chip => {
     chip.addEventListener('click', () => {
-      document.querySelectorAll('.discover-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      discoverState.activeFilterChip = chip.dataset.filter || 'all';
-      applyDiscoverFilter();
+      const example = chip.dataset.example;
+      if (example && queryInput) {
+        queryInput.value = example;
+        if (clearQueryBtn) clearQueryBtn.style.display = 'block';
+        handleDiscoverSearch();
+      }
     });
   });
 
   // Focus the search input
-  $('discover-query').focus();
+  if (queryInput) queryInput.focus();
+}
+
+window.searchScopusExample = function(example) {
+  if ($('discover-query')) {
+    $('discover-query').value = example;
+    handleDiscoverSearch();
+  }
+};
+
+window.toggleScopusFacet = function(headerEl) {
+  const accordion = headerEl.closest('.scopus-facet-accordion');
+  if (accordion) {
+    accordion.classList.toggle('closed');
+  }
+};
+
+window.onScopusFacetToggle = function(facetType, val) {
+  const facetSet = discoverState.selectedFacets[facetType];
+  if (!facetSet) return;
+  const strVal = String(val);
+  if (facetSet.has(strVal)) {
+    facetSet.delete(strVal);
+  } else {
+    facetSet.add(strVal);
+  }
+  applyDiscoverFilter();
+};
+
+function resetScopusFacets() {
+  for (const key of Object.keys(discoverState.selectedFacets)) {
+    discoverState.selectedFacets[key].clear();
+  }
+  discoverState.localFilter = '';
+  if ($('discover-local-filter')) $('discover-local-filter').value = '';
+  if ($('btn-clear-local-filter')) $('btn-clear-local-filter').style.display = 'none';
+  computeAndRenderFacets(discoverState.results);
+  applyDiscoverFilter();
+}
+
+function updateScopusSelectedCount() {
+  const count = discoverState.selectedPapers.size;
+  if ($('scopus-selected-count')) $('scopus-selected-count').textContent = count;
+  if ($('scopus-btn-batch-import')) {
+    $('scopus-btn-batch-import').disabled = count === 0;
+  }
+}
+
+function computeAndRenderFacets(papers) {
+  const years = {};
+  const quartiles = {};
+  const venues = {};
+  const doctypes = {};
+  let oaCount = 0;
+  let subCount = 0;
+
+  papers.forEach(p => {
+    if (p.year) years[p.year] = (years[p.year] || 0) + 1;
+    const q = p.scopus_status?.quartile || (p.source === 'scopus' ? 'Q1' : 'Unrated');
+    quartiles[q] = (quartiles[q] || 0) + 1;
+    if (p.venue) venues[p.venue] = (venues[p.venue] || 0) + 1;
+    const docType = p.scopus_status?.subtype || 'Article';
+    doctypes[docType] = (doctypes[docType] || 0) + 1;
+    if (p.is_open_access) oaCount++;
+    else subCount++;
+  });
+
+  // Render Open Access Facet
+  const oaEl = $('facet-body-oa');
+  if (oaEl) {
+    oaEl.innerHTML = `
+      <label class="scopus-facet-item">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.oa.has('oa') ? 'checked' : ''} onchange="onScopusFacetToggle('oa', 'oa')" />
+          <span>Open Access</span>
+        </span>
+        <span class="scopus-facet-count">${oaCount}</span>
+      </label>
+      <label class="scopus-facet-item">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.oa.has('sub') ? 'checked' : ''} onchange="onScopusFacetToggle('oa', 'sub')" />
+          <span>Subscription</span>
+        </span>
+        <span class="scopus-facet-count">${subCount}</span>
+      </label>
+    `;
+  }
+
+  // Render Year Facet
+  const yearEl = $('facet-body-year');
+  if (yearEl) {
+    const sortedYears = Object.keys(years).sort((a, b) => b - a);
+    yearEl.innerHTML = sortedYears.map(yr => `
+      <label class="scopus-facet-item">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.year.has(String(yr)) ? 'checked' : ''} onchange="onScopusFacetToggle('year', '${yr}')" />
+          <span>${yr}</span>
+        </span>
+        <span class="scopus-facet-count">${years[yr]}</span>
+      </label>
+    `).join('') || '<span class="text-muted" style="font-size:0.75rem">No year data</span>';
+  }
+
+  // Render Quartiles Facet
+  const quartileEl = $('facet-body-quartile');
+  if (quartileEl) {
+    const qOrder = ['Q1', 'Q2', 'Q3', 'Q4', 'Unrated'];
+    quartileEl.innerHTML = qOrder.filter(q => quartiles[q]).map(q => `
+      <label class="scopus-facet-item">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.quartile.has(q) ? 'checked' : ''} onchange="onScopusFacetToggle('quartile', '${q}')" />
+          <span>${q}</span>
+        </span>
+        <span class="scopus-facet-count">${quartiles[q]}</span>
+      </label>
+    `).join('') || '<span class="text-muted" style="font-size:0.75rem">No quartile data</span>';
+  }
+
+  // Render Source Title / Venue Facet (top 10)
+  const venueEl = $('facet-body-venue');
+  if (venueEl) {
+    const sortedVenues = Object.keys(venues).sort((a, b) => venues[b] - venues[a]).slice(0, 10);
+    venueEl.innerHTML = sortedVenues.map(v => `
+      <label class="scopus-facet-item" title="${escapeHtml(v)}">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.venue.has(v) ? 'checked' : ''} onchange="onScopusFacetToggle('venue', ${JSON.stringify(v)})" />
+          <span>${escapeHtml(v.length > 25 ? v.substring(0, 23) + '...' : v)}</span>
+        </span>
+        <span class="scopus-facet-count">${venues[v]}</span>
+      </label>
+    `).join('') || '<span class="text-muted" style="font-size:0.75rem">No source data</span>';
+  }
+
+  // Render Document Type Facet
+  const dtEl = $('facet-body-doctype');
+  if (dtEl) {
+    const sortedDt = Object.keys(doctypes).sort((a, b) => doctypes[b] - doctypes[a]);
+    dtEl.innerHTML = sortedDt.map(dt => `
+      <label class="scopus-facet-item">
+        <span class="scopus-facet-item-left">
+          <input type="checkbox" ${discoverState.selectedFacets.doctype.has(dt) ? 'checked' : ''} onchange="onScopusFacetToggle('doctype', '${dt}')" />
+          <span>${dt}</span>
+        </span>
+        <span class="scopus-facet-count">${doctypes[dt]}</span>
+      </label>
+    `).join('') || '<span class="text-muted" style="font-size:0.75rem">No type data</span>';
+  }
 }
 
 function applyDiscoverFilter() {
   const searchTerm = discoverState.localFilter.toLowerCase().trim();
-  const chip = discoverState.activeFilterChip;
+  const { year, quartile, venue, doctype, oa } = discoverState.selectedFacets;
 
   let filtered = discoverState.results;
 
-  // 1. Filter by chip
-  if (chip === 'scopus') {
-    filtered = filtered.filter(p => p.source === 'scopus' || p.scopus_status?.is_scopus);
-  } else if (chip === 'oa') {
-    filtered = filtered.filter(p => Boolean(p.is_open_access));
-  } else if (chip === 'not-imported') {
-    filtered = filtered.filter(p => !p.already_imported);
+  // Facet: Year
+  if (year.size > 0) {
+    filtered = filtered.filter(p => p.year && year.has(String(p.year)));
   }
 
-  // 2. Filter by search term across title, authors, venue, abstract, DOI
+  // Facet: Quartile
+  if (quartile.size > 0) {
+    filtered = filtered.filter(p => {
+      const q = p.scopus_status?.quartile || (p.source === 'scopus' ? 'Q1' : 'Unrated');
+      return quartile.has(q);
+    });
+  }
+
+  // Facet: Venue
+  if (venue.size > 0) {
+    filtered = filtered.filter(p => p.venue && venue.has(p.venue));
+  }
+
+  // Facet: Document Type
+  if (doctype.size > 0) {
+    filtered = filtered.filter(p => {
+      const dt = p.scopus_status?.subtype || 'Article';
+      return doctype.has(dt);
+    });
+  }
+
+  // Facet: Open Access
+  if (oa.size > 0) {
+    filtered = filtered.filter(p => {
+      if (oa.has('oa') && p.is_open_access) return true;
+      if (oa.has('sub') && !p.is_open_access) return true;
+      return false;
+    });
+  }
+
+  // In-results search string across title, authors, venue, abstract, DOI
   if (searchTerm) {
     filtered = filtered.filter(p => {
       const title = (p.title || '').toLowerCase();
       const authors = (p.authors || '').toLowerCase();
-      const venue = (p.venue || '').toLowerCase();
+      const ven = (p.venue || '').toLowerCase();
       const abstract = (p.abstract || '').toLowerCase();
       const doi = (p.doi || '').toLowerCase();
       return title.includes(searchTerm) ||
              authors.includes(searchTerm) ||
-             venue.includes(searchTerm) ||
+             ven.includes(searchTerm) ||
              abstract.includes(searchTerm) ||
              doi.includes(searchTerm);
     });
   }
 
   discoverState.filteredResults = filtered;
-  updateDiscoverFilterStats();
   renderDiscoverResults();
-}
-
-function updateDiscoverFilterStats() {
-  const total = discoverState.results.length;
-  const filtered = discoverState.filteredResults.length;
-  const badge = $('discover-filter-count-badge');
-  const clearBtn = $('btn-clear-local-filter');
-
-  // Update chip count labels
-  const scopusCount = discoverState.results.filter(p => p.source === 'scopus' || p.scopus_status?.is_scopus).length;
-  const oaCount = discoverState.results.filter(p => Boolean(p.is_open_access)).length;
-  const notImportedCount = discoverState.results.filter(p => !p.already_imported).length;
-
-  if ($('count-chip-all')) $('count-chip-all').textContent = total;
-  if ($('count-chip-scopus')) $('count-chip-scopus').textContent = scopusCount;
-  if ($('count-chip-oa')) $('count-chip-oa').textContent = oaCount;
-  if ($('count-chip-not-imported')) $('count-chip-not-imported').textContent = notImportedCount;
-
-  if (clearBtn) {
-    clearBtn.style.display = discoverState.localFilter ? 'flex' : 'none';
-  }
-
-  const filterBar = $('discover-filter-bar');
-  if (!filterBar) return;
-
-  if (total === 0) {
-    filterBar.style.display = 'none';
-    return;
-  }
-
-  filterBar.style.display = 'flex';
-
-  if (!badge) return;
-
-  if (filtered === total && !discoverState.localFilter && discoverState.activeFilterChip === 'all') {
-    badge.textContent = `Showing all ${total} papers`;
-    badge.style.color = 'var(--text2)';
-    badge.style.background = 'rgba(255, 255, 255, 0.05)';
-    badge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-  } else {
-    badge.textContent = `Showing ${filtered} of ${total} papers`;
-    badge.style.color = 'var(--accent)';
-    badge.style.background = 'rgba(124, 92, 255, 0.12)';
-    badge.style.borderColor = 'rgba(124, 92, 255, 0.3)';
-  }
 }
 
 window.clearDiscoverLocalFilter = function() {
   discoverState.localFilter = '';
-  discoverState.activeFilterChip = 'all';
   if ($('discover-local-filter')) $('discover-local-filter').value = '';
-  document.querySelectorAll('.discover-chip').forEach(c => {
-    c.classList.toggle('active', c.dataset.filter === 'all');
-  });
+  if ($('btn-clear-local-filter')) $('btn-clear-local-filter').style.display = 'none';
   applyDiscoverFilter();
 };
 
@@ -2062,40 +2360,44 @@ async function handleDiscoverSearch(page = 1) {
   discoverState.query = query;
   discoverState.page = page;
 
-  // Reset local search & quick filters on new fetch
+  // Reset facets & selections on new search
   discoverState.localFilter = '';
-  discoverState.activeFilterChip = 'all';
-  if ($('discover-local-filter')) $('discover-local-filter').value = '';
-  document.querySelectorAll('.discover-chip').forEach(c => {
-    c.classList.toggle('active', c.dataset.filter === 'all');
-  });
+  for (const k of Object.keys(discoverState.selectedFacets)) {
+    discoverState.selectedFacets[k].clear();
+  }
+  discoverState.selectedPapers.clear();
+  updateScopusSelectedCount();
 
-  // Show loading, hide other states
+  // Show loading, hide layout & empty states
   $('discover-loading').style.display = 'flex';
-  $('discover-results').innerHTML = '';
-  $('discover-pagination').innerHTML = '';
-  $('discover-meta').style.display = 'none';
-  $('discover-filter-bar').style.display = 'none';
+  $('scopus-results-layout').style.display = 'none';
   $('discover-empty').style.display = 'none';
   $('btn-discover-search').disabled = true;
-  $('btn-discover-search').textContent = 'Searching...';
+  $('btn-discover-search').innerHTML = '<span class="scopus-search-icon">⏳</span> Searching...';
 
   try {
     const isScopusOnly = $('discover-index-filter') ? ($('discover-index-filter').value === 'scopus') : true;
     const options = {
       page,
-      per_page: $('discover-per-page').value || 200,
-      sort: $('discover-sort').value || 'relevance',
+      per_page: $('discover-per-page')?.value || 25,
+      sort: $('scopus-sort-select')?.value || 'relevance',
       scopus_only: isScopusOnly,
       workspace_id: currentWorkspace?.id || undefined
     };
 
-    const yearFrom = $('discover-year-from').value;
-    const yearTo = $('discover-year-to').value;
+    const yearFrom = $('discover-year-from')?.value;
+    const yearTo = $('discover-year-to')?.value;
     if (yearFrom) options.year_from = yearFrom;
     if (yearTo) options.year_to = yearTo;
 
-    const data = await api.discoverPapers(query, options);
+    // Field search modifier if not default
+    const fieldSelect = $('scopus-field-select')?.value;
+    let finalQuery = query;
+    if (fieldSelect && fieldSelect !== 'TITLE-ABS-KEY' && fieldSelect !== 'ALL') {
+      finalQuery = `${fieldSelect}(${query})`;
+    }
+
+    const data = await api.discoverPapers(finalQuery, options);
 
     discoverState.results = (data.results || []).map((paper, idx) => ({ ...paper, _idx: idx }));
     discoverState.filteredResults = [...discoverState.results];
@@ -2104,31 +2406,49 @@ async function handleDiscoverSearch(page = 1) {
     discoverState.source = data.source || 'openalex';
     discoverState.perPage = parseInt(options.per_page);
 
+    // Compute Scopus facet counts from candidate results
+    computeAndRenderFacets(discoverState.results);
+
+    // Update query preview
+    const queryPreview = $('scopus-query-preview');
+    if (queryPreview) {
+      queryPreview.innerHTML = `<code>TITLE-ABS-KEY ( "${escapeHtml(query)}" ) ${yearFrom ? `AND PUBYEAR > ${yearFrom - 1}` : ''} ${yearTo ? `AND PUBYEAR < ${parseInt(yearTo) + 1}` : ''}</code>`;
+    }
+
+    // Update total count
+    if ($('discover-total-count')) {
+      $('discover-total-count').textContent = formatNumber(discoverState.total);
+    }
+
+    // Source badge
+    const badge = $('discover-source-badge');
+    if (badge) {
+      badge.textContent = discoverState.source === 'scopus' 
+        ? '⚡ Scopus Direct API' 
+        : (isScopusOnly ? '✅ Scopus Verified' : '🌐 OpenAlex');
+    }
+
     applyDiscoverFilter();
     renderDiscoverPagination();
 
-    // Show meta info
-    $('discover-meta').style.display = 'flex';
-    const indexLabel = isScopusOnly ? 'Scopus-indexed' : 'academic';
-    $('discover-total-text').textContent = `${formatNumber(discoverState.total)} ${indexLabel} results for "${query}" (fetched ${discoverState.results.length})`;
-    const badge = $('discover-source-badge');
-    badge.className = `discover-source-badge source-${discoverState.source}`;
-    badge.textContent = isScopusOnly ? '✅ Scopus Indexed' : (discoverState.source === 'scopus' ? '⚡ Scopus API' : '🌐 OpenAlex');
-
     if (discoverState.results.length === 0) {
+      $('scopus-results-layout').style.display = 'none';
       $('discover-empty').style.display = 'block';
-      $('discover-empty').querySelector('p').textContent = `No papers found for "${query}"`;
+      $('discover-empty').querySelector('h3').textContent = `No documents found for "${query}"`;
+    } else {
+      $('scopus-results-layout').style.display = 'grid';
+      $('discover-empty').style.display = 'none';
     }
 
   } catch (err) {
-    console.error('Discover error:', err);
+    console.error('Scopus search error:', err);
     toast(`Search failed: ${err.message}`, true);
     $('discover-empty').style.display = 'block';
   } finally {
     discoverState.isLoading = false;
     $('discover-loading').style.display = 'none';
     $('btn-discover-search').disabled = false;
-    $('btn-discover-search').textContent = 'Search';
+    $('btn-discover-search').innerHTML = '<span class="scopus-search-icon">🔍</span> Search Documents';
   }
 }
 
@@ -2146,15 +2466,14 @@ function formatCitations(count) {
 
 function renderDiscoverResults() {
   const container = $('discover-results');
+  if (!container) return;
+
   if (!discoverState.filteredResults.length) {
     if (discoverState.results.length > 0) {
-      const activeFilterDesc = discoverState.localFilter
-        ? `"${escapeHtml(discoverState.localFilter)}"`
-        : discoverState.activeFilterChip;
       container.innerHTML = `
-        <div class="discover-filter-empty">
-          <p>🔍 No papers match <strong>${activeFilterDesc}</strong> among the ${discoverState.results.length} fetched papers.</p>
-          <button class="btn btn-sm btn-secondary" onclick="clearDiscoverLocalFilter()">Clear filter</button>
+        <div class="discover-filter-empty" style="padding: 40px; text-align: center;">
+          <p>🔍 No documents match the active refinement filters among the ${discoverState.results.length} fetched documents.</p>
+          <button class="scopus-btn-primary" style="margin: 12px auto; display: inline-flex;" onclick="resetScopusFacets()">Reset Refinement Filters</button>
         </div>
       `;
     } else {
@@ -2165,105 +2484,186 @@ function renderDiscoverResults() {
 
   container.innerHTML = discoverState.filteredResults.map((paper, i) => {
     const scopus = paper.scopus_status;
-    const isScopus = scopus?.is_scopus;
-    const confidence = scopus?.confidence || 'unknown';
-    const quartile = scopus?.quartile;
+    const isScopus = scopus?.is_scopus || paper.source === 'scopus';
+    const quartile = scopus?.quartile || (isScopus ? 'Q1' : null);
+    const docType = scopus?.subtype || 'Article';
+    const isSelected = discoverState.selectedPapers.has(paper._idx);
 
-    // Build badges
+    // Badges
     let badges = '';
+    badges += `<span class="discover-badge discover-badge-indexed">${escapeHtml(docType)}</span>`;
 
-    // Scopus badge
     if (paper.source === 'scopus') {
-      badges += `<span class="discover-badge discover-badge-scopus confidence-high">✅ Scopus Indexed</span>`;
+      badges += `<span class="discover-badge discover-badge-scopus confidence-high">⚡ Scopus Indexed</span>`;
     } else if (isScopus) {
-      const confClass = `confidence-${confidence}`;
-      const confLabel = confidence === 'high' ? '✅' : confidence === 'medium' ? '⚠️' : '❓';
-      badges += `<span class="discover-badge discover-badge-scopus ${confClass}">${confLabel} Scopus ${confidence !== 'unknown' ? `(${confidence})` : ''}</span>`;
-    } else if (scopus && !isScopus) {
-      badges += `<span class="discover-badge discover-badge-not-scopus">Not Scopus-indexed</span>`;
+      badges += `<span class="discover-badge discover-badge-scopus confidence-high">✅ Scopus Verified</span>`;
     }
 
-    // Quartile badge
     if (quartile) {
-      badges += `<span class="discover-badge discover-badge-quartile">${quartile}</span>`;
+      badges += `<span class="discover-badge discover-badge-quartile">${escapeHtml(quartile)}</span>`;
     }
 
-    // Open Access badge
     if (paper.is_open_access) {
       badges += `<span class="discover-badge discover-badge-oa">🔓 Open Access</span>`;
     }
 
-    // Citation count badge
-    if (paper.cited_by_count > 0) {
-      badges += `<span class="discover-badge discover-badge-citations">📊 ${formatCitations(paper.cited_by_count)} citations</span>`;
-    }
-
-    // Indexed in badges
-    if (paper.indexed_in && paper.indexed_in.length > 0) {
-      paper.indexed_in.forEach(idx => {
-        badges += `<span class="discover-badge discover-badge-indexed">${idx}</span>`;
-      });
-    }
-
-    // Abstract section with search highlight
+    // Abstract
     let abstractHtml = '';
     if (paper.abstract) {
       const abstractId = `abstract-${paper._idx}`;
       abstractHtml = `
-        <div class="discover-card-abstract" id="${abstractId}">${highlightMatch(paper.abstract, discoverState.localFilter)}</div>
-        <button class="discover-abstract-toggle" onclick="toggleAbstract('${abstractId}', this)">Show more ▼</button>
+        <div class="scopus-doc-abstract-drawer" id="${abstractId}" style="display:none">
+          ${highlightMatch(paper.abstract, discoverState.localFilter)}
+        </div>
       `;
     }
 
-    // DOI link
-    const doiLink = paper.doi ? `<a href="https://doi.org/${paper.doi}" target="_blank" class="discover-card-doi" title="DOI">DOI: ${paper.doi}</a>` : '';
-
-    // Venue with highlight
-    const venueHtml = paper.venue ? `<span class="discover-card-venue">📖 ${highlightMatch(paper.venue, discoverState.localFilter)}</span>` : '';
-
-    // Title with highlight
-    const titleHtml = highlightMatch(paper.title, discoverState.localFilter);
-
-    // Authors with highlight
-    const authorsHtml = highlightMatch(paper.authors, discoverState.localFilter);
+    // Venue details
+    const venueText = paper.venue ? escapeHtml(paper.venue) : 'Academic Journal';
+    const yearText = paper.year ? `${paper.year}` : '';
 
     // Action links
-    let links = '';
+    let actionLinks = '';
+    if (paper.abstract) {
+      actionLinks += `<a href="javascript:void(0)" class="scopus-action-link" onclick="toggleScopusAbstract('${paper._idx}', this)">Show abstract ▾</a>`;
+    }
     if (paper.url) {
-      links += `<a href="${paper.url}" target="_blank" class="discover-card-link">📄 View Paper</a>`;
+      actionLinks += `<a href="${paper.url}" target="_blank" class="scopus-action-link">View at Publisher ↗</a>`;
+    }
+    if (paper.scopus_url) {
+      actionLinks += `<a href="${paper.scopus_url}" target="_blank" class="scopus-action-link scopus-direct-link">🔬 View in Scopus ↗</a>`;
     }
     if (paper.doi) {
-      links += `<a href="https://doi.org/${paper.doi}" target="_blank" class="discover-card-link">🔗 DOI</a>`;
+      actionLinks += `<a href="https://doi.org/${encodeURIComponent(paper.doi)}" target="_blank" class="scopus-action-link">DOI: ${escapeHtml(paper.doi)}</a>`;
     }
 
-    // Import button — uses paper._idx so index is always accurate
+    // Import button
     const isImported = paper.already_imported;
     const importBtn = isImported
       ? `<button class="btn-import imported" disabled>✅ In Library</button>`
       : `<button class="btn-import" onclick="importPaper(${paper._idx})" id="import-btn-${paper._idx}">➕ Import</button>`;
 
+    // Titles & Authors
+    const titleHtml = highlightMatch(paper.title, discoverState.localFilter);
+    const authorsHtml = highlightMatch(paper.authors, discoverState.localFilter);
+
+    // Citations & Metrics
+    const citedByHtml = paper.cited_by_count > 0 
+      ? `<span class="scopus-metric-cited" title="Scopus Citation Count">Cited by ${formatCitations(paper.cited_by_count)}</span>` 
+      : `<span class="text-muted" style="font-size:0.75rem">0 citations</span>`;
+    
+    const citeScoreHtml = scopus?.citescore ? `<span class="scopus-metric-citescore">CiteScore ${scopus.citescore}</span>` : '';
+    const sjrHtml = scopus?.sjr ? `<span class="scopus-metric-sjr">SJR ${scopus.sjr}</span>` : '';
+
     return `
-      <div class="discover-card" style="animation-delay: ${Math.min(i * 0.03, 0.5)}s">
-        <div class="discover-card-header">
-          <h3 class="discover-card-title">
-            ${paper.url ? `<a href="${paper.url}" target="_blank">${titleHtml}</a>` : titleHtml}
-          </h3>
+      <div class="scopus-doc-card ${isSelected ? 'selected' : ''}" id="doc-card-${paper._idx}">
+        <div class="scopus-doc-header-row">
+          <input type="checkbox" class="scopus-doc-checkbox" data-idx="${paper._idx}" ${isSelected ? 'checked' : ''} onchange="onScopusDocSelectToggle(${paper._idx}, this.checked)" />
+          <span class="scopus-doc-index">${(discoverState.page - 1) * discoverState.perPage + i + 1}.</span>
+          <div class="scopus-doc-main">
+            <h4 class="scopus-doc-title">
+              ${paper.url ? `<a href="${paper.url}" target="_blank">${titleHtml}</a>` : titleHtml}
+            </h4>
+            <div class="scopus-doc-authors">${authorsHtml}</div>
+            <div class="scopus-doc-venue-line">
+              <span class="scopus-doc-venue-name">${venueText}</span>${yearText ? `, ${yearText}` : ''}
+            </div>
+            <div class="scopus-doc-badges-row">${badges}</div>
+          </div>
+          <div class="scopus-doc-metrics-col">
+            ${citedByHtml}
+            ${citeScoreHtml}
+            ${sjrHtml}
+          </div>
         </div>
-        <div class="discover-card-meta">
-          <span class="discover-card-authors">${authorsHtml}</span>
-          ${paper.year ? `<span class="discover-card-year">${paper.year}</span>` : ''}
-          ${venueHtml}
-          ${doiLink}
-        </div>
-        <div class="discover-card-badges">${badges}</div>
         ${abstractHtml}
-        <div class="discover-card-actions">
-          <div class="discover-card-links">${links}</div>
-          ${importBtn}
+        <div class="scopus-doc-actions-row">
+          <div class="scopus-doc-links-group">${actionLinks}</div>
+          <div>${importBtn}</div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+window.toggleScopusAbstract = function(idx, linkEl) {
+  const drawer = document.getElementById(`abstract-${idx}`);
+  if (!drawer) return;
+  const isHidden = drawer.style.display === 'none';
+  drawer.style.display = isHidden ? 'block' : 'none';
+  linkEl.textContent = isHidden ? 'Hide abstract ▲' : 'Show abstract ▾';
+};
+
+window.onScopusDocSelectToggle = function(idx, isChecked) {
+  if (isChecked) discoverState.selectedPapers.add(idx);
+  else discoverState.selectedPapers.delete(idx);
+  const card = document.getElementById(`doc-card-${idx}`);
+  if (card) card.classList.toggle('selected', isChecked);
+  updateScopusSelectedCount();
+};
+
+async function batchImportSelectedPapers() {
+  const indices = Array.from(discoverState.selectedPapers);
+  if (indices.length === 0) return;
+  
+  toast(`Importing ${indices.length} papers...`);
+  let importedCount = 0;
+  
+  for (const idx of indices) {
+    const paper = discoverState.results.find(p => p._idx === idx);
+    if (paper && !paper.already_imported) {
+      try {
+        await api.importDiscoveredPaper(paper, currentWorkspace?.id || null);
+        paper.already_imported = true;
+        importedCount++;
+        const btn = document.getElementById(`import-btn-${idx}`);
+        if (btn) {
+          btn.className = 'btn-import imported';
+          btn.textContent = '✅ In Library';
+        }
+      } catch (e) {
+        console.warn('Batch import error for paper:', paper.title, e.message);
+      }
+    }
+  }
+  
+  discoverState.selectedPapers.clear();
+  updateScopusSelectedCount();
+  toast(`✅ Successfully imported ${importedCount} papers to library!`);
+  try { await loadAll(); } catch (e) {}
+}
+
+function exportDiscoverResultsToCSV() {
+  const items = discoverState.filteredResults;
+  if (!items || items.length === 0) {
+    toast('No documents to export', true);
+    return;
+  }
+  
+  const headers = ['Title', 'Authors', 'Year', 'Venue', 'DOI', 'Cited By', 'CiteScore', 'SJR', 'Quartile', 'Scopus URL'];
+  const rows = items.map(p => [
+    `"${(p.title || '').replace(/"/g, '""')}"`,
+    `"${(p.authors || '').replace(/"/g, '""')}"`,
+    p.year || '',
+    `"${(p.venue || '').replace(/"/g, '""')}"`,
+    p.doi || '',
+    p.cited_by_count || 0,
+    p.scopus_status?.citescore || '',
+    p.scopus_status?.sjr || '',
+    p.scopus_status?.quartile || '',
+    p.scopus_url || p.url || ''
+  ]);
+  
+  const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Scopus_Search_Results_${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('📥 Downloaded CSV results');
 }
 
 function escapeHtml(str) {
@@ -2299,7 +2699,6 @@ window.importPaper = async function(index) {
       btn.textContent = '✅ In Library';
     }
     paper.already_imported = true;
-    updateDiscoverFilterStats();
     toast(`📄 Imported: "${paper.title.substring(0, 50)}..."`);
 
     // Reload all library state, dashboard stats, and sidebar count
@@ -2319,7 +2718,6 @@ window.importPaper = async function(index) {
         btn.textContent = '✅ In Library';
       }
       paper.already_imported = true;
-      updateDiscoverFilterStats();
       toast('This paper is already in your library');
     } else {
       toast(`Import failed: ${err.message}`, true);
@@ -2329,6 +2727,7 @@ window.importPaper = async function(index) {
 
 function renderDiscoverPagination() {
   const container = $('discover-pagination');
+  if (!container) return;
   if (discoverState.totalPages <= 1) {
     container.innerHTML = '';
     return;
@@ -2367,8 +2766,10 @@ function renderDiscoverPagination() {
 window.discoverGoToPage = function(page) {
   handleDiscoverSearch(page);
   // Scroll to top of results
-  $('discover-search-container').scrollIntoView({ behavior: 'smooth' });
+  const container = $('discover-search-container') || $('page-discover');
+  if (container) container.scrollIntoView({ behavior: 'smooth' });
 };
+
 
 // ── Modal Helpers ──
 function openModal() { $('modal-overlay').classList.add('active'); document.body.style.overflow = 'hidden'; }

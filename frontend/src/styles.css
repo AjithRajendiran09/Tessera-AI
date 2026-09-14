@@ -258,7 +258,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 /* Modal link */
 .modal-paper-link{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;text-decoration:none;font-size:.85rem;font-weight:600;margin:12px 0 4px;transition:all .2s}
 .modal-paper-link:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(124,92,255,.35)}
-.modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+.modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
+
+/* Autofill Banner & Magic Action */
+.autofill-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:linear-gradient(135deg,rgba(124,92,255,.14),rgba(0,210,255,.08));border:1px solid rgba(124,92,255,.35);border-radius:12px;margin:14px 0 16px;animation:pulseBorder 3s infinite alternate}
+@keyframes pulseBorder{from{border-color:rgba(124,92,255,.3)}to{border-color:rgba(0,210,255,.6)}}
+.autofill-banner-text{font-size:.85rem;color:#ddd6fe;font-weight:500;display:flex;align-items:center;gap:8px}
+.btn-autofill-magic{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#7c5cff,#00d2ff);color:#fff;font-weight:600;border:none;box-shadow:0 4px 15px rgba(124,92,255,.3);transition:all .2s;cursor:pointer}
+.btn-autofill-magic:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,210,255,.45)}
+.btn-autofill-magic:disabled{opacity:.6;transform:none;cursor:not-allowed}
 
 /* Mobile menu button */
 .mobile-menu-btn{display:none;position:fixed;top:14px;left:14px;z-index:60;background:var(--surface);border:1px solid var(--border);color:var(--text);width:42px;height:42px;border-radius:10px;font-size:1.3rem;cursor:pointer;align-items:center;justify-content:center;transition:all .2s;-webkit-tap-highlight-color:transparent}
@@ -1158,7 +1166,884 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   background: linear-gradient(135deg, rgba(92, 140, 255, 0.15), rgba(92, 140, 255, 0.08));
   color: var(--accent2);
   border: 1px solid rgba(92, 140, 255, 0.3);
+  font-weight: 700;
 }
+
+.discover-badge-citescore {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(168, 85, 247, 0.08));
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.discover-badge-sjr {
+  background: linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(234, 179, 8, 0.08));
+  color: #facc15;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.discover-card-link.scopus-link:hover {
+  background: rgba(255, 152, 0, 0.15);
+  border-color: #ff9800;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ELSEVIER SCOPUS AUTHENTIC INTERFACE THEME
+   ═══════════════════════════════════════════════════════════ */
+
+.scopus-theme {
+  --scopus-orange: #eb6500;
+  --scopus-orange-hover: #ff781a;
+  --scopus-orange-glow: rgba(235, 101, 0, 0.25);
+  --scopus-bg-card: #0f172a;
+  --scopus-bg-card-hover: #131d35;
+  --scopus-border: #1e293b;
+  --scopus-border-light: #334155;
+  --scopus-blue: #38bdf8;
+  --scopus-blue-hover: #60a5fa;
+}
+
+/* Scopus Header Banner */
+.scopus-header-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  background: linear-gradient(135deg, #0d1526 0%, #15203b 100%);
+  border: 1px solid var(--scopus-border);
+  border-radius: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+
+.scopus-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.scopus-logo-mark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Outfit', -apple-system, sans-serif;
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--scopus-orange);
+}
+
+.scopus-logo-circle {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--scopus-orange);
+  box-shadow: 0 0 10px var(--scopus-orange-glow);
+}
+
+.scopus-brand-tagline {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  border-left: 1px solid var(--scopus-border-light);
+  padding-left: 14px;
+  display: inline-block;
+}
+
+.scopus-live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.scopus-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse 2s infinite;
+}
+
+/* Scopus Search Tabs */
+.scopus-search-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 2px solid var(--scopus-border);
+  margin-bottom: 18px;
+}
+
+.scopus-tab {
+  background: transparent;
+  border: none;
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+}
+
+.scopus-tab:hover {
+  color: #f1f5f9;
+}
+
+.scopus-tab.active {
+  color: var(--scopus-orange);
+  border-bottom-color: var(--scopus-orange);
+}
+
+/* Scopus Query Console Card */
+.scopus-search-card {
+  background: var(--scopus-bg-card);
+  border: 1px solid var(--scopus-border);
+  border-radius: 12px;
+  padding: 22px 26px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.scopus-search-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.scopus-search-card-header h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.scopus-search-tips {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.scopus-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.scopus-field-select-wrap {
+  min-width: 240px;
+}
+
+.scopus-field-select {
+  width: 100%;
+  height: 100%;
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 8px;
+  color: #f1f5f9;
+  padding: 11px 14px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+
+.scopus-search-input-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.scopus-query-input {
+  width: 100%;
+  height: 100%;
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 8px;
+  color: #f8fafc;
+  padding: 11px 40px 11px 16px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.scopus-query-input:focus {
+  border-color: var(--scopus-orange);
+  box-shadow: 0 0 0 3px var(--scopus-orange-glow);
+}
+
+.scopus-input-clear-btn {
+  position: absolute;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #94a3b8;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.scopus-btn-primary {
+  background: var(--scopus-orange);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 26px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px var(--scopus-orange-glow);
+  transition: all 0.2s;
+}
+
+.scopus-btn-primary:hover {
+  background: var(--scopus-orange-hover);
+  transform: translateY(-1px);
+}
+
+.scopus-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Scopus Secondary Options */
+.scopus-search-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 22px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--scopus-border);
+}
+
+.scopus-option-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.scopus-option-group label {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.scopus-date-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scopus-mini-input {
+  width: 90px;
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  outline: none;
+}
+
+.scopus-date-sep {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.scopus-doc-types {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scopus-check-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.scopus-mini-select {
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  outline: none;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SCOPUS 2-COLUMN RESULTS ARCHITECTURE
+   ═══════════════════════════════════════════════════════════ */
+
+.scopus-results-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .scopus-results-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Scopus Left Facet Sidebar ("Refine results") */
+.scopus-sidebar {
+  background: var(--scopus-bg-card);
+  border: 1px solid var(--scopus-border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.scopus-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--scopus-border);
+  margin-bottom: 12px;
+}
+
+.scopus-sidebar-header h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.scopus-link-btn {
+  background: none;
+  border: none;
+  color: var(--scopus-orange);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.scopus-link-btn:hover {
+  text-decoration: underline;
+}
+
+.scopus-local-filter-box {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.scopus-sidebar-filter-input {
+  width: 100%;
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 6px;
+  padding: 7px 28px 7px 10px;
+  font-size: 0.8rem;
+  color: #f8fafc;
+  outline: none;
+}
+
+.scopus-sidebar-filter-input:focus {
+  border-color: var(--scopus-orange);
+}
+
+.scopus-sidebar-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.7rem;
+}
+
+.scopus-facet-accordion {
+  border-bottom: 1px solid var(--scopus-border);
+  padding: 10px 0;
+}
+
+.scopus-facet-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.scopus-facet-title:hover {
+  color: #f8fafc;
+}
+
+.scopus-caret {
+  font-size: 0.75rem;
+  color: #64748b;
+  transition: transform 0.2s;
+}
+
+.scopus-facet-accordion.closed .scopus-caret {
+  transform: rotate(-90deg);
+}
+
+.scopus-facet-accordion.closed .scopus-facet-body {
+  display: none;
+}
+
+.scopus-facet-body {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.scopus-facet-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.scopus-facet-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.scopus-facet-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scopus-facet-count {
+  font-size: 0.72rem;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* Scopus Main Results Panel */
+.scopus-main-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.scopus-results-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--scopus-border);
+}
+
+.scopus-results-counter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.scopus-count-num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.5px;
+}
+
+.scopus-count-label {
+  font-size: 1rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.scopus-source-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(235, 101, 0, 0.14);
+  color: var(--scopus-orange);
+  border: 1px solid rgba(235, 101, 0, 0.3);
+}
+
+.scopus-query-preview code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  background: #1e293b;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--scopus-border-light);
+}
+
+/* Scopus Action Toolbar */
+.scopus-action-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--scopus-bg-card);
+  border: 1px solid var(--scopus-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+}
+
+.scopus-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.scopus-select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.scopus-tool-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--scopus-border-light);
+  color: #f1f5f9;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.scopus-tool-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: #64748b;
+}
+
+.scopus-tool-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.scopus-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.scopus-sort-dropdown {
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  border-radius: 6px;
+  color: #f8fafc;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Scopus Document Card Rows */
+.scopus-doc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scopus-doc-card {
+  background: var(--scopus-bg-card);
+  border: 1px solid var(--scopus-border);
+  border-radius: 10px;
+  padding: 16px 20px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.scopus-doc-card:hover {
+  background: var(--scopus-bg-card-hover);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.scopus-doc-card.selected {
+  border-color: var(--scopus-orange);
+  background: rgba(235, 101, 0, 0.04);
+}
+
+.scopus-doc-header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.scopus-doc-checkbox {
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.scopus-doc-index {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #64748b;
+  min-width: 22px;
+  padding-top: 2px;
+}
+
+.scopus-doc-main {
+  flex: 1;
+}
+
+.scopus-doc-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.scopus-doc-title a {
+  color: var(--scopus-blue);
+  text-decoration: none;
+}
+
+.scopus-doc-title a:hover {
+  color: var(--scopus-blue-hover);
+  text-decoration: underline;
+}
+
+.scopus-doc-authors {
+  font-size: 0.86rem;
+  color: #cbd5e1;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.scopus-doc-venue-line {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.scopus-doc-venue-name {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.scopus-doc-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* Scopus Right-Side Metric Box */
+.scopus-doc-metrics-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 140px;
+  text-align: right;
+}
+
+.scopus-metric-cited {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.scopus-metric-citescore {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.scopus-metric-sjr {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #facc15;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Scopus Item Sub-Actions */
+.scopus-doc-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.scopus-doc-links-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.scopus-action-link {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.15s;
+}
+
+.scopus-action-link:hover {
+  color: var(--scopus-orange);
+}
+
+.scopus-action-link.scopus-direct-link {
+  color: var(--scopus-orange);
+  font-weight: 600;
+}
+
+.scopus-action-link.scopus-direct-link:hover {
+  color: var(--scopus-orange-hover);
+  text-decoration: underline;
+}
+
+.scopus-doc-abstract-drawer {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--scopus-border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+/* Scopus Loading & Empty States */
+.scopus-loader-ring {
+  width: 48px;
+  height: 48px;
+  border: 4px solid rgba(235, 101, 0, 0.15);
+  border-top-color: var(--scopus-orange);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  margin: 0 auto 16px;
+}
+
+.scopus-loading-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 6px;
+}
+
+.scopus-empty-state {
+  text-align: center;
+  padding: 60px 24px;
+  background: var(--scopus-bg-card);
+  border: 1px dashed var(--scopus-border);
+  border-radius: 14px;
+  margin-top: 20px;
+}
+
+.scopus-empty-icon {
+  font-size: 3rem;
+  margin-bottom: 14px;
+  opacity: 0.8;
+}
+
+.scopus-empty-state h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.scopus-empty-state p {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 20px;
+}
+
+.scopus-suggested-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.scopus-suggest-chip {
+  background: #1e293b;
+  border: 1px solid var(--scopus-border-light);
+  color: #cbd5e1;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.scopus-suggest-chip:hover {
+  border-color: var(--scopus-orange);
+  color: #f8fafc;
+  background: rgba(235, 101, 0, 0.1);
+}
+
 
 .discover-badge-citations {
   background: rgba(255, 255, 255, 0.04);

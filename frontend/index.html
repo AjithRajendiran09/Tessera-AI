@@ -267,96 +267,239 @@
       </div>
 
       <!-- Page: Discover Papers -->
-      <div id="page-discover" class="page">
-        <div class="page-header">
-          <div>
-            <h1>🔍 Discover Papers</h1>
-            <p class="page-desc">Search for Scopus-indexed papers by keyword or research domain</p>
+      <!-- Page: Discover Papers (Scopus Interface) -->
+      <div id="page-discover" class="page scopus-theme">
+        <!-- Scopus Branding & Search Banner -->
+        <div class="scopus-header-banner">
+          <div class="scopus-brand">
+            <div class="scopus-logo-mark">
+              <span class="scopus-logo-circle"></span>
+              <span class="scopus-logo-text">Scopus</span>
+            </div>
+            <span class="scopus-brand-tagline">Elsevier's Abstract & Citation Database</span>
           </div>
-        </div>
-        <div class="discover-search-container" id="discover-search-container">
-          <div class="discover-search-bar">
-            <div class="discover-search-input-wrap">
-              <span class="discover-search-icon">🔎</span>
-              <input type="text" id="discover-query" class="discover-query-input" placeholder="Enter keyword, topic, or research domain..." />
-            </div>
-            <button class="btn btn-primary discover-search-btn" id="btn-discover-search">Search</button>
-          </div>
-          <div class="discover-filters">
-            <div class="discover-filter-group">
-              <label for="discover-year-from">From</label>
-              <input type="number" id="discover-year-from" class="discover-filter-input" placeholder="2020" min="1900" max="2030" />
-            </div>
-            <div class="discover-filter-group">
-              <label for="discover-year-to">To</label>
-              <input type="number" id="discover-year-to" class="discover-filter-input" placeholder="2026" min="1900" max="2030" />
-            </div>
-            <div class="discover-filter-group">
-              <label for="discover-sort">Sort by</label>
-              <select id="discover-sort" class="discover-filter-select">
-                <option value="relevance">Relevance</option>
-                <option value="date">Newest First</option>
-                <option value="cited_by_count">Most Cited</option>
-              </select>
-            </div>
-            <div class="discover-filter-group">
-              <label for="discover-index-filter">Indexing</label>
-              <select id="discover-index-filter" class="discover-filter-select">
-                <option value="scopus" selected>✅ Scopus Indexed Only</option>
-                <option value="all">🌐 All Academic Papers</option>
-              </select>
-            </div>
-            <div class="discover-filter-group">
-              <label for="discover-per-page">Per page</label>
-              <select id="discover-per-page" class="discover-filter-select">
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-                <option value="200" selected>200</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <div class="discover-meta" id="discover-meta" style="display:none">
-          <div class="discover-meta-left">
-            <span id="discover-total-text"></span>
-            <span id="discover-source-badge" class="discover-source-badge"></span>
+          <div class="scopus-badge-status">
+            <span class="scopus-live-pill"><span class="scopus-pulse-dot"></span> Elsevier API Connected</span>
           </div>
         </div>
 
-        <!-- In-results live search and filter toolbar -->
-        <div class="discover-filter-bar" id="discover-filter-bar" style="display:none">
-          <div class="discover-filter-bar-header">
-            <div class="discover-local-search-wrap">
-              <span class="discover-local-search-icon">🔎</span>
-              <input type="text" id="discover-local-filter" class="discover-local-filter-input" placeholder="Type to search within these fetched papers (title, author, venue, abstract, DOI)..." autocomplete="off" spellcheck="false" />
-              <button type="button" id="btn-clear-local-filter" class="discover-local-clear-btn" title="Clear filter" style="display:none">✕</button>
-            </div>
-            <div class="discover-filter-stats">
-              <span id="discover-filter-count-badge" class="discover-filter-count-badge"></span>
-            </div>
+        <!-- Scopus Search Tabs -->
+        <div class="scopus-search-tabs">
+          <button class="scopus-tab active" type="button"><span class="scopus-tab-icon">📄</span> Document search</button>
+          <button class="scopus-tab" type="button"><span class="scopus-tab-icon">👤</span> Author search</button>
+          <button class="scopus-tab" type="button"><span class="scopus-tab-icon">🏛️</span> Affiliation search</button>
+        </div>
+
+        <!-- Scopus Query Console -->
+        <div class="scopus-search-card">
+          <div class="scopus-search-card-header">
+            <h3>Search documents</h3>
+            <span class="scopus-search-tips">Searching within: <strong>Article title, Abstract, Keywords</strong></span>
           </div>
-          <div class="discover-quick-chips">
-            <button type="button" class="discover-chip active" data-filter="all">All (<span id="count-chip-all">0</span>)</button>
-            <button type="button" class="discover-chip" data-filter="scopus">✅ Scopus Only (<span id="count-chip-scopus">0</span>)</button>
-            <button type="button" class="discover-chip" data-filter="oa">🔓 Open Access (<span id="count-chip-oa">0</span>)</button>
-            <button type="button" class="discover-chip" data-filter="not-imported">➕ Not in Library (<span id="count-chip-not-imported">0</span>)</button>
+
+          <div class="scopus-query-builder">
+            <div class="scopus-input-row">
+              <div class="scopus-field-select-wrap">
+                <select id="scopus-field-select" class="scopus-field-select">
+                  <option value="TITLE-ABS-KEY" selected>Article title, Abstract, Keywords</option>
+                  <option value="TITLE">Article title</option>
+                  <option value="AUTH">Authors</option>
+                  <option value="SRCTITLE">Source title</option>
+                  <option value="DOI">DOI</option>
+                  <option value="ALL">All fields</option>
+                </select>
+              </div>
+              <div class="scopus-search-input-wrap">
+                <input type="text" id="discover-query" class="scopus-query-input" placeholder="e.g. &quot;graph neural network&quot; AND &quot;fraud detection&quot;" autocomplete="off" spellcheck="false" />
+                <button type="button" id="btn-clear-discover-query" class="scopus-input-clear-btn" title="Clear input" style="display:none">✕</button>
+              </div>
+              <button class="scopus-btn-primary" id="btn-discover-search">
+                <span class="scopus-search-icon">🔍</span> Search Documents
+              </button>
+            </div>
+
+            <!-- Scopus Secondary Refinement Filters -->
+            <div class="scopus-search-options">
+              <div class="scopus-option-group">
+                <label>Date range:</label>
+                <div class="scopus-date-inputs">
+                  <input type="number" id="discover-year-from" class="scopus-mini-input" placeholder="From 2018" min="1950" max="2030" />
+                  <span class="scopus-date-sep">to</span>
+                  <input type="number" id="discover-year-to" class="scopus-mini-input" placeholder="Present" min="1950" max="2030" />
+                </div>
+              </div>
+
+              <div class="scopus-option-group">
+                <label>Document type:</label>
+                <div class="scopus-doc-types">
+                  <label class="scopus-check-label"><input type="checkbox" id="doctype-article" checked /> Articles</label>
+                  <label class="scopus-check-label"><input type="checkbox" id="doctype-conf" checked /> Conference Papers</label>
+                  <label class="scopus-check-label"><input type="checkbox" id="doctype-review" checked /> Reviews</label>
+                </div>
+              </div>
+
+              <div class="scopus-option-group">
+                <label>Indexing filter:</label>
+                <select id="discover-index-filter" class="scopus-mini-select">
+                  <option value="scopus" selected>✅ Strictly Scopus-Indexed</option>
+                  <option value="all">🌐 All Academic Works</option>
+                </select>
+              </div>
+
+              <div class="scopus-option-group">
+                <label>Per page:</label>
+                <select id="discover-per-page" class="scopus-mini-select">
+                  <option value="10">10</option>
+                  <option value="25" selected>25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+                <select id="discover-sort" class="scopus-mini-select" style="display:none">
+                  <option value="relevance">Relevance</option>
+                  <option value="date">Date (newest)</option>
+                  <option value="cited_by_count">Cited by (highest)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="discover-results" id="discover-results"></div>
-        <div class="discover-pagination" id="discover-pagination"></div>
+
+        <!-- 2-Column Scopus Results Layout -->
+        <div class="scopus-results-layout" id="scopus-results-layout" style="display:none">
+          <!-- Left Column: Scopus "Refine results" Facet Sidebar -->
+          <aside class="scopus-sidebar" id="scopus-sidebar">
+            <div class="scopus-sidebar-header">
+              <h4>Refine results</h4>
+              <button class="scopus-link-btn" id="scopus-reset-facets" type="button">Reset all</button>
+            </div>
+
+            <!-- In-results fast filter -->
+            <div class="scopus-local-filter-box">
+              <input type="text" id="discover-local-filter" placeholder="Search within results..." class="scopus-sidebar-filter-input" autocomplete="off" />
+              <button id="btn-clear-local-filter" type="button" class="scopus-sidebar-clear" style="display:none">✕</button>
+            </div>
+
+            <!-- Facet: Open Access -->
+            <div class="scopus-facet-accordion open" data-facet="oa">
+              <div class="scopus-facet-title" onclick="toggleScopusFacet(this)">
+                <span>Open Access</span>
+                <span class="scopus-caret">▾</span>
+              </div>
+              <div class="scopus-facet-body" id="facet-body-oa"></div>
+            </div>
+
+            <!-- Facet: Year -->
+            <div class="scopus-facet-accordion open" data-facet="year">
+              <div class="scopus-facet-title" onclick="toggleScopusFacet(this)">
+                <span>Year</span>
+                <span class="scopus-caret">▾</span>
+              </div>
+              <div class="scopus-facet-body" id="facet-body-year"></div>
+            </div>
+
+            <!-- Facet: Quartile (SJR / CiteScore) -->
+            <div class="scopus-facet-accordion open" data-facet="quartile">
+              <div class="scopus-facet-title" onclick="toggleScopusFacet(this)">
+                <span>Quartile / Metric</span>
+                <span class="scopus-caret">▾</span>
+              </div>
+              <div class="scopus-facet-body" id="facet-body-quartile"></div>
+            </div>
+
+            <!-- Facet: Source Title / Journal -->
+            <div class="scopus-facet-accordion open" data-facet="venue">
+              <div class="scopus-facet-title" onclick="toggleScopusFacet(this)">
+                <span>Source Title</span>
+                <span class="scopus-caret">▾</span>
+              </div>
+              <div class="scopus-facet-body" id="facet-body-venue"></div>
+            </div>
+
+            <!-- Facet: Document Type -->
+            <div class="scopus-facet-accordion open" data-facet="doctype">
+              <div class="scopus-facet-title" onclick="toggleScopusFacet(this)">
+                <span>Document Type</span>
+                <span class="scopus-caret">▾</span>
+              </div>
+              <div class="scopus-facet-body" id="facet-body-doctype"></div>
+            </div>
+          </aside>
+
+          <!-- Right Column: Document Results Table -->
+          <main class="scopus-main-panel">
+            <!-- Results Header / Summary -->
+            <div class="scopus-results-topbar">
+              <div class="scopus-results-counter">
+                <span class="scopus-count-num" id="discover-total-count">0</span>
+                <span class="scopus-count-label">document results</span>
+                <span class="scopus-source-tag" id="discover-source-badge">⚡ Scopus Direct API</span>
+              </div>
+              <div class="scopus-query-preview" id="scopus-query-preview">
+                <code>TITLE-ABS-KEY ( "query" )</code>
+              </div>
+            </div>
+
+            <!-- Batch Actions & Sort Toolbar -->
+            <div class="scopus-action-toolbar">
+              <div class="scopus-toolbar-left">
+                <label class="scopus-select-all-label">
+                  <input type="checkbox" id="scopus-select-all" />
+                  <span>Select all</span>
+                </label>
+                <button class="scopus-tool-btn" id="scopus-btn-batch-import" disabled type="button">
+                  <span>➕</span> Import Selected (<span id="scopus-selected-count">0</span>)
+                </button>
+                <button class="scopus-tool-btn" id="scopus-btn-export-csv" type="button">
+                  <span>📥</span> Export CSV
+                </button>
+              </div>
+              <div class="scopus-toolbar-right">
+                <label for="scopus-sort-select">Sort on:</label>
+                <select id="scopus-sort-select" class="scopus-sort-dropdown">
+                  <option value="relevance" selected>Relevance</option>
+                  <option value="date">Date (newest)</option>
+                  <option value="cited_by_count">Cited by (highest)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Scopus Document Items Container -->
+            <div class="scopus-doc-list" id="discover-results"></div>
+
+            <!-- Pagination -->
+            <div class="scopus-pagination-wrap" id="discover-pagination"></div>
+          </main>
+        </div>
+
+        <!-- Hidden compat elements for state sync -->
+        <div id="discover-meta" style="display:none"><span id="discover-total-text"></span></div>
+        <div id="discover-filter-bar" style="display:none">
+          <span id="discover-filter-count-badge"></span>
+          <span id="count-chip-all">0</span><span id="count-chip-scopus">0</span>
+          <span id="count-chip-oa">0</span><span id="count-chip-not-imported">0</span>
+        </div>
+
+        <!-- Loading State -->
         <div class="discover-loading" id="discover-loading" style="display:none">
-          <div class="discover-spinner"></div>
-          <p>Searching across millions of academic papers...</p>
-          <p class="discover-loading-sub">AI is verifying Scopus indexing status</p>
+          <div class="scopus-loader-ring"></div>
+          <p class="scopus-loading-title">Querying Elsevier Scopus Database...</p>
+          <p class="discover-loading-sub">Retrieving peer-reviewed indexed documents, CiteScores, and SJR percentiles</p>
         </div>
-        <div class="empty-state" id="discover-empty">
-          <span class="empty-icon">🔎</span>
-          <p>Enter a keyword or research domain to discover Scopus-indexed papers</p>
-          <p class="discover-empty-hint">Try: "deep learning", "natural language processing", "blockchain security"</p>
+
+        <!-- Empty State -->
+        <div class="scopus-empty-state" id="discover-empty">
+          <div class="scopus-empty-icon">🔬</div>
+          <h3>Search the Scopus Research Database</h3>
+          <p>Enter keywords, research topics, or author names to retrieve verified Scopus-indexed literature.</p>
+          <div class="scopus-suggested-chips">
+            <button type="button" class="scopus-suggest-chip" data-example="deep reinforcement learning">Deep Reinforcement Learning</button>
+            <button type="button" class="scopus-suggest-chip" data-example="graph neural networks">Graph Neural Networks</button>
+            <button type="button" class="scopus-suggest-chip" data-example="quantum error correction">Quantum Error Correction</button>
+            <button type="button" class="scopus-suggest-chip" data-example="large language models safety">LLM Safety & Alignment</button>
+          </div>
         </div>
       </div>
+
 
       <!-- Page: Admin (User Management) -->
       <div id="page-admin" class="page">
