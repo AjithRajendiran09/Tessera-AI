@@ -2930,29 +2930,39 @@ window.closeModal = closeModal;
     // Metadata
     const metaContainer = $('draft-meta-preview');
     const meta = parsedExcel.metadata || {};
-    metaContainer.innerHTML = Object.entries({
-      Title: meta.title || 'Not specified',
-      Abstract: meta.abstract ? (meta.abstract.substring(0, 200) + (meta.abstract.length > 200 ? '...' : '')) : 'Will be AI-generated',
-      Keywords: meta.keywords || 'Will be AI-generated',
-      'Research Area': meta.researchArea || 'Not specified',
-      Methodology: meta.methodology || 'Not specified',
-      Objective: meta.objective || 'Not specified',
-    }).map(([k, v]) => `
-      <div class="draft-meta-item">
-        <span class="meta-label">${k}</span>
-        <span class="meta-value">${v}</span>
+    metaContainer.innerHTML = `
+      <div class="draft-meta-edit-grid">
+        <div class="draft-meta-edit-field">
+          <label>Paper Title</label>
+          <input type="text" id="draft-step2-title" class="draft-meta-input" value="${escapeHtml(meta.title || '')}" placeholder="AI will generate title if left blank" />
+        </div>
+        <div class="draft-meta-edit-field">
+          <label>Research Area / Topic</label>
+          <input type="text" id="draft-step2-area" class="draft-meta-input" value="${escapeHtml(meta.researchArea || '')}" placeholder="e.g. Artificial Intelligence, Healthcare Informatics (Optional)" />
+        </div>
+        <div class="draft-meta-edit-field">
+          <label>Research Objective</label>
+          <input type="text" id="draft-step2-objective" class="draft-meta-input" value="${escapeHtml(meta.objective || '')}" placeholder="e.g. Synthesize state-of-the-art literature and findings (Optional)" />
+        </div>
+        <div class="draft-meta-edit-field">
+          <label>Methodology</label>
+          <input type="text" id="draft-step2-method" class="draft-meta-input" value="${escapeHtml(meta.methodology || '')}" placeholder="e.g. Systematic Review, Bibliometric Synthesis (Optional)" />
+        </div>
+        <div class="draft-meta-notes">
+          <span class="draft-meta-note-badge">✨ Abstract and Keywords will be synthesized automatically by Gemini AI</span>
+        </div>
       </div>
-    `).join('');
+    `;
 
     // References
     const refs = parsedExcel.references || [];
     $('draft-ref-count').textContent = refs.length;
     const refsContainer = $('draft-refs-preview');
     if (refs.length === 0) {
-      refsContainer.innerHTML = '<p class="draft-no-data">No references found in Excel. AI will generate without citations.</p>';
+      refsContainer.innerHTML = '<p class="draft-no-data">No references detected in Excel. AI will generate content without specific citations.</p>';
     } else {
       refsContainer.innerHTML = refs.map((r, i) => `
-        <div class="draft-ref-item">[${i + 1}] ${r.author} (${r.year}). "${r.title}." <em>${r.journal}</em></div>
+        <div class="draft-ref-item">[${i + 1}] ${escapeHtml(r.author || 'Unknown')} (${escapeHtml(String(r.year || 'n.d.'))}). "${escapeHtml(r.title || 'Untitled')}." <em>${escapeHtml(r.journal || '')}</em></div>
       `).join('');
     }
 
@@ -2967,11 +2977,11 @@ window.closeModal = closeModal;
         const rows = sheet.rows.slice(0, maxRows);
         return `
           <div class="draft-table-card">
-            <h4>📋 ${sheet.sheetName} (${sheet.rows.length} rows, ${sheet.columns.length} columns)</h4>
+            <h4>📋 ${escapeHtml(sheet.sheetName)} (${sheet.rows.length} rows, ${sheet.columns.length} columns)</h4>
             <table>
-              <thead><tr>${sheet.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+              <thead><tr>${sheet.columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
               <tbody>
-                ${rows.map(row => `<tr>${sheet.columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('')}
+                ${rows.map(row => `<tr>${sheet.columns.map(c => `<td>${escapeHtml(String(row[c] ?? ''))}</td>`).join('')}</tr>`).join('')}
                 ${sheet.rows.length > maxRows ? `<tr><td colspan="${sheet.columns.length}" style="text-align:center;color:var(--text-dim);font-style:italic">... ${sheet.rows.length - maxRows} more rows</td></tr>` : ''}
               </tbody>
             </table>
@@ -2988,10 +2998,10 @@ window.closeModal = closeModal;
     } else {
       chartsContainer.innerHTML = charts.map(c => `
         <div class="draft-chart-config-item">
-          <span class="draft-chart-type-badge ${c.type}">${c.type}</span>
-          <h4>${c.chartTitle || 'Unnamed Chart'}</h4>
-          <p>X: ${c.xColumn} → Y: ${c.yColumns.join(', ')}</p>
-          ${c.description ? `<p style="margin-top:4px;font-style:italic">${c.description}</p>` : ''}
+          <span class="draft-chart-type-badge ${escapeHtml(c.type)}">${escapeHtml(c.type)}</span>
+          <h4>${escapeHtml(c.chartTitle || 'Unnamed Chart')}</h4>
+          <p>X: ${escapeHtml(c.xColumn)} → Y: ${escapeHtml(Array.isArray(c.yColumns) ? c.yColumns.join(', ') : c.yColumns)}</p>
+          ${c.description ? `<p style="margin-top:4px;font-style:italic">${escapeHtml(c.description)}</p>` : ''}
         </div>
       `).join('');
     }
@@ -3001,6 +3011,17 @@ window.closeModal = closeModal;
     goToDraftStep(3);
     $('draft-generating').style.display = '';
     $('draft-preview-content').style.display = 'none';
+
+    // Sync any user edits from Step 2 metadata inputs
+    parsedExcel.metadata = parsedExcel.metadata || {};
+    const s2Title = $('draft-step2-title')?.value?.trim();
+    if (s2Title) parsedExcel.metadata.title = s2Title;
+    const s2Area = $('draft-step2-area')?.value?.trim();
+    if (s2Area) parsedExcel.metadata.researchArea = s2Area;
+    const s2Obj = $('draft-step2-objective')?.value?.trim();
+    if (s2Obj) parsedExcel.metadata.objective = s2Obj;
+    const s2Method = $('draft-step2-method')?.value?.trim();
+    if (s2Method) parsedExcel.metadata.methodology = s2Method;
 
     const authorRows = $('draft-authors-list')?.querySelectorAll('.draft-author-row') || [];
     const authors = Array.from(authorRows).map(row => ({

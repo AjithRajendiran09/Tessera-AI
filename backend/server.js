@@ -1874,6 +1874,87 @@ app.post('/api/paper-draft/parse-excel', upload.single('excel'), checkSupabase, 
       }
     }
 
+    // 1. Auto-detect references if no dedicated references sheet was provided
+    if (result.references.length === 0 && result.data.length > 0) {
+      for (const sheet of result.data) {
+        const cols = sheet.columns.map(c => c.toLowerCase().trim());
+        const hasTitle = cols.some(c => c === 'title' || c === 'paper title' || c === 'article title' || c === 'document title');
+        const hasAuthor = cols.some(c => c.includes('author'));
+
+        if (hasTitle && hasAuthor) {
+          result.references = sheet.rows.map(r => {
+            const getVal = (patterns) => {
+              for (const key of Object.keys(r)) {
+                const kl = key.toLowerCase().trim();
+                if (patterns.includes(kl)) return (r[key] ?? '').toString().trim();
+              }
+              return '';
+            };
+            return {
+              author: getVal(['author', 'authors', 'creator', 'first author']),
+              title: getVal(['title', 'paper title', 'article title', 'name']),
+              journal: getVal(['journal', 'venue', 'conference', 'source', 'publisher', 'publication']),
+              year: getVal(['year', 'pub_year', 'publication year', 'date']),
+              volume: getVal(['volume', 'vol']),
+              issue: getVal(['issue', 'no']),
+              pages: getVal(['pages', 'page', 'pp']),
+              doi: getVal(['doi']),
+              url: getVal(['url', 'link', 'scopus url']),
+            };
+          }).filter(r => r.author || r.title);
+
+          if (result.references.length > 0) break;
+        }
+      }
+    }
+
+    // 2. Auto-detect metadata defaults if missing
+    if (!result.metadata.title) {
+      if (result.references.length > 0) {
+        result.metadata.title = `Systematic Literature Review and Bibliometric Analysis of ${result.references.length} Key Studies`;
+        result.metadata.researchArea = result.metadata.researchArea || 'Computer Science and Information Systems';
+        result.metadata.methodology = result.metadata.methodology || 'Systematic Literature Review & Bibliometric Synthesis';
+        result.metadata.objective = result.metadata.objective || `Synthesize findings, thematic distributions, and empirical outcomes across ${result.references.length} analyzed publications.`;
+      } else if (result.data.length > 0) {
+        const readableSheet = result.data[0].sheetName.replace(/_/g, ' ');
+        result.metadata.title = `Empirical Analysis and Investigation of ${readableSheet}`;
+        result.metadata.researchArea = result.metadata.researchArea || 'Applied Data Analytics';
+        result.metadata.methodology = result.metadata.methodology || 'Empirical Quantitative Analysis';
+      }
+    }
+
+    // 3. Auto-detect chart configuration if none provided
+    if (result.charts.length === 0 && result.data.length > 0) {
+      for (const sheet of result.data) {
+        const cols = sheet.columns;
+        const yearCol = cols.find(c => c.toLowerCase().trim() === 'year' || c.toLowerCase().trim() === 'pub_year');
+        if (yearCol) {
+          result.charts.push({
+            chartTitle: 'Publications Distribution by Year',
+            type: 'bar',
+            xColumn: yearCol,
+            yColumns: ['Count'],
+            description: 'Chronological publication trend of analyzed literature.'
+          });
+          break;
+        }
+        const numericCols = cols.filter(c => {
+          return sheet.rows.slice(0, 5).some(r => !isNaN(parseFloat(r[c])) && isFinite(r[c]));
+        });
+        if (numericCols.length > 0 && cols.length > 1) {
+          const catCol = cols.find(c => !numericCols.includes(c)) || cols[0];
+          result.charts.push({
+            chartTitle: `${numericCols[0]} by ${catCol}`,
+            type: 'bar',
+            xColumn: catCol,
+            yColumns: [numericCols[0]],
+            description: `Comparative distribution of ${numericCols[0]} across ${catCol}.`
+          });
+          break;
+        }
+      }
+    }
+
     res.json(result);
   } catch (error) {
     console.error('[Paper Draft] Excel parse error:', error);
@@ -1888,8 +1969,16 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
 
     const { metadata, data, references, charts, citationStyle, authors, pageNumberFormat, workspace_id } = req.body;
 
-    if (!metadata || !metadata.title) {
-      return res.status(400).json({ error: 'Paper metadata with at least a title is required.' });
+    const meta = metadata || {};
+    let resolvedTitle = (meta.title || '').trim();
+    if (!resolvedTitle) {
+      if (references && references.length > 0) {
+        resolvedTitle = `Systematic Literature Review and Bibliometric Analysis of ${references.length} Key Studies`;
+      } else if (data && data.length > 0) {
+        resolvedTitle = `Empirical Investigation and Data Analysis of ${data[0].sheetName.replace(/_/g, ' ')}`;
+      } else {
+        resolvedTitle = 'Academic Research Paper Draft';
+      }
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -1947,13 +2036,13 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
 
     const prompt = `You are an expert academic research paper writer. Write a complete, publication-ready academic paper draft based on the following information.
 
-PAPER TITLE: "${metadata.title}"
+PAPER TITLE: ${meta.title?.trim() ? `"${meta.title.trim()}"` : `Generate a publication-worthy academic paper title (Provisional topic: "${resolvedTitle}")`}
 AUTHORS: ${authorsStr}
-RESEARCH AREA: ${metadata.researchArea || 'Not specified'}
-OBJECTIVE: ${metadata.objective || 'Not specified'}
-METHODOLOGY: ${metadata.methodology || 'Not specified'}
-ABSTRACT NOTES: ${metadata.abstract || 'Generate based on the data and context'}
-KEYWORDS: ${metadata.keywords || 'Generate relevant keywords'}
+RESEARCH AREA: ${meta.researchArea || 'Computer Science and Information Systems'}
+OBJECTIVE: ${meta.objective || 'Provide rigorous analysis and evidence-based synthesis of the presented findings and literature'}
+METHODOLOGY: ${meta.methodology || 'Systematic Analysis and Empirical Evaluation'}
+ABSTRACT NOTES: ${meta.abstract || 'Generate based on the data and context'}
+KEYWORDS: ${meta.keywords || 'Generate relevant academic keywords'}
 ${dataContext}
 ${refsContext}
 ${chartsContext}
@@ -2018,7 +2107,24 @@ CRITICAL RULES:
       text = text.slice(jsonStart, jsonEnd + 1);
     }
 
-    const draft = JSON.parse(text);
+    let draft;
+    try {
+      draft = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn('[Paper Draft] JSON parse retry with cleanup:', parseErr.message);
+      const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const s = cleaned.indexOf('{');
+      const e = cleaned.lastIndexOf('}');
+      if (s !== -1 && e !== -1) {
+        draft = JSON.parse(cleaned.slice(s, e + 1));
+      } else {
+        throw new Error('Failed to parse AI-generated draft into valid structure: ' + parseErr.message);
+      }
+    }
+
+    if (draft && !draft.title) {
+      draft.title = resolvedTitle;
+    }
 
     // Format references in the chosen citation style
     const formattedReferences = (references || []).map((ref, i) => ({
@@ -2039,18 +2145,44 @@ CRITICAL RULES:
           }
         }
 
-        const labels = sourceSheet.rows.map(r => r[chartConfig.xColumn] || '').filter(Boolean);
-        const datasets = chartConfig.yColumns.map((yCol, dIdx) => {
-          const colors = ['rgba(124,92,255,0.7)', 'rgba(6,214,160,0.7)', 'rgba(255,107,107,0.7)', 'rgba(255,209,102,0.7)', 'rgba(17,138,178,0.7)'];
-          const borderColors = ['rgba(124,92,255,1)', 'rgba(6,214,160,1)', 'rgba(255,107,107,1)', 'rgba(255,209,102,1)', 'rgba(17,138,178,1)'];
-          return {
-            label: yCol,
-            data: sourceSheet.rows.map(r => parseFloat(r[yCol]) || 0),
-            backgroundColor: colors[dIdx % colors.length],
-            borderColor: borderColors[dIdx % borderColors.length],
+        let labels = [];
+        let datasets = [];
+
+        const isCount = chartConfig.yColumns.length === 1 && chartConfig.yColumns[0].toLowerCase() === 'count';
+
+        if (isCount) {
+          // Frequency aggregation for categorical/chronological values
+          const counts = {};
+          sourceSheet.rows.forEach(r => {
+            const val = (r[chartConfig.xColumn] ?? '').toString().trim();
+            if (val) counts[val] = (counts[val] || 0) + 1;
+          });
+          labels = Object.keys(counts).sort((a, b) => {
+            const na = Number(a), nb = Number(b);
+            if (!isNaN(na) && !isNaN(nb)) return na - nb;
+            return a.localeCompare(b);
+          });
+          datasets = [{
+            label: 'Count',
+            data: labels.map(l => counts[l]),
+            backgroundColor: 'rgba(124,92,255,0.7)',
+            borderColor: 'rgba(124,92,255,1)',
             borderWidth: 2,
-          };
-        });
+          }];
+        } else {
+          labels = sourceSheet.rows.map(r => r[chartConfig.xColumn] || '').filter(Boolean);
+          datasets = chartConfig.yColumns.map((yCol, dIdx) => {
+            const colors = ['rgba(124,92,255,0.7)', 'rgba(6,214,160,0.7)', 'rgba(255,107,107,0.7)', 'rgba(255,209,102,0.7)', 'rgba(17,138,178,0.7)'];
+            const borderColors = ['rgba(124,92,255,1)', 'rgba(6,214,160,1)', 'rgba(255,107,107,1)', 'rgba(255,209,102,1)', 'rgba(17,138,178,1)'];
+            return {
+              label: yCol,
+              data: sourceSheet.rows.map(r => parseFloat(r[yCol]) || 0),
+              backgroundColor: colors[dIdx % colors.length],
+              borderColor: borderColors[dIdx % borderColors.length],
+              borderWidth: 2,
+            };
+          });
+        }
 
         chartData.push({
           figureNumber: idx + 1,

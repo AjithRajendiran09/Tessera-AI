@@ -2658,11 +2658,72 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   }
 }
 
-/* Meta Preview */
+/* Meta Preview & Edit Form */
 .draft-meta-preview {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.draft-meta-edit-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.draft-meta-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.draft-meta-edit-field label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #a78bfa;
+}
+
+.draft-meta-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.draft-meta-input:focus {
+  outline: none;
+  border-color: #7c5cff;
+  box-shadow: 0 0 0 2px rgba(124, 92, 255, 0.2);
+}
+
+.draft-meta-notes {
+  margin-top: 4px;
+}
+
+.draft-meta-note-badge {
+  font-size: 11px;
+  color: #06d6a0;
+  background: rgba(6, 214, 160, 0.1);
+  padding: 5px 10px;
+  border-radius: 6px;
+  display: inline-block;
+  border: 1px solid rgba(6, 214, 160, 0.2);
+}
+
+.draft-label-hint {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--text-dim);
+  margin-left: 6px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .draft-meta-item {
