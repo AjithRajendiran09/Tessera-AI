@@ -1,5 +1,8 @@
 import * as api from './api.js';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import Chart from 'chart.js/auto';
 
 // ── State ──
 let state = { workspaces: [], papers: [], domains: [], gaps: [], stats: null };
@@ -3228,8 +3231,11 @@ window.closeModal = closeModal;
     if (btn) { btn.disabled = true; btn.textContent = 'Generating PDF...'; }
 
     try {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const PDFDoc = jsPDF || window.jspdf?.jsPDF || window.jsPDF;
+      if (!PDFDoc) {
+        throw new Error('PDF generator library is initializing. Please try again in a moment.');
+      }
+      const doc = new PDFDoc({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const draft = generatedResult.draft;
       const refs = generatedResult.formattedReferences || [];
       const chartData = generatedResult.chartData || [];
@@ -3433,17 +3439,20 @@ window.closeModal = closeModal;
 
             // Use autoTable
             const tableRows = table.rows.slice(0, 50).map(row => table.columns.map(c => String(row[c] ?? '')));
-            doc.autoTable({
-              head: [table.columns],
-              body: tableRows,
-              startY: y,
-              margin: { left: margin, right: margin },
-              styles: { fontSize: 8, cellPadding: 2 },
-              headStyles: { fillColor: [124, 92, 255], textColor: 255, fontStyle: 'bold' },
-              alternateRowStyles: { fillColor: [245, 243, 255] },
-              theme: 'grid'
-            });
-            y = doc.lastAutoTable.finalY + 10;
+            const renderTable = typeof autoTable === 'function' ? autoTable : (doc.autoTable ? doc.autoTable.bind(doc) : null);
+            if (renderTable) {
+              renderTable(doc, {
+                head: [table.columns],
+                body: tableRows,
+                startY: y,
+                margin: { left: margin, right: margin },
+                styles: { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: [124, 92, 255], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [245, 243, 255] },
+                theme: 'grid'
+              });
+              y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 40) + 10;
+            }
           }
         }
       }
