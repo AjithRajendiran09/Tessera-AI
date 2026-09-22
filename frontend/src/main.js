@@ -2781,3 +2781,855 @@ function setupModalClose() {
 }
 window.openWorkspaceForm = openWorkspaceForm;
 window.closeModal = closeModal;
+
+// ══════════════════════════════════════════════
+// PAPER DRAFT GENERATOR MODULE
+// ══════════════════════════════════════════════
+(function initPaperDraft() {
+  let draftStep = 1;
+  let draftFile = null;
+  let parsedExcel = null;
+  let generatedResult = null;
+  let citationStyle = 'APA';
+  let pageNumberFormat = 'arabic';
+  let chartInstances = [];
+
+  function setupPaperDraft() {
+    // Dropzone
+    const dropzone = $('draft-dropzone');
+    const fileInput = $('draft-file-input');
+    if (!dropzone || !fileInput) return;
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length > 0) handleDraftFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleDraftFile(fileInput.files[0]); });
+
+    // Remove file
+    $('draft-file-remove')?.addEventListener('click', e => {
+      e.stopPropagation();
+      draftFile = null;
+      dropzone.querySelector('.draft-dropzone-content').style.display = '';
+      $('draft-file-success').style.display = 'none';
+      $('draft-next-1').disabled = true;
+    });
+
+    // Template download
+    $('draft-download-template')?.addEventListener('click', e => {
+      e.preventDefault();
+      generateAndDownloadTemplate();
+    });
+
+    // Format pills
+    $('draft-format-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-format-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        citationStyle = pill.dataset.format;
+      });
+    });
+
+    // Page number pills
+    $('draft-pagenumber-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-pagenumber-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        pageNumberFormat = pill.dataset.format;
+      });
+    });
+
+    // Add author
+    $('draft-add-author')?.addEventListener('click', () => {
+      const list = $('draft-authors-list');
+      if (list.children.length >= 5) return;
+      const row = document.createElement('div');
+      row.className = 'draft-author-row';
+      row.innerHTML = `
+        <input type="text" class="draft-author-name" placeholder="Full Name" />
+        <input type="text" class="draft-author-affil" placeholder="Affiliation" />
+        <input type="text" class="draft-author-email" placeholder="Email" />
+      `;
+      list.appendChild(row);
+    });
+
+    // Navigation buttons
+    $('draft-next-1')?.addEventListener('click', parseAndGoToStep2);
+    $('draft-back-2')?.addEventListener('click', () => goToDraftStep(1));
+    $('draft-next-2')?.addEventListener('click', generateDraft);
+    $('draft-back-3')?.addEventListener('click', () => goToDraftStep(2));
+    $('draft-next-3')?.addEventListener('click', generateAndDownloadPDF);
+    $('draft-download-btn')?.addEventListener('click', generateAndDownloadPDF);
+    $('draft-restart')?.addEventListener('click', resetDraftWizard);
+  }
+
+  function handleDraftFile(file) {
+    if (!file) return;
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      toast('Please upload an Excel file (.xlsx, .xls)', true);
+      return;
+    }
+    draftFile = file;
+    const dropzone = $('draft-dropzone');
+    dropzone.querySelector('.draft-dropzone-content').style.display = 'none';
+    $('draft-file-success').style.display = '';
+    $('draft-file-name').textContent = file.name;
+    $('draft-next-1').disabled = false;
+  }
+
+  function goToDraftStep(step) {
+    draftStep = step;
+    // Update stepper
+    document.querySelectorAll('.draft-step').forEach(s => {
+      const sNum = parseInt(s.dataset.step);
+      s.classList.remove('active', 'done');
+      if (sNum === step) s.classList.add('active');
+      else if (sNum < step) s.classList.add('done');
+    });
+    document.querySelectorAll('.draft-step-line').forEach((line, i) => {
+      line.classList.toggle('done', i + 1 < step);
+    });
+    // Show/hide panels
+    for (let i = 1; i <= 4; i++) {
+      const panel = $('draft-step-' + i);
+      if (panel) panel.style.display = i === step ? '' : 'none';
+    }
+  }
+
+  async function parseAndGoToStep2() {
+    if (!draftFile) return;
+    const nextBtn = $('draft-next-1');
+    nextBtn.disabled = true;
+    nextBtn.textContent = 'Parsing...';
+
+    try {
+      parsedExcel = await api.parseExcelForDraft(draftFile, currentWorkspace?.id);
+
+      // Override title if user typed one
+      const userTitle = $('draft-title')?.value?.trim();
+      if (userTitle) parsedExcel.metadata.title = userTitle;
+      else if (parsedExcel.metadata.title) $('draft-title').value = parsedExcel.metadata.title;
+
+      renderStep2Preview();
+      goToDraftStep(2);
+      toast('Excel parsed successfully!');
+    } catch (err) {
+      toast(err.message || 'Failed to parse Excel', true);
+    } finally {
+      nextBtn.disabled = false;
+      nextBtn.textContent = 'Parse Excel & Continue →';
+    }
+  }
+
+  function renderStep2Preview() {
+    // Metadata
+    const metaContainer = $('draft-meta-preview');
+    const meta = parsedExcel.metadata || {};
+    metaContainer.innerHTML = Object.entries({
+      Title: meta.title || 'Not specified',
+      Abstract: meta.abstract ? (meta.abstract.substring(0, 200) + (meta.abstract.length > 200 ? '...' : '')) : 'Will be AI-generated',
+      Keywords: meta.keywords || 'Will be AI-generated',
+      'Research Area': meta.researchArea || 'Not specified',
+      Methodology: meta.methodology || 'Not specified',
+      Objective: meta.objective || 'Not specified',
+    }).map(([k, v]) => `
+      <div class="draft-meta-item">
+        <span class="meta-label">${k}</span>
+        <span class="meta-value">${v}</span>
+      </div>
+    `).join('');
+
+    // References
+    const refs = parsedExcel.references || [];
+    $('draft-ref-count').textContent = refs.length;
+    const refsContainer = $('draft-refs-preview');
+    if (refs.length === 0) {
+      refsContainer.innerHTML = '<p class="draft-no-data">No references found in Excel. AI will generate without citations.</p>';
+    } else {
+      refsContainer.innerHTML = refs.map((r, i) => `
+        <div class="draft-ref-item">[${i + 1}] ${r.author} (${r.year}). "${r.title}." <em>${r.journal}</em></div>
+      `).join('');
+    }
+
+    // Data Tables
+    const dataSheets = parsedExcel.data || [];
+    const tablesContainer = $('draft-tables-preview');
+    if (dataSheets.length === 0) {
+      tablesContainer.innerHTML = '<p class="draft-no-data">No data sheets found. Add a data sheet to include tables and charts in your paper.</p>';
+    } else {
+      tablesContainer.innerHTML = dataSheets.map(sheet => {
+        const maxRows = 10;
+        const rows = sheet.rows.slice(0, maxRows);
+        return `
+          <div class="draft-table-card">
+            <h4>📋 ${sheet.sheetName} (${sheet.rows.length} rows, ${sheet.columns.length} columns)</h4>
+            <table>
+              <thead><tr>${sheet.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+              <tbody>
+                ${rows.map(row => `<tr>${sheet.columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('')}
+                ${sheet.rows.length > maxRows ? `<tr><td colspan="${sheet.columns.length}" style="text-align:center;color:var(--text-dim);font-style:italic">... ${sheet.rows.length - maxRows} more rows</td></tr>` : ''}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Charts Config
+    const charts = parsedExcel.charts || [];
+    const chartsContainer = $('draft-charts-config');
+    if (charts.length === 0) {
+      chartsContainer.innerHTML = '<p class="draft-no-data">No chart configuration found. Add a "Charts" sheet to auto-generate visualizations.</p>';
+    } else {
+      chartsContainer.innerHTML = charts.map(c => `
+        <div class="draft-chart-config-item">
+          <span class="draft-chart-type-badge ${c.type}">${c.type}</span>
+          <h4>${c.chartTitle || 'Unnamed Chart'}</h4>
+          <p>X: ${c.xColumn} → Y: ${c.yColumns.join(', ')}</p>
+          ${c.description ? `<p style="margin-top:4px;font-style:italic">${c.description}</p>` : ''}
+        </div>
+      `).join('');
+    }
+  }
+
+  async function generateDraft() {
+    goToDraftStep(3);
+    $('draft-generating').style.display = '';
+    $('draft-preview-content').style.display = 'none';
+
+    const authorRows = $('draft-authors-list')?.querySelectorAll('.draft-author-row') || [];
+    const authors = Array.from(authorRows).map(row => ({
+      name: row.querySelector('.draft-author-name')?.value?.trim() || '',
+      affiliation: row.querySelector('.draft-author-affil')?.value?.trim() || '',
+      email: row.querySelector('.draft-author-email')?.value?.trim() || '',
+    })).filter(a => a.name);
+
+    try {
+      generatedResult = await api.generatePaperDraft({
+        metadata: parsedExcel.metadata,
+        data: parsedExcel.data,
+        references: parsedExcel.references,
+        charts: parsedExcel.charts,
+        citationStyle,
+        authors,
+        pageNumberFormat,
+        workspace_id: currentWorkspace?.id
+      });
+
+      renderDraftPreview();
+      $('draft-generating').style.display = 'none';
+      $('draft-preview-content').style.display = '';
+      toast('Paper draft generated!');
+    } catch (err) {
+      toast(err.message || 'Failed to generate draft', true);
+      goToDraftStep(2);
+    }
+  }
+
+  function renderDraftPreview() {
+    const container = $('draft-preview-paper');
+    const draft = generatedResult.draft;
+    const refs = generatedResult.formattedReferences || [];
+    const chartData = generatedResult.chartData || [];
+    const dataTables = generatedResult.dataTables || [];
+    const authors = generatedResult.authors || [];
+
+    let html = '';
+
+    // Title
+    html += `<h1 class="draft-paper-title">${draft.title || parsedExcel.metadata?.title || 'Untitled Paper'}</h1>`;
+
+    // Authors
+    if (authors.length > 0) {
+      html += `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}`).join(' · ')}</p>`;
+    }
+
+    // Abstract
+    html += `
+      <div class="draft-paper-abstract">
+        <h4>Abstract</h4>
+        <p>${draft.abstract || ''}</p>
+      </div>
+    `;
+
+    // Keywords
+    if (draft.keywords && draft.keywords.length > 0) {
+      html += `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>`;
+    }
+
+    // Sections
+    (draft.sections || []).forEach((section, sIdx) => {
+      html += `
+        <div class="draft-section" id="draft-section-${sIdx}">
+          <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})">✏️ Edit</button>
+          <h2 class="draft-section-heading">${section.heading}</h2>
+          <div class="draft-section-content" id="draft-section-content-${sIdx}">${section.content}</div>
+        </div>
+      `;
+
+      // Insert charts/tables after Results section
+      if (section.heading.toLowerCase().includes('result')) {
+        // Charts
+        chartData.forEach((chart, cIdx) => {
+          html += `
+            <div class="draft-chart-container" id="draft-chart-preview-${cIdx}">
+              <canvas id="draft-chart-preview-canvas-${cIdx}" width="700" height="350"></canvas>
+              <p class="chart-caption">Figure ${chart.figureNumber}: ${chart.title}</p>
+            </div>
+          `;
+        });
+
+        // Data Tables
+        dataTables.forEach(table => {
+          const maxPreviewRows = 15;
+          const rows = table.rows.slice(0, maxPreviewRows);
+          html += `
+            <div class="draft-data-table-wrap">
+              <h4>${table.title}</h4>
+              <table>
+                <thead><tr>${table.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+                <tbody>${rows.map(row => `<tr>${table.columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('')}</tbody>
+              </table>
+              ${table.totalRows > maxPreviewRows ? `<p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:4px">Showing ${maxPreviewRows} of ${table.totalRows} rows</p>` : ''}
+            </div>
+          `;
+        });
+      }
+    });
+
+    // Acknowledgments
+    if (draft.acknowledgments) {
+      html += `
+        <div class="draft-section">
+          <h2 class="draft-section-heading">Acknowledgments</h2>
+          <div class="draft-section-content">${draft.acknowledgments}</div>
+        </div>
+      `;
+    }
+
+    // References
+    if (refs.length > 0) {
+      html += `
+        <div class="draft-references-section">
+          <h3>References</h3>
+          <div class="draft-ref-list">
+            ${refs.map(r => `<p class="draft-ref-formatted">${r.formatted}</p>`).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = html;
+
+    // Render Chart.js charts after DOM update
+    setTimeout(() => renderPreviewCharts(chartData), 200);
+  }
+
+  function renderPreviewCharts(chartData) {
+    // Destroy old chart instances
+    chartInstances.forEach(c => { try { c.destroy(); } catch(e){} });
+    chartInstances = [];
+
+    chartData.forEach((chart, idx) => {
+      const canvas = document.getElementById(`draft-chart-preview-canvas-${idx}`);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const instance = new Chart(ctx, {
+        type: chart.type === 'pie' ? 'pie' : chart.type === 'line' ? 'line' : 'bar',
+        data: chart.data,
+        options: {
+          ...chart.options,
+          responsive: true,
+          maintainAspectRatio: true,
+          animation: { duration: 800 },
+          plugins: {
+            ...(chart.options?.plugins || {}),
+            title: {
+              display: true,
+              text: `Figure ${chart.figureNumber}: ${chart.title}`,
+              font: { size: 14, weight: 'bold' }
+            }
+          }
+        }
+      });
+      chartInstances.push(instance);
+    });
+  }
+
+  // Inline edit toggle
+  window._draftToggleEdit = function(sIdx) {
+    const contentEl = document.getElementById(`draft-section-content-${sIdx}`);
+    const btn = document.querySelector(`#draft-section-${sIdx} .draft-section-edit-btn`);
+    if (!contentEl) return;
+
+    if (contentEl.tagName === 'DIV') {
+      const text = contentEl.textContent;
+      const textarea = document.createElement('textarea');
+      textarea.className = 'draft-section-textarea';
+      textarea.value = text;
+      textarea.id = `draft-section-content-${sIdx}`;
+      contentEl.replaceWith(textarea);
+      btn.textContent = '💾 Save';
+    } else {
+      const text = contentEl.value;
+      const div = document.createElement('div');
+      div.className = 'draft-section-content';
+      div.id = `draft-section-content-${sIdx}`;
+      div.textContent = text;
+      contentEl.replaceWith(div);
+      btn.textContent = '✏️ Edit';
+      // Update draft data
+      if (generatedResult?.draft?.sections?.[sIdx]) {
+        generatedResult.draft.sections[sIdx].content = text;
+      }
+    }
+  };
+
+  function toRoman(num) {
+    const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+    const syms = ['m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i'];
+    let result = '';
+    for (let i = 0; i < vals.length; i++) {
+      while (num >= vals[i]) { result += syms[i]; num -= vals[i]; }
+    }
+    return result;
+  }
+
+  async function generateAndDownloadPDF() {
+    if (!generatedResult) return;
+
+    const btn = $('draft-next-3') || $('draft-download-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating PDF...'; }
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const draft = generatedResult.draft;
+      const refs = generatedResult.formattedReferences || [];
+      const chartData = generatedResult.chartData || [];
+      const dataTables = generatedResult.dataTables || [];
+      const authors = generatedResult.authors || [];
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 25;
+      const contentWidth = pageWidth - margin * 2;
+      let pageNum = 0;
+
+      function formatPageNum(n) {
+        if (pageNumberFormat === 'none') return '';
+        if (pageNumberFormat === 'roman') return toRoman(n);
+        return String(n);
+      }
+
+      function addPageNumber() {
+        pageNum++;
+        const pn = formatPageNum(pageNum);
+        if (pn) {
+          doc.setFontSize(10);
+          doc.setTextColor(150);
+          doc.text(pn, pageWidth / 2, pageHeight - 10, { align: 'center' });
+          doc.setTextColor(0);
+        }
+      }
+
+      function addHeader() {
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        const shortTitle = (draft.title || '').substring(0, 60);
+        doc.text(shortTitle, margin, 12);
+        doc.setTextColor(0);
+      }
+
+      function checkPage(y, needed) {
+        if (y + needed > pageHeight - 20) {
+          doc.addPage();
+          addPageNumber();
+          addHeader();
+          return 25;
+        }
+        return y;
+      }
+
+      // ── Title Page ──
+      doc.setFontSize(28);
+      doc.setFont('helvetica', 'bold');
+      const titleLines = doc.splitTextToSize(draft.title || 'Untitled Paper', contentWidth);
+      const titleY = 80;
+      doc.text(titleLines, pageWidth / 2, titleY, { align: 'center' });
+
+      let ty = titleY + titleLines.length * 12 + 15;
+
+      // Authors
+      if (authors.length > 0) {
+        doc.setFontSize(13);
+        doc.setFont('helvetica', 'normal');
+        authors.forEach(a => {
+          doc.text(a.name, pageWidth / 2, ty, { align: 'center' });
+          ty += 6;
+          if (a.affiliation) {
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(a.affiliation, pageWidth / 2, ty, { align: 'center' });
+            doc.setTextColor(0);
+            ty += 5;
+          }
+          if (a.email) {
+            doc.setFontSize(9);
+            doc.setTextColor(120);
+            doc.text(a.email, pageWidth / 2, ty, { align: 'center' });
+            doc.setTextColor(0);
+            ty += 5;
+          }
+          ty += 3;
+          doc.setFontSize(13);
+        });
+      }
+
+      // Date
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth / 2, ty + 10, { align: 'center' });
+      doc.setTextColor(0);
+
+      // Citation style badge
+      doc.setFontSize(9);
+      doc.setTextColor(130);
+      doc.text(`Citation Format: ${citationStyle} | Generated by Tessera AI`, pageWidth / 2, pageHeight - 25, { align: 'center' });
+      doc.setTextColor(0);
+
+      addPageNumber();
+
+      // ── Abstract Page ──
+      doc.addPage();
+      addPageNumber();
+      let y = 25;
+
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Abstract', margin, y);
+      y += 10;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      const absLines = doc.splitTextToSize(draft.abstract || '', contentWidth);
+      absLines.forEach(line => {
+        y = checkPage(y, 6);
+        doc.text(line, margin, y);
+        y += 5.5;
+      });
+
+      // Keywords
+      if (draft.keywords && draft.keywords.length > 0) {
+        y += 5;
+        y = checkPage(y, 10);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text('Keywords: ', margin, y);
+        doc.setFont('helvetica', 'italic');
+        doc.text(draft.keywords.join(', '), margin + doc.getTextWidth('Keywords: '), y);
+        doc.setFont('helvetica', 'normal');
+        y += 10;
+      }
+
+      // ── Sections ──
+      for (const section of (draft.sections || [])) {
+        y += 8;
+        y = checkPage(y, 20);
+
+        // Section heading
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(section.heading, margin, y);
+        y += 8;
+
+        // Section content
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+
+        // Get possibly-edited content
+        const sIdx = draft.sections.indexOf(section);
+        const editedEl = document.getElementById(`draft-section-content-${sIdx}`);
+        const content = editedEl ? (editedEl.tagName === 'TEXTAREA' ? editedEl.value : editedEl.textContent) : section.content;
+
+        const paragraphs = content.split(/\n\n+/);
+        for (const para of paragraphs) {
+          const lines = doc.splitTextToSize(para.trim(), contentWidth);
+          for (const line of lines) {
+            y = checkPage(y, 6);
+            doc.text(line, margin, y);
+            y += 5.5;
+          }
+          y += 3; // paragraph spacing
+        }
+
+        // Insert charts after Results section
+        if (section.heading.toLowerCase().includes('result')) {
+          // Charts
+          for (const chart of chartData) {
+            y += 5;
+            y = checkPage(y, 80);
+
+            // Render chart to hidden canvas and get image
+            try {
+              const chartImg = await renderChartToImage(chart);
+              if (chartImg) {
+                const imgWidth = contentWidth * 0.85;
+                const imgHeight = imgWidth * 0.5;
+                y = checkPage(y, imgHeight + 20);
+                const xOffset = margin + (contentWidth - imgWidth) / 2;
+                doc.addImage(chartImg, 'PNG', xOffset, y, imgWidth, imgHeight);
+                y += imgHeight + 5;
+
+                // Caption
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'italic');
+                doc.text(`Figure ${chart.figureNumber}: ${chart.title}`, pageWidth / 2, y, { align: 'center' });
+                doc.setFont('helvetica', 'normal');
+                y += 10;
+              }
+            } catch (chartErr) {
+              console.warn('Chart render error:', chartErr);
+            }
+          }
+
+          // Data Tables
+          for (const table of dataTables) {
+            y += 5;
+            y = checkPage(y, 30);
+
+            // Table title
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'italic');
+            doc.text(table.title, pageWidth / 2, y, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            y += 5;
+
+            // Use autoTable
+            const tableRows = table.rows.slice(0, 50).map(row => table.columns.map(c => String(row[c] ?? '')));
+            doc.autoTable({
+              head: [table.columns],
+              body: tableRows,
+              startY: y,
+              margin: { left: margin, right: margin },
+              styles: { fontSize: 8, cellPadding: 2 },
+              headStyles: { fillColor: [124, 92, 255], textColor: 255, fontStyle: 'bold' },
+              alternateRowStyles: { fillColor: [245, 243, 255] },
+              theme: 'grid'
+            });
+            y = doc.lastAutoTable.finalY + 10;
+          }
+        }
+      }
+
+      // Acknowledgments
+      if (draft.acknowledgments) {
+        y += 8;
+        y = checkPage(y, 20);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Acknowledgments', margin, y);
+        y += 8;
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        const ackLines = doc.splitTextToSize(draft.acknowledgments, contentWidth);
+        for (const line of ackLines) {
+          y = checkPage(y, 6);
+          doc.text(line, margin, y);
+          y += 5.5;
+        }
+      }
+
+      // ── References ──
+      if (refs.length > 0) {
+        doc.addPage();
+        addPageNumber();
+        addHeader();
+        y = 25;
+
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('References', margin, y);
+        y += 10;
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+
+        refs.forEach((ref) => {
+          // Strip markdown italic markers for PDF
+          const cleanRef = ref.formatted.replace(/\*/g, '');
+          const lines = doc.splitTextToSize(cleanRef, contentWidth - 10);
+          y = checkPage(y, lines.length * 5 + 4);
+          lines.forEach((line, lIdx) => {
+            doc.text(line, margin + (lIdx === 0 ? 0 : 8), y);
+            y += 4.5;
+          });
+          y += 3;
+        });
+      }
+
+      // Save
+      const filename = (draft.title || 'paper_draft').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50) + '.pdf';
+      doc.save(filename);
+
+      // Go to step 4
+      goToDraftStep(4);
+      $('draft-download-meta').innerHTML = `
+        <span>📄 ${citationStyle} Format</span>
+        <span>📊 ${chartData.length} Charts</span>
+        <span>📋 ${dataTables.length} Tables</span>
+        <span>📚 ${refs.length} References</span>
+        <span>📝 ${(draft.sections || []).length} Sections</span>
+      `;
+
+      toast('PDF downloaded!');
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      toast('Failed to generate PDF: ' + err.message, true);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '📄 Generate PDF & Download →'; }
+    }
+  }
+
+  function renderChartToImage(chart) {
+    return new Promise((resolve) => {
+      const canvas = $('draft-chart-canvas');
+      if (!canvas) return resolve(null);
+
+      // Ensure clean canvas
+      canvas.width = 800;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 800, 400);
+
+      // Destroy any previous chart on this canvas
+      const existingChart = Chart.getChart(canvas);
+      if (existingChart) existingChart.destroy();
+
+      const chartInstance = new Chart(ctx, {
+        type: chart.type === 'pie' ? 'pie' : chart.type === 'line' ? 'line' : 'bar',
+        data: JSON.parse(JSON.stringify(chart.data)), // deep clone
+        options: {
+          responsive: false,
+          animation: false,
+          plugins: {
+            title: {
+              display: true,
+              text: `Figure ${chart.figureNumber}: ${chart.title}`,
+              font: { size: 14, weight: 'bold' },
+              color: '#333'
+            },
+            legend: { labels: { color: '#333' } }
+          },
+          scales: chart.type !== 'pie' ? {
+            y: { beginAtZero: true, ticks: { color: '#666' }, title: { display: true, text: chart.options?.scales?.y?.title?.text || '', color: '#666' } },
+            x: { ticks: { color: '#666' }, title: { display: true, text: chart.options?.scales?.x?.title?.text || '', color: '#666' } }
+          } : undefined
+        }
+      });
+
+      // Wait for chart to render then export
+      setTimeout(() => {
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          chartInstance.destroy();
+          resolve(dataUrl);
+        } catch (e) {
+          chartInstance.destroy();
+          resolve(null);
+        }
+      }, 300);
+    });
+  }
+
+  function resetDraftWizard() {
+    draftStep = 1;
+    draftFile = null;
+    parsedExcel = null;
+    generatedResult = null;
+    citationStyle = 'APA';
+    pageNumberFormat = 'arabic';
+    chartInstances.forEach(c => { try { c.destroy(); } catch(e){} });
+    chartInstances = [];
+
+    // Reset UI
+    const dropzone = $('draft-dropzone');
+    if (dropzone) {
+      dropzone.querySelector('.draft-dropzone-content').style.display = '';
+      $('draft-file-success').style.display = 'none';
+    }
+    $('draft-title').value = '';
+    $('draft-next-1').disabled = true;
+    $('draft-file-input').value = '';
+
+    // Reset pills
+    $('draft-format-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+    $('draft-format-pills')?.querySelector('[data-format="APA"]')?.classList.add('active');
+    $('draft-pagenumber-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+    $('draft-pagenumber-pills')?.querySelector('[data-format="arabic"]')?.classList.add('active');
+
+    // Reset authors
+    const authorsList = $('draft-authors-list');
+    if (authorsList) {
+      authorsList.innerHTML = `
+        <div class="draft-author-row">
+          <input type="text" class="draft-author-name" placeholder="Full Name" />
+          <input type="text" class="draft-author-affil" placeholder="Affiliation" />
+          <input type="text" class="draft-author-email" placeholder="Email" />
+        </div>
+      `;
+    }
+
+    goToDraftStep(1);
+  }
+
+  function generateAndDownloadTemplate() {
+    // Generate a sample Excel template using xlsx
+    const wb = XLSX.utils.book_new();
+
+    // Metadata sheet
+    const metaData = [
+      { 'Paper Title': 'Your Research Paper Title', 'Abstract': 'Brief abstract or notes for AI to expand...', 'Keywords': 'keyword1, keyword2, keyword3', 'Research Area': 'Computer Science', 'Methodology': 'Quantitative / Qualitative / Mixed', 'Objective': 'What this paper aims to achieve' }
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(metaData), 'Metadata');
+
+    // Data sheet
+    const sampleData = [
+      { 'Category': 'Method A', 'Accuracy': 92.5, 'Precision': 91.2, 'Recall': 93.8, 'F1 Score': 92.5 },
+      { 'Category': 'Method B', 'Accuracy': 88.3, 'Precision': 87.1, 'Recall': 89.5, 'F1 Score': 88.3 },
+      { 'Category': 'Method C', 'Accuracy': 95.1, 'Precision': 94.6, 'Recall': 95.7, 'F1 Score': 95.1 },
+      { 'Category': 'Proposed', 'Accuracy': 97.2, 'Precision': 96.8, 'Recall': 97.6, 'F1 Score': 97.2 },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sampleData), 'Data');
+
+    // References sheet
+    const refsData = [
+      { 'Author': 'Smith, J. et al.', 'Title': 'A Survey of Deep Learning Methods', 'Journal': 'IEEE Transactions on Neural Networks', 'Year': 2023, 'Volume': '34', 'Issue': '2', 'Pages': '125-142', 'DOI': '10.1109/TNN.2023.001' },
+      { 'Author': 'Wang, L. and Chen, H.', 'Title': 'Transformer Architectures for NLP', 'Journal': 'ACM Computing Surveys', 'Year': 2022, 'Volume': '55', 'Issue': '4', 'Pages': '1-35', 'DOI': '10.1145/3505244' },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(refsData), 'References');
+
+    // Charts sheet
+    const chartsData = [
+      { 'Chart Title': 'Performance Comparison', 'Type': 'bar', 'X Column': 'Category', 'Y Column': 'Accuracy, F1 Score', 'Description': 'Comparing accuracy and F1 scores across methods' },
+      { 'Chart Title': 'Precision vs Recall', 'Type': 'line', 'X Column': 'Category', 'Y Column': 'Precision, Recall', 'Description': 'Precision and recall trade-off visualization' },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(chartsData), 'Charts');
+
+    XLSX.writeFile(wb, 'Tessera_Paper_Draft_Template.xlsx');
+    toast('Template downloaded!');
+  }
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupPaperDraft);
+  } else {
+    setupPaperDraft();
+  }
+})();

@@ -12,6 +12,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/src/styles.css" />
   <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
   <div class="bg-glow bg-glow-1"></div>
@@ -142,6 +145,9 @@
         </button>
         <button class="nav-item" data-page="discover">
           <span class="nav-icon">🔍</span> Discover Papers
+        </button>
+        <button class="nav-item" data-page="paper-draft">
+          <span class="nav-icon">📝</span> Paper Draft
         </button>
         <!-- Admin nav item (hidden by default, shown for admin users) -->
         <button class="nav-item nav-admin" data-page="admin" id="nav-admin" style="display:none">
@@ -500,6 +506,176 @@
         </div>
       </div>
 
+
+      <!-- Page: Paper Draft Generator -->
+      <div id="page-paper-draft" class="page">
+        <div class="page-header">
+          <div>
+            <h1>📝 Paper Draft Generator</h1>
+            <p class="page-desc">Upload an Excel sheet → AI generates a complete academic paper with charts, tables, and references</p>
+          </div>
+        </div>
+
+        <!-- Wizard Stepper -->
+        <div class="draft-stepper" id="draft-stepper">
+          <div class="draft-step active" data-step="1">
+            <div class="draft-step-circle">1</div>
+            <span class="draft-step-label">Upload & Configure</span>
+          </div>
+          <div class="draft-step-line"></div>
+          <div class="draft-step" data-step="2">
+            <div class="draft-step-circle">2</div>
+            <span class="draft-step-label">Preview Data</span>
+          </div>
+          <div class="draft-step-line"></div>
+          <div class="draft-step" data-step="3">
+            <div class="draft-step-circle">3</div>
+            <span class="draft-step-label">AI Draft</span>
+          </div>
+          <div class="draft-step-line"></div>
+          <div class="draft-step" data-step="4">
+            <div class="draft-step-circle">4</div>
+            <span class="draft-step-label">Download</span>
+          </div>
+        </div>
+
+        <!-- Step 1: Upload & Configure -->
+        <div class="draft-panel" id="draft-step-1">
+          <div class="draft-two-col">
+            <!-- Left: Upload -->
+            <div class="draft-card">
+              <h3>📤 Upload Excel File</h3>
+              <p class="draft-card-desc">Upload your research data spreadsheet with metadata, data, references, and chart configuration sheets.</p>
+              <div class="draft-dropzone" id="draft-dropzone">
+                <div class="draft-dropzone-content">
+                  <span class="draft-dropzone-icon">📊</span>
+                  <p class="draft-dropzone-text">Drag & drop your Excel file here</p>
+                  <p class="draft-dropzone-sub">or click to browse (.xlsx, .xls)</p>
+                  <input type="file" id="draft-file-input" accept=".xlsx,.xls,.csv" style="display:none" />
+                </div>
+                <div class="draft-dropzone-success" id="draft-file-success" style="display:none">
+                  <span class="draft-dropzone-check">✅</span>
+                  <p class="draft-file-name" id="draft-file-name">file.xlsx</p>
+                  <button class="btn btn-ghost btn-sm" id="draft-file-remove">Remove</button>
+                </div>
+              </div>
+              <a href="#" class="draft-template-link" id="draft-download-template">📥 Download Excel Template</a>
+            </div>
+
+            <!-- Right: Configure -->
+            <div class="draft-card">
+              <h3>⚙️ Paper Configuration</h3>
+
+              <div class="draft-field">
+                <label for="draft-title">Paper Title</label>
+                <input type="text" id="draft-title" placeholder="Enter or override paper title from Excel" />
+              </div>
+
+              <div class="draft-field">
+                <label>Citation Format</label>
+                <div class="draft-format-pills" id="draft-format-pills">
+                  <button class="draft-pill active" data-format="APA">APA 7th</button>
+                  <button class="draft-pill" data-format="MLA">MLA 9th</button>
+                  <button class="draft-pill" data-format="IEEE">IEEE</button>
+                  <button class="draft-pill" data-format="CHICAGO">Chicago</button>
+                </div>
+              </div>
+
+              <div class="draft-field">
+                <label>Page Numbers</label>
+                <div class="draft-format-pills" id="draft-pagenumber-pills">
+                  <button class="draft-pill active" data-format="arabic">1, 2, 3…</button>
+                  <button class="draft-pill" data-format="roman">i, ii, iii…</button>
+                  <button class="draft-pill" data-format="none">None</button>
+                </div>
+              </div>
+
+              <div class="draft-field">
+                <label>Authors (up to 5)</label>
+                <div class="draft-authors-list" id="draft-authors-list">
+                  <div class="draft-author-row">
+                    <input type="text" class="draft-author-name" placeholder="Full Name" />
+                    <input type="text" class="draft-author-affil" placeholder="Affiliation" />
+                    <input type="text" class="draft-author-email" placeholder="Email" />
+                  </div>
+                </div>
+                <button class="btn btn-ghost btn-sm" id="draft-add-author">＋ Add Author</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="draft-nav-buttons">
+            <span></span>
+            <button class="btn btn-primary" id="draft-next-1" disabled>Parse Excel & Continue →</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Preview Data -->
+        <div class="draft-panel" id="draft-step-2" style="display:none">
+          <div class="draft-preview-grid">
+            <div class="draft-card">
+              <h3>📋 Metadata</h3>
+              <div id="draft-meta-preview" class="draft-meta-preview"></div>
+            </div>
+            <div class="draft-card">
+              <h3>📚 References (<span id="draft-ref-count">0</span>)</h3>
+              <div id="draft-refs-preview" class="draft-refs-preview"></div>
+            </div>
+          </div>
+
+          <div class="draft-card" style="margin-top: 16px">
+            <h3>📊 Data Tables</h3>
+            <div id="draft-tables-preview" class="draft-tables-preview"></div>
+          </div>
+
+          <div class="draft-card" style="margin-top: 16px">
+            <h3>📈 Chart Configuration</h3>
+            <div id="draft-charts-config" class="draft-charts-config"></div>
+          </div>
+
+          <div class="draft-nav-buttons">
+            <button class="btn btn-ghost" id="draft-back-2">← Back</button>
+            <button class="btn btn-primary" id="draft-next-2">🤖 Generate AI Draft →</button>
+          </div>
+        </div>
+
+        <!-- Step 3: AI Draft Preview -->
+        <div class="draft-panel" id="draft-step-3" style="display:none">
+          <div class="draft-generating" id="draft-generating">
+            <div class="draft-gen-spinner"></div>
+            <h3>Generating your paper draft...</h3>
+            <p>Gemini AI is writing all sections, formatting citations, and preparing charts. This may take 30-60 seconds.</p>
+          </div>
+
+          <div id="draft-preview-content" style="display:none">
+            <div class="draft-preview-paper" id="draft-preview-paper"></div>
+
+            <div class="draft-nav-buttons">
+              <button class="btn btn-ghost" id="draft-back-3">← Back</button>
+              <button class="btn btn-primary" id="draft-next-3">📄 Generate PDF & Download →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Download -->
+        <div class="draft-panel" id="draft-step-4" style="display:none">
+          <div class="draft-download-card">
+            <div class="draft-download-icon">📄</div>
+            <h2>Your Paper is Ready!</h2>
+            <p class="draft-download-desc">Complete academic paper with formatted sections, charts, data tables, and references.</p>
+            <div class="draft-download-meta" id="draft-download-meta"></div>
+            <button class="btn btn-primary btn-lg" id="draft-download-btn">
+              ⬇️ Download Paper (PDF)
+            </button>
+            <button class="btn btn-ghost" id="draft-restart" style="margin-top:12px">📝 Create Another Draft</button>
+          </div>
+        </div>
+
+        <!-- Hidden canvas for chart rendering -->
+        <div style="position:absolute;left:-9999px;top:-9999px">
+          <canvas id="draft-chart-canvas" width="800" height="400"></canvas>
+        </div>
+      </div>
 
       <!-- Page: Admin (User Management) -->
       <div id="page-admin" class="page">

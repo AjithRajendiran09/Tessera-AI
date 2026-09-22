@@ -1736,6 +1736,368 @@ app.get('/api/dashboard/stats', checkSupabase, authenticateUser, async (req, res
   }
 });
 
+// ── PAPER DRAFT GENERATOR ──
+const XLSX_LIB = require('xlsx');
+
+// Helper: Format a single reference in the given citation style
+function formatReference(ref, style, index) {
+  const authors = (ref.author || ref.authors || 'Unknown Author').trim();
+  const title = (ref.title || 'Untitled').trim();
+  const journal = (ref.journal || ref.conference || ref.venue || '').trim();
+  const year = ref.year || 'n.d.';
+  const volume = ref.volume || '';
+  const issue = ref.issue || '';
+  const pages = ref.pages || '';
+  const doi = ref.doi || '';
+  const url = ref.url || '';
+
+  switch (style.toUpperCase()) {
+    case 'APA':
+      let apa = `${authors} (${year}). ${title}.`;
+      if (journal) apa += ` *${journal}*`;
+      if (volume) apa += `, *${volume}*`;
+      if (issue) apa += `(${issue})`;
+      if (pages) apa += `, ${pages}`;
+      apa += '.';
+      if (doi) apa += ` https://doi.org/${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
+      return apa;
+
+    case 'MLA':
+      let mla = `${authors}. "${title}."`;
+      if (journal) mla += ` *${journal}*`;
+      if (volume) mla += `, vol. ${volume}`;
+      if (issue) mla += `, no. ${issue}`;
+      mla += `, ${year}`;
+      if (pages) mla += `, pp. ${pages}`;
+      mla += '.';
+      if (doi) mla += ` doi:${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
+      return mla;
+
+    case 'IEEE':
+      let ieee = `[${index + 1}] ${authors}, "${title},"`;
+      if (journal) ieee += ` *${journal}*`;
+      if (volume) ieee += `, vol. ${volume}`;
+      if (issue) ieee += `, no. ${issue}`;
+      if (pages) ieee += `, pp. ${pages}`;
+      ieee += `, ${year}.`;
+      if (doi) ieee += ` doi: ${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
+      return ieee;
+
+    case 'CHICAGO':
+      let chi = `${authors}. "${title}."`;
+      if (journal) chi += ` *${journal}*`;
+      if (volume) chi += ` ${volume}`;
+      if (issue) chi += `, no. ${issue}`;
+      chi += ` (${year})`;
+      if (pages) chi += `: ${pages}`;
+      chi += '.';
+      if (doi) chi += ` https://doi.org/${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
+      return chi;
+
+    default:
+      return `${authors} (${year}). ${title}. ${journal}. ${volume}(${issue}), ${pages}.`;
+  }
+}
+
+// POST /api/paper-draft/parse-excel — Parse uploaded Excel file into structured JSON
+app.post('/api/paper-draft/parse-excel', upload.single('excel'), checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No Excel file uploaded.' });
+
+    const workbook = XLSX_LIB.read(req.file.buffer, { type: 'buffer' });
+    const sheetNames = workbook.SheetNames;
+
+    // Parse each sheet into JSON
+    const result = { metadata: {}, data: [], references: [], charts: [], rawSheets: {} };
+
+    for (const name of sheetNames) {
+      const sheet = workbook.Sheets[name];
+      const json = XLSX_LIB.utils.sheet_to_json(sheet, { defval: '' });
+      const lower = name.toLowerCase().trim();
+      result.rawSheets[name] = json;
+
+      if (lower === 'metadata' || lower === 'meta' || lower === 'info') {
+        // Metadata sheet: expect key-value pairs or single row with columns
+        if (json.length > 0) {
+          const row = json[0];
+          result.metadata = {
+            title: row['Paper Title'] || row['Title'] || row['title'] || '',
+            abstract: row['Abstract'] || row['abstract'] || '',
+            keywords: row['Keywords'] || row['keywords'] || '',
+            researchArea: row['Research Area'] || row['Research Topic'] || row['research_area'] || '',
+            methodology: row['Methodology'] || row['methodology'] || '',
+            objective: row['Objective'] || row['objective'] || '',
+          };
+          // Also check for vertical key-value format
+          if (!result.metadata.title && json.length > 1) {
+            const kvMap = {};
+            json.forEach(r => {
+              const key = (r[Object.keys(r)[0]] || '').toString().toLowerCase().trim();
+              const val = r[Object.keys(r)[1]] || '';
+              kvMap[key] = val;
+            });
+            result.metadata = {
+              title: kvMap['paper title'] || kvMap['title'] || '',
+              abstract: kvMap['abstract'] || '',
+              keywords: kvMap['keywords'] || '',
+              researchArea: kvMap['research area'] || kvMap['research topic'] || '',
+              methodology: kvMap['methodology'] || '',
+              objective: kvMap['objective'] || '',
+            };
+          }
+        }
+      } else if (lower === 'references' || lower === 'refs' || lower === 'bibliography') {
+        result.references = json.map(r => ({
+          author: r['Author'] || r['Authors'] || r['author'] || r['authors'] || '',
+          title: r['Title'] || r['title'] || r['Paper Title'] || '',
+          journal: r['Journal'] || r['Conference'] || r['Venue'] || r['journal'] || r['venue'] || '',
+          year: r['Year'] || r['year'] || '',
+          volume: r['Volume'] || r['volume'] || r['Vol'] || '',
+          issue: r['Issue'] || r['issue'] || r['No'] || '',
+          pages: r['Pages'] || r['pages'] || '',
+          doi: r['DOI'] || r['doi'] || '',
+          url: r['URL'] || r['url'] || r['Link'] || '',
+        })).filter(r => r.author || r.title);
+      } else if (lower === 'charts' || lower === 'chart config' || lower === 'chart') {
+        result.charts = json.map(r => ({
+          chartTitle: r['Chart Title'] || r['Title'] || r['chart_title'] || '',
+          type: (r['Type'] || r['Chart Type'] || r['type'] || 'bar').toLowerCase(),
+          xColumn: r['X Column'] || r['X'] || r['x_column'] || '',
+          yColumns: (r['Y Column'] || r['Y Columns'] || r['Y'] || r['y_column'] || '').toString().split(',').map(s => s.trim()).filter(Boolean),
+          description: r['Description'] || r['description'] || '',
+        })).filter(r => r.chartTitle || r.xColumn);
+      } else {
+        // Treat any other sheet as data
+        if (json.length > 0) {
+          result.data.push({ sheetName: name, rows: json, columns: Object.keys(json[0]) });
+        }
+      }
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('[Paper Draft] Excel parse error:', error);
+    res.status(500).json({ error: error.message || 'Failed to parse Excel file.' });
+  }
+});
+
+// POST /api/paper-draft/generate — Generate a complete paper draft with AI
+app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+
+    const { metadata, data, references, charts, citationStyle, authors, pageNumberFormat, workspace_id } = req.body;
+
+    if (!metadata || !metadata.title) {
+      return res.status(400).json({ error: 'Paper metadata with at least a title is required.' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const style = (citationStyle || 'APA').toUpperCase();
+
+    // Build data context for AI
+    let dataContext = '';
+    if (data && data.length > 0) {
+      data.forEach(sheet => {
+        dataContext += `\n\nDataset: "${sheet.sheetName}" (${sheet.rows.length} rows)\nColumns: ${sheet.columns.join(', ')}\n`;
+        // Include first 20 rows as sample
+        const sample = sheet.rows.slice(0, 20);
+        dataContext += 'Sample data:\n';
+        sample.forEach(row => {
+          dataContext += JSON.stringify(row) + '\n';
+        });
+        if (sheet.rows.length > 20) dataContext += `... and ${sheet.rows.length - 20} more rows\n`;
+      });
+    }
+
+    let refsContext = '';
+    if (references && references.length > 0) {
+      refsContext = '\n\nAvailable references to cite:\n';
+      references.forEach((ref, i) => {
+        refsContext += `[${i + 1}] ${ref.author} (${ref.year}). "${ref.title}." ${ref.journal}\n`;
+      });
+    }
+
+    let chartsContext = '';
+    if (charts && charts.length > 0) {
+      chartsContext = '\n\nCharts to be included in the paper:\n';
+      charts.forEach(c => {
+        chartsContext += `- ${c.chartTitle} (${c.type} chart): X-axis = ${c.xColumn}, Y-axis = ${c.yColumns.join(', ')}${c.description ? '. ' + c.description : ''}\n`;
+      });
+    }
+
+    const authorsStr = (authors || []).map(a => `${a.name}${a.affiliation ? ' (' + a.affiliation + ')' : ''}`).join(', ') || 'Research Author';
+
+    // Determine in-text citation format instructions
+    let citationInstructions = '';
+    switch (style) {
+      case 'APA':
+        citationInstructions = 'Use APA 7th edition in-text citations like (Author, Year). Use "et al." for 3+ authors. Do not use footnotes for citations.';
+        break;
+      case 'MLA':
+        citationInstructions = 'Use MLA 9th edition in-text citations like (Author Page). Use "et al." for 3+ authors. Do not use footnotes for citations.';
+        break;
+      case 'IEEE':
+        citationInstructions = 'Use IEEE-style numbered citations like [1], [2], [3]. Number references in order of first appearance in the text.';
+        break;
+      case 'CHICAGO':
+        citationInstructions = 'Use Chicago author-date in-text citations like (Author Year). Use "et al." for 4+ authors.';
+        break;
+    }
+
+    const prompt = `You are an expert academic research paper writer. Write a complete, publication-ready academic paper draft based on the following information.
+
+PAPER TITLE: "${metadata.title}"
+AUTHORS: ${authorsStr}
+RESEARCH AREA: ${metadata.researchArea || 'Not specified'}
+OBJECTIVE: ${metadata.objective || 'Not specified'}
+METHODOLOGY: ${metadata.methodology || 'Not specified'}
+ABSTRACT NOTES: ${metadata.abstract || 'Generate based on the data and context'}
+KEYWORDS: ${metadata.keywords || 'Generate relevant keywords'}
+${dataContext}
+${refsContext}
+${chartsContext}
+
+CITATION STYLE: ${style}
+${citationInstructions}
+
+Write the following sections. Each section should be substantial (3-5 paragraphs minimum for body sections). Write in formal academic tone. Naturally cite the provided references where relevant throughout the text.
+
+${charts && charts.length > 0 ? `When discussing results, reference the charts by their titles (e.g., "As shown in Figure 1: ${charts[0]?.chartTitle || 'Chart Title'}..."). Number figures sequentially.` : ''}
+
+Return ONLY a valid JSON object with the following structure (no markdown fences, no extra text):
+{
+  "title": "The full paper title",
+  "abstract": "A comprehensive 200-300 word abstract",
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "sections": [
+    {
+      "heading": "1. Introduction",
+      "content": "Full introduction text with in-text citations..."
+    },
+    {
+      "heading": "2. Literature Review",
+      "content": "Comprehensive literature review synthesizing the references..."
+    },
+    {
+      "heading": "3. Methodology",
+      "content": "Detailed methodology section..."
+    },
+    {
+      "heading": "4. Results and Analysis",
+      "content": "Results section referencing figures and data tables..."
+    },
+    {
+      "heading": "5. Discussion",
+      "content": "Discussion of findings, implications, and comparison with existing work..."
+    },
+    {
+      "heading": "6. Conclusion and Future Work",
+      "content": "Conclusion summarizing contributions and future directions..."
+    }
+  ],
+  "acknowledgments": "Brief acknowledgments text (optional, can be empty string)"
+}
+
+CRITICAL RULES:
+1. Each section content must be at least 3-4 substantial paragraphs (not bullet points).
+2. Naturally weave in citations from the provided references throughout the text.
+3. Reference specific data points, trends, and findings from the provided datasets.
+4. The Results section MUST reference figures and data tables by number.
+5. Write cohesive, flowing academic prose — NOT bulleted lists.
+6. Ensure logical flow between sections.
+7. The abstract should be self-contained and summarize the entire paper.`;
+
+    const result = await callGeminiWithRetry(genAI, prompt);
+    let text = result.response.text();
+
+    // Extract JSON
+    const jsonStart = text.indexOf('{');
+    const jsonEnd = text.lastIndexOf('}');
+    if (jsonStart !== -1 && jsonEnd !== -1) {
+      text = text.slice(jsonStart, jsonEnd + 1);
+    }
+
+    const draft = JSON.parse(text);
+
+    // Format references in the chosen citation style
+    const formattedReferences = (references || []).map((ref, i) => ({
+      ...ref,
+      formatted: formatReference(ref, style, i)
+    }));
+
+    // Build chart data objects from the datasets
+    const chartData = [];
+    if (charts && charts.length > 0 && data && data.length > 0) {
+      charts.forEach((chartConfig, idx) => {
+        // Find the data sheet that contains the referenced columns
+        let sourceSheet = data[0]; // default to first data sheet
+        for (const sheet of data) {
+          if (sheet.columns.includes(chartConfig.xColumn)) {
+            sourceSheet = sheet;
+            break;
+          }
+        }
+
+        const labels = sourceSheet.rows.map(r => r[chartConfig.xColumn] || '').filter(Boolean);
+        const datasets = chartConfig.yColumns.map((yCol, dIdx) => {
+          const colors = ['rgba(124,92,255,0.7)', 'rgba(6,214,160,0.7)', 'rgba(255,107,107,0.7)', 'rgba(255,209,102,0.7)', 'rgba(17,138,178,0.7)'];
+          const borderColors = ['rgba(124,92,255,1)', 'rgba(6,214,160,1)', 'rgba(255,107,107,1)', 'rgba(255,209,102,1)', 'rgba(17,138,178,1)'];
+          return {
+            label: yCol,
+            data: sourceSheet.rows.map(r => parseFloat(r[yCol]) || 0),
+            backgroundColor: colors[dIdx % colors.length],
+            borderColor: borderColors[dIdx % borderColors.length],
+            borderWidth: 2,
+          };
+        });
+
+        chartData.push({
+          figureNumber: idx + 1,
+          title: chartConfig.chartTitle || `Figure ${idx + 1}`,
+          description: chartConfig.description || '',
+          type: chartConfig.type || 'bar',
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            plugins: {
+              title: { display: true, text: chartConfig.chartTitle || `Figure ${idx + 1}` },
+              legend: { display: chartConfig.yColumns.length > 1 },
+            },
+            scales: chartConfig.type !== 'pie' ? {
+              y: { beginAtZero: true, title: { display: true, text: chartConfig.yColumns.join(' / ') } },
+              x: { title: { display: true, text: chartConfig.xColumn } }
+            } : undefined
+          }
+        });
+      });
+    }
+
+    // Build data tables for the PDF
+    const dataTables = (data || []).map((sheet, idx) => ({
+      tableNumber: idx + 1,
+      title: `Table ${idx + 1}: ${sheet.sheetName}`,
+      columns: sheet.columns,
+      rows: sheet.rows.slice(0, 100), // Limit to 100 rows for PDF
+      totalRows: sheet.rows.length
+    }));
+
+    res.json({
+      draft,
+      formattedReferences,
+      chartData,
+      dataTables,
+      citationStyle: style,
+      pageNumberFormat: pageNumberFormat || 'arabic',
+      authors: authors || [],
+    });
+
+  } catch (error) {
+    console.error('[Paper Draft] Generation error:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate paper draft.' });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend API running on http://localhost:${PORT}`);

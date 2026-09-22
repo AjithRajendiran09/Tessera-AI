@@ -308,3 +308,46 @@ export async function importDiscoveredPaper(paper, workspaceId) {
     body: JSON.stringify({ paper, workspace_id: workspaceId })
   });
 }
+
+// ── PAPER DRAFT GENERATOR ──
+export async function parseExcelForDraft(file, workspaceId) {
+  const token = await getAuthToken();
+  const formData = new FormData();
+  formData.append('excel', file);
+  if (workspaceId) formData.append('workspace_id', workspaceId);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(`${API_URL}/paper-draft/parse-excel`, {
+      method: 'POST',
+      body: formData,
+      headers,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+    }
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. Please try again.');
+    }
+    throw err;
+  }
+}
+
+export async function generatePaperDraft(payload) {
+  return fetchAPI('/paper-draft/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
