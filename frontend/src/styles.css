@@ -2568,6 +2568,122 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   box-shadow: 0 0 0 3px rgba(124,92,255,0.15);
 }
 
+.draft-field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.draft-field textarea:focus {
+  border-color: #7c5cff;
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.15);
+}
+
+.draft-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 600px) {
+  .draft-field-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.draft-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  outline: none;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.draft-select:focus {
+  border-color: #7c5cff;
+  box-shadow: 0 0 0 3px rgba(124,92,255,0.15);
+}
+
+.draft-select-sm {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface1);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.draft-select-sm:focus {
+  border-color: #7c5cff;
+}
+
+/* Typography Customizer Card */
+.draft-typography-card {
+  background: rgba(124,92,255,0.04);
+  border: 1px solid rgba(124,92,255,0.18);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+
+.draft-typography-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.draft-typography-hint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.draft-typography-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.draft-typography-grid .draft-field {
+  margin-bottom: 0;
+}
+
+.draft-typography-grid .draft-field label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 600px) {
+  .draft-typography-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Format Pills */
 .draft-format-pills {
   display: flex;
@@ -3158,3 +3274,126 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   font-size: 13px;
   font-style: italic;
 }
+
+/* Download Action Buttons */
+.draft-download-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.draft-download-group {
+  display: flex;
+  gap: 10px;
+}
+
+/* IEEE Format Specific Preview Styles (Overleaf Style) */
+.draft-preview-paper.ieee-style {
+  font-family: 'Times New Roman', Times, Georgia, serif;
+  color: #111;
+  background: #ffffff;
+  padding: 48px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.draft-preview-paper.ieee-style .draft-paper-title {
+  font-size: 22px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #000;
+  margin-bottom: 12px;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-authors {
+  font-size: 13px;
+  color: #222;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-abstract {
+  background: transparent;
+  border-left: none;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  border-radius: 0;
+  padding: 14px 0;
+  margin: 0 auto 24px;
+  max-width: 90%;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: justify;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-abstract h4 {
+  display: inline;
+  font-size: 12px;
+  font-weight: 700;
+  font-style: italic;
+  margin-right: 6px;
+  color: #000;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-abstract h4::after {
+  content: '—';
+}
+
+.draft-preview-paper.ieee-style .draft-paper-abstract p {
+  display: inline;
+  color: #111;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-keywords {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-keywords strong {
+  font-style: italic;
+  font-weight: 700;
+}
+
+.draft-preview-paper.ieee-style .draft-paper-keywords strong::after {
+  content: '—';
+}
+
+.draft-preview-paper.ieee-style .draft-section-heading {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 28px 0 14px;
+  border-bottom: none;
+  color: #000;
+}
+
+.draft-preview-paper.ieee-style .draft-section-content {
+  font-size: 12px;
+  line-height: 1.65;
+  text-align: justify;
+  text-indent: 18px;
+  color: #222;
+}
+
+.draft-preview-paper.ieee-style .draft-references-section h3 {
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000;
+  border-bottom: none;
+}
+
+.draft-preview-paper.ieee-style .draft-ref-formatted {
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: justify;
+  color: #222;
+  padding-left: 24px;
+  text-indent: -24px;
+}
+

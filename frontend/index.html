@@ -545,7 +545,7 @@
             <!-- Left: Upload -->
             <div class="draft-card">
               <h3>📤 Upload Excel File</h3>
-              <p class="draft-card-desc">Upload your research data spreadsheet with metadata, data, references, and chart configuration sheets.</p>
+              <p class="draft-card-desc">Upload your research data spreadsheet. Columns like Title, Authors, Year, Venue will be auto-detected as references.</p>
               <div class="draft-dropzone" id="draft-dropzone">
                 <div class="draft-dropzone-content">
                   <span class="draft-dropzone-icon">📊</span>
@@ -563,12 +563,113 @@
             </div>
 
             <!-- Right: Configure -->
-            <div class="draft-card">
+            <div class="draft-card draft-config-card">
               <h3>⚙️ Paper Configuration</h3>
 
               <div class="draft-field">
-                <label for="draft-title">Paper Title <span class="draft-label-hint">(Optional — AI will auto-generate if blank)</span></label>
-                <input type="text" id="draft-title" placeholder="e.g. Systematic Review of Machine Learning Models (or leave blank)" />
+                <label for="draft-title">Paper Title <span class="draft-label-hint">(AI generates if blank)</span></label>
+                <input type="text" id="draft-title" placeholder="e.g. A Systematic Review of Privacy-Preserving Machine Learning" />
+              </div>
+
+              <div class="draft-field">
+                <label for="draft-research-area">Research Area / Topic</label>
+                <input type="text" id="draft-research-area" placeholder="e.g. Artificial Intelligence, Privacy Computing, IoT Security" />
+              </div>
+
+              <div class="draft-field-row">
+                <div class="draft-field">
+                  <label for="draft-methodology">Methodology</label>
+                  <input type="text" id="draft-methodology" placeholder="e.g. Systematic Literature Review" />
+                </div>
+                <div class="draft-field">
+                  <label for="draft-keywords">Keywords <span class="draft-label-hint">(comma-separated)</span></label>
+                  <input type="text" id="draft-keywords" placeholder="e.g. privacy, machine learning, survey" />
+                </div>
+              </div>
+
+              <div class="draft-field">
+                <label for="draft-objective">Research Objective</label>
+                <textarea id="draft-objective" rows="2" placeholder="e.g. To synthesize and analyze existing literature on automated privacy policy analysis techniques..."></textarea>
+              </div>
+
+              <div class="draft-field">
+                <label for="draft-abstract-notes">Abstract Notes <span class="draft-label-hint">(guidance for AI)</span></label>
+                <textarea id="draft-abstract-notes" rows="2" placeholder="e.g. Focus on key findings across 15 studies, highlight research gaps in real-time policy enforcement..."></textarea>
+              </div>
+
+              <div class="draft-field">
+                <label for="draft-paper-type">Paper Type</label>
+                <select id="draft-paper-type" class="draft-select">
+                  <option value="implementation" selected>🔬 Implementation / Research Paper (System architecture, implementation & experiments)</option>
+                  <option value="review">📚 Systematic Literature Review (PRISMA methodology, comprehensive synthesis)</option>
+                  <option value="survey">🗺️ Survey & Taxonomy Paper (Taxonomic classification, comparative landscape)</option>
+                  <option value="comparative">📊 Comparative Analysis Paper (Empirical benchmarking, metrics & statistical study)</option>
+                  <option value="methodology">📐 Methodology / Framework Paper (Theoretical formulation & novel model design)</option>
+                  <option value="casestudy">💼 Case Study / Application Paper (Real-world domain implementation & findings)</option>
+                </select>
+              </div>
+
+              <div class="draft-field-row">
+                <div class="draft-field">
+                  <label>Target Venue</label>
+                  <div class="draft-format-pills" id="draft-venue-pills">
+                    <button class="draft-pill active" data-venue="conference">🏛️ Conference</button>
+                    <button class="draft-pill" data-venue="journal">📖 Journal</button>
+                  </div>
+                </div>
+                <div class="draft-field">
+                  <label for="draft-target-pages">Target Length (Pages)</label>
+                  <select id="draft-target-pages" class="draft-select">
+                    <option value="4-6">Short Paper (4–6 pages)</option>
+                    <option value="6-8" selected>Standard Paper (6–8 pages)</option>
+                    <option value="8-12">Long Paper (8–12 pages)</option>
+                    <option value="12-16">Comprehensive (12–16+ pages)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Typography & Formatting Details -->
+              <div class="draft-typography-card">
+                <div class="draft-typography-header">
+                  <span>🖋️ Typography & Formatting</span>
+                  <span class="draft-typography-hint">Customizable font, size & spacing</span>
+                </div>
+                <div class="draft-typography-grid">
+                  <div class="draft-field">
+                    <label for="draft-font-family">Font Family</label>
+                    <select id="draft-font-family" class="draft-select-sm">
+                      <option value="Times New Roman" selected>Times New Roman (Academic)</option>
+                      <option value="Arial">Arial (Modern Sans)</option>
+                      <option value="Calibri">Calibri (Clean)</option>
+                      <option value="Computer Modern">Computer Modern (LaTeX)</option>
+                    </select>
+                  </div>
+                  <div class="draft-field">
+                    <label for="draft-font-size">Base Font Size</label>
+                    <select id="draft-font-size" class="draft-select-sm">
+                      <option value="10" selected>10 pt (IEEE / Conf)</option>
+                      <option value="11">11 pt (Standard)</option>
+                      <option value="12">12 pt (Journal / APA)</option>
+                    </select>
+                  </div>
+                  <div class="draft-field">
+                    <label for="draft-line-spacing">Line Spacing</label>
+                    <select id="draft-line-spacing" class="draft-select-sm">
+                      <option value="1.0" selected>Single (1.0)</option>
+                      <option value="1.15">1.15 (Compact)</option>
+                      <option value="1.5">1.5 (Standard)</option>
+                      <option value="2.0">Double (2.0)</option>
+                    </select>
+                  </div>
+                  <div class="draft-field">
+                    <label for="draft-columns">Columns</label>
+                    <select id="draft-columns" class="draft-select-sm">
+                      <option value="auto" selected>Auto (2-Col for Conf/IEEE)</option>
+                      <option value="2">Two-Column</option>
+                      <option value="1">Single-Column</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div class="draft-field">
@@ -581,12 +682,22 @@
                 </div>
               </div>
 
-              <div class="draft-field">
-                <label>Page Numbers</label>
-                <div class="draft-format-pills" id="draft-pagenumber-pills">
-                  <button class="draft-pill active" data-format="arabic">1, 2, 3…</button>
-                  <button class="draft-pill" data-format="roman">i, ii, iii…</button>
-                  <button class="draft-pill" data-format="none">None</button>
+              <div class="draft-field-row">
+                <div class="draft-field">
+                  <label>Output Format</label>
+                  <div class="draft-format-pills" id="draft-output-pills">
+                    <button class="draft-pill" data-format="pdf">PDF</button>
+                    <button class="draft-pill active" data-format="docx">Word (.docx)</button>
+                    <button class="draft-pill" data-format="both">Both</button>
+                  </div>
+                </div>
+                <div class="draft-field">
+                  <label>Page Numbers</label>
+                  <div class="draft-format-pills" id="draft-pagenumber-pills">
+                    <button class="draft-pill active" data-format="arabic">1, 2, 3…</button>
+                    <button class="draft-pill" data-format="roman">i, ii, iii…</button>
+                    <button class="draft-pill" data-format="none">None</button>
+                  </div>
                 </div>
               </div>
 
@@ -610,7 +721,7 @@
           </div>
         </div>
 
-        <!-- Step 2: Preview Data -->
+        <!-- Step 2: Preview Data (unchanged) -->
         <div class="draft-panel" id="draft-step-2" style="display:none">
           <div class="draft-preview-grid">
             <div class="draft-card">
@@ -652,7 +763,9 @@
 
             <div class="draft-nav-buttons">
               <button class="btn btn-ghost" id="draft-back-3">← Back</button>
-              <button class="btn btn-primary" id="draft-next-3">📄 Generate PDF & Download →</button>
+              <div class="draft-download-group">
+                <button class="btn btn-primary" id="draft-next-3">📄 Download →</button>
+              </div>
             </div>
           </div>
         </div>
@@ -664,9 +777,14 @@
             <h2>Your Paper is Ready!</h2>
             <p class="draft-download-desc">Complete academic paper with formatted sections, charts, data tables, and references.</p>
             <div class="draft-download-meta" id="draft-download-meta"></div>
-            <button class="btn btn-primary btn-lg" id="draft-download-btn">
-              ⬇️ Download Paper (PDF)
-            </button>
+            <div class="draft-download-buttons">
+              <button class="btn btn-primary btn-lg" id="draft-download-btn" style="display:none">
+                ⬇️ Download Paper (PDF)
+              </button>
+              <button class="btn btn-primary btn-lg" id="draft-download-docx-btn" style="display:none">
+                📝 Download Paper (Word .docx)
+              </button>
+            </div>
             <button class="btn btn-ghost" id="draft-restart" style="margin-top:12px">📝 Create Another Draft</button>
           </div>
         </div>

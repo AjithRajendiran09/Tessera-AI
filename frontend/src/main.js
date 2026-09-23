@@ -3,6 +3,12 @@ import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Chart from 'chart.js/auto';
+import {
+  Document, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell,
+  WidthType, AlignmentType, ImageRun, Packer, Footer, PageNumber, BorderStyle, SectionType
+} from 'docx';
+import saveAsPkg from 'file-saver';
+const saveAs = saveAsPkg.saveAs || saveAsPkg;
 
 // ── State ──
 let state = { workspaces: [], papers: [], domains: [], gaps: [], stats: null };
@@ -2795,6 +2801,14 @@ window.closeModal = closeModal;
   let generatedResult = null;
   let citationStyle = 'APA';
   let pageNumberFormat = 'arabic';
+  let outputFormat = 'docx';
+  let venueType = 'conference';
+  let paperType = 'implementation';
+  let targetPages = '6-8';
+  let fontFamily = 'Times New Roman';
+  let fontSize = '10';
+  let lineSpacing = '1.0';
+  let columns = 'auto';
   let chartInstances = [];
 
   function setupPaperDraft() {
@@ -2828,12 +2842,41 @@ window.closeModal = closeModal;
       generateAndDownloadTemplate();
     });
 
+    // Paper type & target pages
+    $('draft-paper-type')?.addEventListener('change', e => { paperType = e.target.value; });
+    $('draft-target-pages')?.addEventListener('change', e => { targetPages = e.target.value; });
+
+    // Typography selectors
+    $('draft-font-family')?.addEventListener('change', e => { fontFamily = e.target.value; });
+    $('draft-font-size')?.addEventListener('change', e => { fontSize = e.target.value; });
+    $('draft-line-spacing')?.addEventListener('change', e => { lineSpacing = e.target.value; });
+    $('draft-columns')?.addEventListener('change', e => { columns = e.target.value; });
+
+    // Venue pills
+    $('draft-venue-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-venue-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        venueType = pill.dataset.venue;
+      });
+    });
+
     // Format pills
     $('draft-format-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         $('draft-format-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         citationStyle = pill.dataset.format;
+      });
+    });
+
+    // Output format pills
+    $('draft-output-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-output-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        outputFormat = pill.dataset.format;
+        updateDownloadButtonsText();
       });
     });
 
@@ -2865,9 +2908,20 @@ window.closeModal = closeModal;
     $('draft-back-2')?.addEventListener('click', () => goToDraftStep(1));
     $('draft-next-2')?.addEventListener('click', generateDraft);
     $('draft-back-3')?.addEventListener('click', () => goToDraftStep(2));
-    $('draft-next-3')?.addEventListener('click', generateAndDownloadPDF);
+    $('draft-next-3')?.addEventListener('click', handleDownloadAction);
     $('draft-download-btn')?.addEventListener('click', generateAndDownloadPDF);
+    $('draft-download-docx-btn')?.addEventListener('click', generateAndDownloadDOCX);
     $('draft-restart')?.addEventListener('click', resetDraftWizard);
+    updateDownloadButtonsText();
+  }
+
+  function updateDownloadButtonsText() {
+    const next3Btn = $('draft-next-3');
+    if (next3Btn) {
+      if (outputFormat === 'docx') next3Btn.innerHTML = '📝 Download Word (.docx) →';
+      else if (outputFormat === 'pdf') next3Btn.innerHTML = '📄 Download PDF →';
+      else next3Btn.innerHTML = '📦 Download Word & PDF →';
+    }
   }
 
   function handleDraftFile(file) {
@@ -2913,10 +2967,27 @@ window.closeModal = closeModal;
     try {
       parsedExcel = await api.parseExcelForDraft(draftFile, currentWorkspace?.id);
 
-      // Override title if user typed one
-      const userTitle = $('draft-title')?.value?.trim();
-      if (userTitle) parsedExcel.metadata.title = userTitle;
-      else if (parsedExcel.metadata.title) $('draft-title').value = parsedExcel.metadata.title;
+      // Pre-populate Step 1 fields from detected Excel metadata
+      if (parsedExcel.metadata) {
+        const meta = parsedExcel.metadata;
+        const titleInput = $('draft-title');
+        if (titleInput && !titleInput.value.trim() && meta.title) titleInput.value = meta.title;
+        else if (titleInput?.value.trim()) meta.title = titleInput.value.trim();
+
+        const areaInput = $('draft-research-area');
+        if (areaInput && !areaInput.value.trim() && meta.researchArea) areaInput.value = meta.researchArea;
+
+        const methodInput = $('draft-methodology');
+        if (methodInput && !methodInput.value.trim() && meta.methodology) methodInput.value = meta.methodology;
+
+        const objInput = $('draft-objective');
+        if (objInput && !objInput.value.trim() && meta.objective) objInput.value = meta.objective;
+
+        const kwInput = $('draft-keywords');
+        if (kwInput && !kwInput.value.trim() && meta.keywords) {
+          kwInput.value = Array.isArray(meta.keywords) ? meta.keywords.join(', ') : meta.keywords;
+        }
+      }
 
       renderStep2Preview();
       goToDraftStep(2);
@@ -3015,16 +3086,26 @@ window.closeModal = closeModal;
     $('draft-generating').style.display = '';
     $('draft-preview-content').style.display = 'none';
 
-    // Sync any user edits from Step 2 metadata inputs
+    // Collect all detail fields from Step 1 & Step 2
     parsedExcel.metadata = parsedExcel.metadata || {};
-    const s2Title = $('draft-step2-title')?.value?.trim();
-    if (s2Title) parsedExcel.metadata.title = s2Title;
-    const s2Area = $('draft-step2-area')?.value?.trim();
-    if (s2Area) parsedExcel.metadata.researchArea = s2Area;
-    const s2Obj = $('draft-step2-objective')?.value?.trim();
-    if (s2Obj) parsedExcel.metadata.objective = s2Obj;
-    const s2Method = $('draft-step2-method')?.value?.trim();
-    if (s2Method) parsedExcel.metadata.methodology = s2Method;
+
+    const titleVal = $('draft-step2-title')?.value?.trim() || $('draft-title')?.value?.trim();
+    if (titleVal) parsedExcel.metadata.title = titleVal;
+
+    const areaVal = $('draft-step2-area')?.value?.trim() || $('draft-research-area')?.value?.trim();
+    if (areaVal) parsedExcel.metadata.researchArea = areaVal;
+
+    const objVal = $('draft-step2-objective')?.value?.trim() || $('draft-objective')?.value?.trim();
+    if (objVal) parsedExcel.metadata.objective = objVal;
+
+    const methodVal = $('draft-step2-method')?.value?.trim() || $('draft-methodology')?.value?.trim();
+    if (methodVal) parsedExcel.metadata.methodology = methodVal;
+
+    const kwVal = $('draft-keywords')?.value?.trim();
+    if (kwVal) parsedExcel.metadata.keywords = kwVal;
+
+    const absNotes = $('draft-abstract-notes')?.value?.trim();
+    if (absNotes) parsedExcel.metadata.abstract = absNotes;
 
     const authorRows = $('draft-authors-list')?.querySelectorAll('.draft-author-row') || [];
     const authors = Array.from(authorRows).map(row => ({
@@ -3032,6 +3113,14 @@ window.closeModal = closeModal;
       affiliation: row.querySelector('.draft-author-affil')?.value?.trim() || '',
       email: row.querySelector('.draft-author-email')?.value?.trim() || '',
     })).filter(a => a.name);
+
+    // Harvest latest configuration values
+    paperType = $('draft-paper-type')?.value || paperType;
+    targetPages = $('draft-target-pages')?.value || targetPages;
+    fontFamily = $('draft-font-family')?.value || fontFamily;
+    fontSize = $('draft-font-size')?.value || fontSize;
+    lineSpacing = $('draft-line-spacing')?.value || lineSpacing;
+    columns = $('draft-columns')?.value || columns;
 
     try {
       generatedResult = await api.generatePaperDraft({
@@ -3042,12 +3131,20 @@ window.closeModal = closeModal;
         citationStyle,
         authors,
         pageNumberFormat,
+        paperType,
+        venueType,
+        targetPages,
+        fontFamily,
+        fontSize,
+        lineSpacing,
+        columns,
         workspace_id: currentWorkspace?.id
       });
 
       renderDraftPreview();
       $('draft-generating').style.display = 'none';
       $('draft-preview-content').style.display = '';
+      updateDownloadButtonsText();
       toast('Paper draft generated!');
     } catch (err) {
       toast(err.message || 'Failed to generate draft', true);
@@ -3063,6 +3160,13 @@ window.closeModal = closeModal;
     const dataTables = generatedResult.dataTables || [];
     const authors = generatedResult.authors || [];
 
+    // Toggle IEEE styling class
+    if (citationStyle === 'IEEE') {
+      container.classList.add('ieee-style');
+    } else {
+      container.classList.remove('ieee-style');
+    }
+
     let html = '';
 
     // Title
@@ -3070,7 +3174,7 @@ window.closeModal = closeModal;
 
     // Authors
     if (authors.length > 0) {
-      html += `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}`).join(' · ')}</p>`;
+      html += `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}${a.email ? ' · <span style="font-family:monospace">' + a.email + '</span>' : ''}`).join(' &nbsp;•&nbsp; ')}</p>`;
     }
 
     // Abstract
@@ -3081,9 +3185,13 @@ window.closeModal = closeModal;
       </div>
     `;
 
-    // Keywords
+    // Keywords / Index Terms
     if (draft.keywords && draft.keywords.length > 0) {
-      html += `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>`;
+      if (citationStyle === 'IEEE') {
+        html += `<div class="draft-paper-keywords"><strong>Index Terms</strong> ${draft.keywords.join(', ')}</div>`;
+      } else {
+        html += `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>`;
+      }
     }
 
     // Sections
@@ -3103,7 +3211,7 @@ window.closeModal = closeModal;
           html += `
             <div class="draft-chart-container" id="draft-chart-preview-${cIdx}">
               <canvas id="draft-chart-preview-canvas-${cIdx}" width="700" height="350"></canvas>
-              <p class="chart-caption">Figure ${chart.figureNumber}: ${chart.title}</p>
+              <p class="chart-caption">${citationStyle === 'IEEE' ? 'Fig.' : 'Figure'} ${chart.figureNumber}: ${chart.title}</p>
             </div>
           `;
         });
@@ -3224,6 +3332,555 @@ window.closeModal = closeModal;
     return result;
   }
 
+  async function handleDownloadAction() {
+    goToDraftStep(4);
+    updateStep4DownloadCard();
+    if (outputFormat === 'docx') {
+      await generateAndDownloadDOCX();
+    } else if (outputFormat === 'pdf') {
+      await generateAndDownloadPDF();
+    } else if (outputFormat === 'both') {
+      await generateAndDownloadDOCX();
+      await generateAndDownloadPDF();
+    }
+  }
+
+  function updateStep4DownloadCard() {
+    const metaEl = $('draft-download-meta');
+    if (metaEl && generatedResult) {
+      const draft = generatedResult.draft || {};
+      const refCount = (generatedResult.formattedReferences || []).length;
+      const chartCount = (generatedResult.chartData || []).length;
+      const tableCount = (generatedResult.dataTables || []).length;
+      const pType = generatedResult.paperType || paperType || 'implementation';
+      const vType = generatedResult.venueType || venueType || 'conference';
+      const tPages = generatedResult.targetPages || targetPages || '6-8';
+      const fFamily = generatedResult.fontFamily || fontFamily || 'Times New Roman';
+      const fSize = generatedResult.fontSize || fontSize || '10';
+
+      metaEl.innerHTML = `
+        <span>📄 ${citationStyle} Style</span>
+        <span>🔬 ${pType.toUpperCase()}</span>
+        <span>🏛️ ${vType.toUpperCase()} (${tPages} pgs)</span>
+        <span>🖋️ ${fFamily} ${fSize}pt</span>
+        <span>📊 ${chartCount} Charts</span>
+        <span>📋 ${tableCount} Tables</span>
+        <span>📚 ${refCount} References</span>
+        <span>📝 ${(draft.sections || []).length} Sections</span>
+        <span>💾 ${outputFormat.toUpperCase()}</span>
+      `;
+    }
+    const pdfBtn = $('draft-download-btn');
+    const docxBtn = $('draft-download-docx-btn');
+    if (pdfBtn) pdfBtn.style.display = (outputFormat === 'pdf' || outputFormat === 'both') ? '' : 'none';
+    if (docxBtn) docxBtn.style.display = (outputFormat === 'docx' || outputFormat === 'both') ? '' : 'none';
+  }
+
+  async function generateAndDownloadDOCX() {
+    if (!generatedResult) return;
+
+    const btn = $('draft-download-docx-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Generating Word DOCX...'; }
+
+    try {
+      const draft = generatedResult.draft || {};
+      const refs = generatedResult.formattedReferences || [];
+      const chartData = generatedResult.chartData || [];
+      const dataTables = generatedResult.dataTables || [];
+      const authors = generatedResult.authors || [];
+
+      const pType = generatedResult.paperType || paperType || 'implementation';
+      const vType = generatedResult.venueType || venueType || 'conference';
+      const fFamily = generatedResult.fontFamily || fontFamily || 'Times New Roman';
+      const fSize = parseInt(generatedResult.fontSize || fontSize || (citationStyle === 'IEEE' ? '10' : '11'));
+      const lSpacing = parseFloat(generatedResult.lineSpacing || lineSpacing || '1.0');
+      const cols = generatedResult.columns || columns || 'auto';
+      const isTwoCol = cols === '2' || (cols === 'auto' && (citationStyle === 'IEEE' || vType === 'conference'));
+
+      const bodySize = fSize * 2; // half-points in docx (10pt = 20)
+      const titleSize = Math.round(fSize * 2.2 * 2);
+      const h1Size = Math.round(fSize * 1.15 * 2);
+      const h2Size = Math.round(fSize * 1.05 * 2);
+      const captionSize = Math.round(fSize * 0.85 * 2);
+      const refSize = Math.round(fSize * 0.9 * 2);
+      const docxLineSpacing = Math.round(240 * lSpacing);
+
+      // Section 1 children: Title, Authors, Abstract, Keywords (spanning 1 full column)
+      const sec1Children = [];
+
+      // Title
+      sec1Children.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 0, after: 180 },
+          children: [
+            new TextRun({
+              text: (draft.title || 'Research Paper Title').toUpperCase(),
+              bold: true,
+              font: fFamily,
+              size: titleSize
+            })
+          ]
+        })
+      );
+
+      // Authors block
+      if (authors.length > 0) {
+        sec1Children.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 60 },
+            children: [
+              new TextRun({
+                text: authors.map(a => a.name).join('    ·    '),
+                bold: true,
+                font: fFamily,
+                size: Math.round(fSize * 1.05 * 2)
+              })
+            ]
+          })
+        );
+        const affils = authors.map(a => a.affiliation).filter(Boolean);
+        if (affils.length > 0) {
+          sec1Children.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 40 },
+              children: [
+                new TextRun({
+                  text: Array.from(new Set(affils)).join('   |   '),
+                  italics: true,
+                  font: fFamily,
+                  size: Math.round(fSize * 0.9 * 2),
+                  color: '555555'
+                })
+              ]
+            })
+          );
+        }
+        const emails = authors.map(a => a.email).filter(Boolean);
+        if (emails.length > 0) {
+          sec1Children.push(
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 180 },
+              children: [
+                new TextRun({
+                  text: emails.join('    ·    '),
+                  font: fFamily,
+                  size: Math.round(fSize * 0.85 * 2),
+                  color: '777777'
+                })
+              ]
+            })
+          );
+        }
+      }
+
+      // Abstract & Keywords (in Section 1 for 2-column papers, or standard for 1-column)
+      if (draft.abstract) {
+        const isIEEE = citationStyle === 'IEEE';
+        sec1Children.push(
+          new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { before: 120, after: 100, line: docxLineSpacing },
+            indent: isIEEE ? { left: 400, right: 400 } : undefined,
+            children: [
+              new TextRun({
+                text: isIEEE ? 'Abstract— ' : 'Abstract. ',
+                bold: true,
+                italics: isIEEE,
+                font: fFamily,
+                size: bodySize
+              }),
+              new TextRun({
+                text: draft.abstract,
+                italics: isIEEE,
+                font: fFamily,
+                size: bodySize
+              })
+            ]
+          })
+        );
+      }
+
+      if (draft.keywords && draft.keywords.length > 0) {
+        const isIEEE = citationStyle === 'IEEE';
+        const kwText = Array.isArray(draft.keywords) ? draft.keywords.join(', ') : String(draft.keywords);
+        sec1Children.push(
+          new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { before: 40, after: 200, line: docxLineSpacing },
+            indent: isIEEE ? { left: 400, right: 400 } : undefined,
+            children: [
+              new TextRun({
+                text: isIEEE ? 'Index Terms— ' : 'Keywords: ',
+                bold: true,
+                italics: isIEEE,
+                font: fFamily,
+                size: bodySize
+              }),
+              new TextRun({
+                text: kwText,
+                font: fFamily,
+                size: bodySize
+              })
+            ]
+          })
+        );
+      }
+
+      // Body Section Children (Section 2 if 2-column, or appended to sec1 if 1-column)
+      const bodyChildren = [];
+
+      // Pre-render chart images if any
+      const chartImages = {};
+      if (chartData && chartData.length > 0) {
+        for (const c of chartData) {
+          try {
+            const dataUrl = await renderChartToImage(c);
+            if (dataUrl) {
+              const base64Data = dataUrl.split(',')[1];
+              chartImages[c.figureNumber] = Uint8Array.from(atob(base64Data), ch => ch.charCodeAt(0));
+            }
+          } catch(e) {
+            console.warn('Failed to pre-render chart for DOCX:', e);
+          }
+        }
+      }
+
+      // Helper to generate docx Table
+      function createDocxTable(table) {
+        const maxCols = 6;
+        const cols = table.columns.slice(0, maxCols);
+        const rows = (table.rows || []).slice(0, 15);
+
+        const headerRow = new TableRow({
+          children: cols.map(c => new TableCell({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: String(c), bold: true, font: fFamily, size: Math.round(captionSize * 0.95) })]
+              })
+            ],
+            shading: { fill: 'F0F0F5' }
+          }))
+        });
+
+        const dataRows = rows.map(r => new TableRow({
+          children: cols.map(c => new TableCell({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.LEFT,
+                children: [new TextRun({ text: String(r[c] ?? ''), font: fFamily, size: Math.round(captionSize * 0.9) })]
+              })
+            ]
+          }))
+        }));
+
+        return new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [headerRow, ...dataRows]
+        });
+      }
+
+      // Sections
+      const isIEEE = citationStyle === 'IEEE';
+      (draft.sections || []).forEach((sec, idx) => {
+        // Section Heading
+        const headingText = isIEEE
+          ? `${toRoman(idx + 1)}. ${sec.title.toUpperCase()}`
+          : `${idx + 1}. ${sec.title}`;
+
+        bodyChildren.push(
+          new Paragraph({
+            alignment: isIEEE ? AlignmentType.CENTER : AlignmentType.LEFT,
+            spacing: { before: 240, after: 120 },
+            heading: HeadingLevel.HEADING_1,
+            children: [
+              new TextRun({
+                text: headingText,
+                bold: true,
+                font: fFamily,
+                size: h1Size
+              })
+            ]
+          })
+        );
+
+        // Section Content
+        if (sec.content) {
+          const paras = sec.content.split('\n\n').filter(p => p.trim());
+          paras.forEach(p => {
+            bodyChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { before: 0, after: 100, line: docxLineSpacing },
+                indent: isIEEE ? { firstLine: 280 } : { firstLine: 400 },
+                children: [
+                  new TextRun({
+                    text: p.trim(),
+                    font: fFamily,
+                    size: bodySize
+                  })
+                ]
+              })
+            );
+          });
+        }
+
+        // Subsections
+        if (sec.subsections && Array.isArray(sec.subsections)) {
+          sec.subsections.forEach((sub, subIdx) => {
+            const letter = String.fromCharCode(65 + subIdx);
+            const subTitle = isIEEE ? `${letter}. ${sub.title}` : `${idx + 1}.${subIdx + 1} ${sub.title}`;
+            bodyChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.LEFT,
+                spacing: { before: 160, after: 80 },
+                heading: HeadingLevel.HEADING_2,
+                children: [
+                  new TextRun({
+                    text: subTitle,
+                    bold: true,
+                    italics: isIEEE,
+                    font: fFamily,
+                    size: h2Size
+                  })
+                ]
+              })
+            );
+
+            if (sub.content) {
+              const subParas = sub.content.split('\n\n').filter(p => p.trim());
+              subParas.forEach(p => {
+                bodyChildren.push(
+                  new Paragraph({
+                    alignment: AlignmentType.JUSTIFIED,
+                    spacing: { before: 0, after: 100, line: docxLineSpacing },
+                    indent: isIEEE ? { firstLine: 280 } : { firstLine: 400 },
+                    children: [
+                      new TextRun({
+                        text: p.trim(),
+                        font: fFamily,
+                        size: bodySize
+                      })
+                    ]
+                  })
+                );
+              });
+            }
+          });
+        }
+
+        // Check if a chart matches this section
+        if (chartData && chartData.length > 0) {
+          const matchedChart = chartData.find(c =>
+            (c.sectionIndex !== undefined && c.sectionIndex === idx) ||
+            (c.sectionTitle && sec.title.toLowerCase().includes(c.sectionTitle.toLowerCase()))
+          );
+          if (matchedChart && chartImages[matchedChart.figureNumber]) {
+            bodyChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 140, after: 60 },
+                children: [
+                  new ImageRun({
+                    data: chartImages[matchedChart.figureNumber],
+                    transformation: { width: isTwoCol ? 290 : 480, height: isTwoCol ? 150 : 240 }
+                  })
+                ]
+              })
+            );
+            bodyChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 0, after: 140 },
+                children: [
+                  new TextRun({
+                    text: `Fig. ${matchedChart.figureNumber}. ${matchedChart.title}`,
+                    italics: true,
+                    font: fFamily,
+                    size: captionSize
+                  })
+                ]
+              })
+            );
+          }
+        }
+
+        // Check if a data table matches this section
+        if (dataTables && dataTables.length > 0) {
+          const matchedTable = dataTables.find(t =>
+            (t.sectionIndex !== undefined && t.sectionIndex === idx) ||
+            (t.sectionTitle && sec.title.toLowerCase().includes(t.sectionTitle.toLowerCase()))
+          );
+          if (matchedTable) {
+            bodyChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 140, after: 40 },
+                children: [
+                  new TextRun({
+                    text: `TABLE ${toRoman(dataTables.indexOf(matchedTable) + 1).toUpperCase()}: ${matchedTable.title.toUpperCase()}`,
+                    bold: true,
+                    font: fFamily,
+                    size: captionSize
+                  })
+                ]
+              })
+            );
+            bodyChildren.push(createDocxTable(matchedTable));
+            bodyChildren.push(
+              new Paragraph({ spacing: { before: 0, after: 120 } })
+            );
+          }
+        }
+      });
+
+      // Acknowledgments
+      if (draft.acknowledgments) {
+        bodyChildren.push(
+          new Paragraph({
+            alignment: isIEEE ? AlignmentType.CENTER : AlignmentType.LEFT,
+            spacing: { before: 200, after: 100 },
+            children: [
+              new TextRun({
+                text: isIEEE ? 'ACKNOWLEDGMENT' : 'Acknowledgments',
+                bold: true,
+                font: fFamily,
+                size: h1Size
+              })
+            ]
+          })
+        );
+        bodyChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { before: 0, after: 120, line: docxLineSpacing },
+            indent: { firstLine: 280 },
+            children: [
+              new TextRun({
+                text: draft.acknowledgments,
+                font: fFamily,
+                size: bodySize
+              })
+            ]
+          })
+        );
+      }
+
+      // References
+      if (refs.length > 0) {
+        bodyChildren.push(
+          new Paragraph({
+            alignment: isIEEE ? AlignmentType.CENTER : AlignmentType.LEFT,
+            spacing: { before: 240, after: 120 },
+            children: [
+              new TextRun({
+                text: isIEEE ? 'REFERENCES' : (citationStyle === 'MLA' ? 'Works Cited' : 'References'),
+                bold: true,
+                font: fFamily,
+                size: h1Size
+              })
+            ]
+          })
+        );
+
+        refs.forEach(r => {
+          const cleanRef = (r.formatted || '').replace(/\*/g, '');
+          bodyChildren.push(
+            new Paragraph({
+              alignment: AlignmentType.LEFT,
+              spacing: { before: 0, after: 60, line: docxLineSpacing },
+              indent: isIEEE ? { left: 320, hanging: 320 } : { left: 400, hanging: 400 },
+              children: [
+                new TextRun({
+                  text: cleanRef,
+                  font: fFamily,
+                  size: refSize
+                })
+              ]
+            })
+          );
+        });
+      }
+
+      // Page numbering footer
+      const footerObj = pageNumberFormat !== 'none' ? new Footer({
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({
+                children: [PageNumber.CURRENT],
+                font: fFamily,
+                size: 18,
+                color: '888888'
+              })
+            ]
+          })
+        ]
+      }) : undefined;
+
+      // Construct docx Document
+      let docObj;
+      if (isTwoCol) {
+        docObj = new Document({
+          sections: [
+            {
+              properties: {
+                page: {
+                  margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 }
+                }
+              },
+              children: sec1Children
+            },
+            {
+              properties: {
+                type: SectionType.CONTINUOUS,
+                column: { count: 2, space: 450 },
+                page: {
+                  margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 }
+                }
+              },
+              footers: footerObj ? { default: footerObj } : undefined,
+              children: bodyChildren
+            }
+          ]
+        });
+      } else {
+        docObj = new Document({
+          sections: [
+            {
+              properties: {
+                page: {
+                  margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 }
+                }
+              },
+              footers: footerObj ? { default: footerObj } : undefined,
+              children: [...sec1Children, ...bodyChildren]
+            }
+          ]
+        });
+      }
+
+      const blob = await Packer.toBlob(docObj);
+      const filename = `${(draft.title || 'Paper_Draft').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 45)}.docx`;
+      saveAs(blob, filename);
+
+      goToDraftStep(4);
+      updateStep4DownloadCard();
+      toast('Word document (.docx) downloaded!');
+    } catch(err) {
+      console.error('DOCX generation error:', err);
+      toast('Failed to generate DOCX: ' + err.message, true);
+    } finally {
+      const btn = $('draft-download-docx-btn');
+      if (btn) { btn.disabled = false; btn.textContent = '📄 Download Word Document (.docx)'; }
+    }
+  }
+
   async function generateAndDownloadPDF() {
     if (!generatedResult) return;
 
@@ -3242,6 +3899,360 @@ window.closeModal = closeModal;
       const dataTables = generatedResult.dataTables || [];
       const authors = generatedResult.authors || [];
 
+      const pType = generatedResult.paperType || paperType || 'implementation';
+      const vType = generatedResult.venueType || venueType || 'conference';
+      const fFamily = generatedResult.fontFamily || fontFamily || 'Times New Roman';
+      const fSize = parseInt(generatedResult.fontSize || fontSize || (citationStyle === 'IEEE' ? '10' : '11'));
+      const lSpacing = parseFloat(generatedResult.lineSpacing || lineSpacing || '1.0');
+      const cols = generatedResult.columns || columns || 'auto';
+      const isTwoCol = cols === '2' || (cols === 'auto' && (citationStyle === 'IEEE' || vType === 'conference'));
+
+      const fontMapping = {
+        'Times New Roman': 'times',
+        'Arial': 'helvetica',
+        'Calibri': 'helvetica',
+        'Computer Modern': 'times'
+      };
+      const fontName = fontMapping[fFamily] || (citationStyle === 'IEEE' ? 'times' : 'helvetica');
+
+      function formatPageNum(n) {
+        if (pageNumberFormat === 'none') return '';
+        if (pageNumberFormat === 'roman') return toRoman(n);
+        return String(n);
+      }
+
+      // ══════════════════════════════════════════════════════════
+      // TWO-COLUMN COMPACT ACADEMIC FORMAT (IEEE / CONFERENCE)
+      // ══════════════════════════════════════════════════════════
+      if (isTwoCol) {
+        const pageW = 210;
+        const pageH = 297;
+        const mTop = 18;
+        const mBot = 18;
+        const mL = 16;
+        const mR = 16;
+        const colW = 85;
+        const colGutter = 8;
+        const col1X = mL;
+        const col2X = mL + colW + colGutter; // 109mm
+        const fullW = pageW - mL - mR; // 178mm
+
+        let curCol = 1;
+        let colTopY = mTop;
+        let colY = mTop;
+        let ieeePageNum = 0;
+
+        function addIeeeFooter() {
+          ieeePageNum++;
+          const pn = formatPageNum(ieeePageNum);
+          if (pn) {
+            doc.setFont(fontName, 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor(100);
+            doc.text(pn, pageW / 2, pageH - 10, { align: 'center' });
+            doc.setTextColor(0);
+          }
+        }
+
+        function addIeeeHeader() {
+          if (ieeePageNum > 1) {
+            doc.setFont(fontName, 'italic');
+            doc.setFontSize(8);
+            doc.setTextColor(140);
+            const shortT = (draft.title || '').substring(0, 75);
+            doc.text(shortT, mL, 12);
+            doc.setTextColor(0);
+          }
+        }
+
+        function checkCol(needed) {
+          if (colY + needed > pageH - mBot) {
+            if (curCol === 1) {
+              curCol = 2;
+              colY = colTopY;
+            } else {
+              doc.addPage();
+              addIeeeFooter();
+              addIeeeHeader();
+              curCol = 1;
+              colTopY = mTop + 4;
+              colY = colTopY;
+            }
+          }
+        }
+
+        function writeIeeeColumnText(text, fontSize, isIndent) {
+          doc.setFont(fontName, 'normal');
+          const effSize = fontSize || fSize;
+          doc.setFontSize(effSize);
+          const curX = curCol === 1 ? col1X : col2X;
+          const lHeight = Math.max(3.6, effSize * 0.3527 * 1.25 * lSpacing);
+          const indentVal = isIndent ? 4 : 0;
+          const words = text.split(/\s+/);
+          let currentLine = '';
+          let isFirst = true;
+
+          for (const word of words) {
+            const testLine = currentLine ? currentLine + ' ' + word : word;
+            const maxW = isFirst ? colW - indentVal : colW;
+            if (doc.getTextWidth(testLine) > maxW && currentLine) {
+              checkCol(lHeight);
+              const xPos = isFirst ? curX + indentVal : curX;
+              doc.text(currentLine, xPos, colY);
+              colY += lHeight;
+              currentLine = word;
+              isFirst = false;
+            } else {
+              currentLine = testLine;
+            }
+          }
+          if (currentLine) {
+            checkCol(lHeight);
+            const xPos = isFirst ? curX + indentVal : curX;
+            doc.text(currentLine, xPos, colY);
+            colY += lHeight;
+          }
+        }
+
+        // ── PAGE 1: TITLE & AUTHORS (Full Width Across Top) ──
+        addIeeeFooter();
+        let topY = 22;
+
+        // Title
+        doc.setFont(fontName, 'bold');
+        doc.setFontSize(18);
+        const titleLines = doc.splitTextToSize((draft.title || 'Untitled Paper').toUpperCase(), fullW - 20);
+        doc.text(titleLines, pageW / 2, topY, { align: 'center' });
+        topY += titleLines.length * 7 + 6;
+
+        // Authors block
+        if (authors.length > 0) {
+          doc.setFont(fontName, 'bold');
+          doc.setFontSize(10.5);
+          const authorNames = authors.map(a => a.name).join('   ·   ');
+          doc.text(authorNames, pageW / 2, topY, { align: 'center' });
+          topY += 4.5;
+
+          const affils = authors.map(a => a.affiliation).filter(Boolean);
+          if (affils.length > 0) {
+            doc.setFont(fontName, 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor(60);
+            doc.text(Array.from(new Set(affils)).join('   |   '), pageW / 2, topY, { align: 'center' });
+            topY += 4;
+          }
+
+          const emails = authors.map(a => a.email).filter(Boolean);
+          if (emails.length > 0) {
+            doc.setFont(fontName, 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(80);
+            doc.text(emails.join('   ·   '), pageW / 2, topY, { align: 'center' });
+            topY += 4;
+          }
+          doc.setTextColor(0);
+        }
+        topY += 4;
+
+        // Abstract & Index Terms (Full width block)
+        if (draft.abstract) {
+          doc.setFont(fontName, 'bolditalic');
+          doc.setFontSize(9);
+          const absLead = 'Abstract— ';
+          const absLeadW = doc.getTextWidth(absLead);
+          const absLines = doc.splitTextToSize(draft.abstract, fullW - 16);
+
+          doc.text(absLead, mL + 8, topY);
+          doc.setFont(fontName, 'normal');
+          doc.setFontSize(9);
+
+          absLines.forEach((l, idx) => {
+            const lx = idx === 0 ? mL + 8 + absLeadW : mL + 8;
+            doc.text(l, lx, topY);
+            topY += 4.2;
+          });
+          topY += 2;
+        }
+
+        if (draft.keywords && draft.keywords.length > 0) {
+          doc.setFont(fontName, 'bolditalic');
+          doc.setFontSize(9);
+          const kwLead = 'Index Terms— ';
+          const kwLeadW = doc.getTextWidth(kwLead);
+          const kwText = draft.keywords.join(', ');
+          const kwLines = doc.splitTextToSize(kwText, fullW - 16);
+
+          doc.text(kwLead, mL + 8, topY);
+          doc.setFont(fontName, 'italic');
+          doc.setFontSize(9);
+          kwLines.forEach((l, idx) => {
+            const lx = idx === 0 ? mL + 8 + kwLeadW : mL + 8;
+            doc.text(l, lx, topY);
+            topY += 4.2;
+          });
+          topY += 3;
+        }
+
+        // Thin separator rule
+        doc.setDrawColor(200);
+        doc.setLineWidth(0.3);
+        doc.line(mL, topY, pageW - mR, topY);
+        topY += 6;
+
+        // Start 2-column layout
+        colTopY = topY;
+        colY = topY;
+        curCol = 1;
+
+        // ── BODY SECTIONS (TWO COLUMNS) ──
+        for (let sIdx = 0; sIdx < (draft.sections || []).length; sIdx++) {
+          const section = draft.sections[sIdx];
+          const headingText = /^[IVXLCDM]+\.\s+/i.test(section.heading)
+            ? section.heading.toUpperCase()
+            : `${toRoman(sIdx + 1).toUpperCase()}. ${section.heading.toUpperCase()}`;
+
+          checkCol(12);
+          doc.setFont(fontName, 'bold');
+          doc.setFontSize(10);
+          const curX = curCol === 1 ? col1X : col2X;
+          doc.text(headingText, curX + colW / 2, colY, { align: 'center' });
+          colY += 6;
+
+          const editedEl = document.getElementById(`draft-section-content-${sIdx}`);
+          const content = editedEl ? (editedEl.tagName === 'TEXTAREA' ? editedEl.value : editedEl.textContent) : section.content;
+          const paragraphs = content.split(/\n\n+/);
+
+          for (const p of paragraphs) {
+            const trimmed = p.trim();
+            if (!trimmed) continue;
+            writeIeeeColumnText(trimmed, 9.5, true);
+            colY += 2;
+          }
+
+          // Results charts & tables in IEEE format
+          if (section.heading.toLowerCase().includes('result')) {
+            // Charts
+            for (const chart of chartData) {
+              try {
+                const chartImg = await renderChartToImage(chart);
+                if (chartImg) {
+                  const imgH = colW * 0.52;
+                  checkCol(imgH + 12);
+                  const cX = curCol === 1 ? col1X : col2X;
+                  doc.addImage(chartImg, 'PNG', cX, colY, colW, imgH);
+                  colY += imgH + 3.5;
+
+                  doc.setFont(fontName, 'italic');
+                  doc.setFontSize(8);
+                  const cap = `Fig. ${chart.figureNumber}. ${chart.title}`;
+                  doc.text(cap, cX + colW / 2, colY, { align: 'center' });
+                  colY += 6;
+                }
+              } catch (e) {
+                console.warn('IEEE chart render error:', e);
+              }
+            }
+
+            // Tables
+            for (let tIdx = 0; tIdx < dataTables.length; tIdx++) {
+              const table = dataTables[tIdx];
+              const keyCols = selectKeyColumns(table).slice(0, 4);
+              const maxRows = Math.min(table.rows.length, 15);
+              const rows = table.rows.slice(0, maxRows).map(r => keyCols.map(c => truncateCell(r[c], 18)));
+
+              checkCol(20);
+              const cX = curCol === 1 ? col1X : col2X;
+              doc.setFont(fontName, 'bold');
+              doc.setFontSize(8);
+              doc.text(`TABLE ${toRoman(tIdx + 1).toUpperCase()}`, cX + colW / 2, colY, { align: 'center' });
+              colY += 3.5;
+              doc.setFont(fontName, 'normal');
+              doc.setFontSize(7.5);
+              doc.text(truncateCell(table.title, 40).toUpperCase(), cX + colW / 2, colY, { align: 'center' });
+              colY += 3.5;
+
+              const renderT = typeof autoTable === 'function' ? autoTable : (doc.autoTable ? doc.autoTable.bind(doc) : null);
+              if (renderT) {
+                renderT(doc, {
+                  head: [keyCols],
+                  body: rows,
+                  startY: colY,
+                  margin: { left: cX, right: pageW - (cX + colW) },
+                  styles: {
+                    font: 'times',
+                    fontSize: 6.5,
+                    cellPadding: 1,
+                    overflow: 'linebreak',
+                    lineWidth: 0.1,
+                    lineColor: [200, 200, 200],
+                    textColor: [20, 20, 20]
+                  },
+                  headStyles: {
+                    fillColor: [240, 240, 245],
+                    textColor: [10, 10, 10],
+                    fontStyle: 'bold',
+                    fontSize: 6.5,
+                    halign: 'center'
+                  },
+                  theme: 'grid',
+                  tableWidth: colW
+                });
+                const finY = doc.lastAutoTable ? doc.lastAutoTable.finalY : colY + 25;
+                colY = finY + 5;
+              }
+            }
+          }
+        }
+
+        // Acknowledgments
+        if (draft.acknowledgments) {
+          checkCol(12);
+          doc.setFont(fontName, 'bold');
+          doc.setFontSize(10);
+          const curX = curCol === 1 ? col1X : col2X;
+          doc.text('ACKNOWLEDGMENT', curX + colW / 2, colY, { align: 'center' });
+          colY += 6;
+          writeIeeeColumnText(draft.acknowledgments, 9.5, true);
+          colY += 4;
+        }
+
+        // References
+        if (refs.length > 0) {
+          checkCol(14);
+          doc.setFont(fontName, 'bold');
+          doc.setFontSize(10);
+          const curX = curCol === 1 ? col1X : col2X;
+          doc.text('REFERENCES', curX + colW / 2, colY, { align: 'center' });
+          colY += 6;
+
+          doc.setFont(fontName, 'normal');
+          doc.setFontSize(8);
+
+          refs.forEach(ref => {
+            const clean = ref.formatted.replace(/\*/g, '');
+            const cX = curCol === 1 ? col1X : col2X;
+            const rLines = doc.splitTextToSize(clean, colW - 5);
+            checkCol(rLines.length * 3.6 + 2);
+            rLines.forEach((l, lIdx) => {
+              const lx = lIdx === 0 ? cX : cX + 4;
+              doc.text(l, lx, colY);
+              colY += 3.4;
+            });
+            colY += 1.8;
+          });
+        }
+
+        const filename = `${(draft.title || 'Paper_Draft').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 45)}_IEEE.pdf`;
+        doc.save(filename);
+        goToDraftStep(4);
+        updateStep4DownloadCard();
+        toast('IEEE PDF downloaded!');
+        return;
+      }
+
+      // ══════════════════════════════════════════════════════════
+      // STANDARD ACADEMIC MANUSCRIPT FORMAT (APA, MLA, CHICAGO)
+      // ══════════════════════════════════════════════════════════
       const pageWidth = doc.internal.pageSize.getWidth();   // 210
       const pageHeight = doc.internal.pageSize.getHeight();  // 297
       const marginL = 25.4;  // 1 inch
@@ -3252,12 +4263,6 @@ window.closeModal = closeModal;
       const lineHeight = 6;   // body text line height in mm
       const paraIndent = 8;   // first-line indent in mm
       let pageNum = 0;
-
-      function formatPageNum(n) {
-        if (pageNumberFormat === 'none') return '';
-        if (pageNumberFormat === 'roman') return toRoman(n);
-        return String(n);
-      }
 
       function addPageNumber() {
         pageNum++;
@@ -3682,14 +4687,7 @@ window.closeModal = closeModal;
       doc.save(filename);
 
       goToDraftStep(4);
-      $('draft-download-meta').innerHTML = `
-        <span>📄 ${citationStyle} Format</span>
-        <span>📊 ${chartData.length} Charts</span>
-        <span>📋 ${dataTables.length} Tables</span>
-        <span>📚 ${refs.length} References</span>
-        <span>📝 ${(draft.sections || []).length} Sections</span>
-        <span>📃 ${pageNum} Pages</span>
-      `;
+      updateStep4DownloadCard();
 
       toast('PDF downloaded!');
     } catch (err) {
@@ -3759,6 +4757,14 @@ window.closeModal = closeModal;
     generatedResult = null;
     citationStyle = 'APA';
     pageNumberFormat = 'arabic';
+    outputFormat = 'docx';
+    paperType = 'implementation';
+    venueType = 'conference';
+    targetPages = '6-8';
+    fontFamily = 'Times New Roman';
+    fontSize = '10';
+    lineSpacing = '1.0';
+    columns = 'auto';
     chartInstances.forEach(c => { try { c.destroy(); } catch(e){} });
     chartInstances = [];
 
@@ -3768,13 +4774,30 @@ window.closeModal = closeModal;
       dropzone.querySelector('.draft-dropzone-content').style.display = '';
       $('draft-file-success').style.display = 'none';
     }
-    $('draft-title').value = '';
-    $('draft-next-1').disabled = true;
-    $('draft-file-input').value = '';
+    if ($('draft-title')) $('draft-title').value = '';
+    if ($('draft-research-area')) $('draft-research-area').value = '';
+    if ($('draft-methodology')) $('draft-methodology').value = '';
+    if ($('draft-objective')) $('draft-objective').value = '';
+    if ($('draft-keywords')) $('draft-keywords').value = '';
+    if ($('draft-abstract-notes')) $('draft-abstract-notes').value = '';
+    if ($('draft-next-1')) $('draft-next-1').disabled = true;
+    if ($('draft-file-input')) $('draft-file-input').value = '';
+
+    // Reset selects
+    if ($('draft-paper-type')) $('draft-paper-type').value = 'implementation';
+    if ($('draft-target-pages')) $('draft-target-pages').value = '6-8';
+    if ($('draft-font-family')) $('draft-font-family').value = 'Times New Roman';
+    if ($('draft-font-size')) $('draft-font-size').value = '10';
+    if ($('draft-line-spacing')) $('draft-line-spacing').value = '1.0';
+    if ($('draft-columns')) $('draft-columns').value = 'auto';
 
     // Reset pills
+    $('draft-venue-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+    $('draft-venue-pills')?.querySelector('[data-venue="conference"]')?.classList.add('active');
     $('draft-format-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
     $('draft-format-pills')?.querySelector('[data-format="APA"]')?.classList.add('active');
+    $('draft-output-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+    $('draft-output-pills')?.querySelector('[data-format="docx"]')?.classList.add('active');
     $('draft-pagenumber-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
     $('draft-pagenumber-pills')?.querySelector('[data-format="arabic"]')?.classList.add('active');
 
@@ -3790,6 +4813,7 @@ window.closeModal = closeModal;
       `;
     }
 
+    updateDownloadButtonsText();
     goToDraftStep(1);
   }
 

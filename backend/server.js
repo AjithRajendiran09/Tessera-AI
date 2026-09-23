@@ -1751,8 +1751,24 @@ function formatReference(ref, style, index) {
   const doi = ref.doi || '';
   const url = ref.url || '';
 
+  // Convert "John Doe, Jane Smith" → "J. Doe and J. Smith" for IEEE
+  function toIEEEAuthors(authStr) {
+    const names = authStr.split(/,\s*(?:and\s+)?|;\s*|\s+and\s+/i).filter(Boolean);
+    const formatted = names.map(name => {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length <= 1) return parts[0];
+      const surname = parts[parts.length - 1];
+      const initials = parts.slice(0, -1).map(p => p.charAt(0).toUpperCase() + '.').join(' ');
+      return `${initials} ${surname}`;
+    });
+    if (formatted.length === 0) return authStr;
+    if (formatted.length === 1) return formatted[0];
+    if (formatted.length === 2) return `${formatted[0]} and ${formatted[1]}`;
+    return formatted.slice(0, -1).join(', ') + ', and ' + formatted[formatted.length - 1];
+  }
+
   switch (style.toUpperCase()) {
-    case 'APA':
+    case 'APA': {
       let apa = `${authors} (${year}). ${title}.`;
       if (journal) apa += ` *${journal}*`;
       if (volume) apa += `, *${volume}*`;
@@ -1761,8 +1777,9 @@ function formatReference(ref, style, index) {
       apa += '.';
       if (doi) apa += ` https://doi.org/${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
       return apa;
+    }
 
-    case 'MLA':
+    case 'MLA': {
       let mla = `${authors}. "${title}."`;
       if (journal) mla += ` *${journal}*`;
       if (volume) mla += `, vol. ${volume}`;
@@ -1772,18 +1789,30 @@ function formatReference(ref, style, index) {
       mla += '.';
       if (doi) mla += ` doi:${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
       return mla;
+    }
 
-    case 'IEEE':
-      let ieee = `[${index + 1}] ${authors}, "${title},"`;
-      if (journal) ieee += ` *${journal}*`;
+    case 'IEEE': {
+      const ieeeAuth = toIEEEAuthors(authors);
+      let ieee = `[${index + 1}] ${ieeeAuth}, "${title},"`;
+      if (journal) {
+        // Check if it looks like a conference
+        const isConf = /conference|proc\.|proceedings|symposium|workshop|congress/i.test(journal);
+        if (isConf) {
+          ieee += ` in *${journal}*`;
+        } else {
+          ieee += ` *${journal}*`;
+        }
+      }
       if (volume) ieee += `, vol. ${volume}`;
       if (issue) ieee += `, no. ${issue}`;
       if (pages) ieee += `, pp. ${pages}`;
       ieee += `, ${year}.`;
-      if (doi) ieee += ` doi: ${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
+      if (doi) ieee += ` doi: ${doi.replace(/^https?:\/\/doi\.org\//i, '')}.`;
+      else if (url) ieee += ` [Online]. Available: ${url}`;
       return ieee;
+    }
 
-    case 'CHICAGO':
+    case 'CHICAGO': {
       let chi = `${authors}. "${title}."`;
       if (journal) chi += ` *${journal}*`;
       if (volume) chi += ` ${volume}`;
@@ -1793,6 +1822,7 @@ function formatReference(ref, style, index) {
       chi += '.';
       if (doi) chi += ` https://doi.org/${doi.replace(/^https?:\/\/doi\.org\//i, '')}`;
       return chi;
+    }
 
     default:
       return `${authors} (${year}). ${title}. ${journal}. ${volume}(${issue}), ${pages}.`;
@@ -1967,7 +1997,11 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
   try {
     if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
 
-    const { metadata, data, references, charts, citationStyle, authors, pageNumberFormat, workspace_id } = req.body;
+    const {
+      metadata, data, references, charts, citationStyle, authors, pageNumberFormat,
+      paperType, venueType, targetPages, fontFamily, fontSize, lineSpacing, columns,
+      workspace_id
+    } = req.body;
 
     const meta = metadata || {};
     let resolvedTitle = (meta.title || '').trim();
@@ -1983,19 +2017,99 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const style = (citationStyle || 'APA').toUpperCase();
+    const resolvedPaperType = (paperType || 'implementation').toLowerCase();
+    const resolvedVenue = (venueType || 'conference').toLowerCase();
+    const resolvedPages = targetPages || '6-8';
+    const isIEEE = style === 'IEEE';
+
+    // Paragraph budget based on page target
+    let paragraphsPerSection = '4-5';
+    if (resolvedPages === '4-6') paragraphsPerSection = '3-4';
+    else if (resolvedPages === '8-12') paragraphsPerSection = '5-6';
+    else if (resolvedPages === '12-16') paragraphsPerSection = '6-8';
+
+    // Determine section structure based on paperType
+    let sectionTemplates = [];
+    switch (resolvedPaperType) {
+      case 'review':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Background, problem significance, review scope, and central research questions.' },
+          { heading: isIEEE ? 'II. Review Protocol and Methodology' : '2. Review Methodology', desc: 'Search criteria (PRISMA guidelines), database queries, inclusion/exclusion standards, quality appraisal.' },
+          { heading: isIEEE ? 'III. Thematic Synthesis and Classification' : '3. Thematic Synthesis and Classification', desc: 'Taxonomy of analyzed literature, categorization of paradigms, chronological progression.' },
+          { heading: isIEEE ? 'IV. Cross-Study Evaluation and Findings' : '4. Cross-Study Evaluation and Findings', desc: 'Critical comparative assessment, empirical evidence synthesis, datasets and benchmark trends.' },
+          { heading: isIEEE ? 'V. Open Research Gaps and Challenges' : '5. Open Research Gaps and Challenges', desc: 'Unresolved technical hurdles, empirical contradictions, methodological limitations.' },
+          { heading: isIEEE ? 'VI. Future Research Agenda' : '6. Future Research Agenda', desc: 'High-impact prospective pathways, emerging paradigms, architectural recommendations.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Synthesis of key takeaways, overarching contributions, and closing remarks.' }
+        ];
+        break;
+      case 'survey':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction and Scope' : '1. Introduction and Scope', desc: 'Motivation, definition of domain, boundaries of survey, primary contributions.' },
+          { heading: isIEEE ? 'II. Background and Conceptual Foundations' : '2. Background and Foundations', desc: 'Core principles, fundamental architectures, terminology, and problem space.' },
+          { heading: isIEEE ? 'III. Taxonomy and Classification of Paradigms' : '3. Taxonomy of Approaches', desc: 'Comprehensive hierarchical taxonomy grouping existing methodologies.' },
+          { heading: isIEEE ? 'IV. Comparative Analysis of State-of-the-Art' : '4. Comparative Analysis', desc: 'Feature matrix comparison, trade-offs, strengths and limitations across paradigms.' },
+          { heading: isIEEE ? 'V. Open Issues and Industry Adoption Barriers' : '5. Open Issues and Challenges', desc: 'Theoretical bottlenecks, deployment barriers, scalability challenges.' },
+          { heading: isIEEE ? 'VI. Future Directions' : '6. Future Directions', desc: 'Roadmap for future investigations and emerging trends.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of survey findings and perspective.' }
+        ];
+        break;
+      case 'comparative':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Motivation for comparative evaluation, research questions, summary of findings.' },
+          { heading: isIEEE ? 'II. Baseline Methods and Theoretical Background' : '2. Baseline Methods and Background', desc: 'Detailed description of compared algorithms/models, underlying assumptions.' },
+          { heading: isIEEE ? 'III. Experimental Setup and Benchmark Protocols' : '3. Benchmark Protocols and Datasets', desc: 'Datasets, preprocessing, hardware environment, evaluation metrics.' },
+          { heading: isIEEE ? 'IV. Empirical Results and Performance Benchmarks' : '4. Empirical Results and Benchmarks', desc: 'Comparative quantitative results referencing Table I and Fig. 1.' },
+          { heading: isIEEE ? 'V. Statistical Significance and Critical Discussion' : '5. Discussion and Significance', desc: 'Statistical testing, trade-offs, computational overhead, sensitivity analysis.' },
+          { heading: isIEEE ? 'VI. Threats to Validity' : '6. Threats to Validity', desc: 'Internal, external, construct, and conclusion validity considerations.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of empirical outcomes and recommendations for practitioners.' }
+        ];
+        break;
+      case 'methodology':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Problem definition, limitations of existing methodologies, proposed contribution.' },
+          { heading: isIEEE ? 'II. Theoretical Formulation' : '2. Theoretical Formulation', desc: 'Mathematical modeling, formal problem statement, conceptual foundation.' },
+          { heading: isIEEE ? 'III. Proposed Framework and Algorithmic Design' : '3. Proposed Framework', desc: 'Step-by-step algorithmic pipeline, architecture, mathematical formulations.' },
+          { heading: isIEEE ? 'IV. Analytical Validation and Complexity Analysis' : '4. Analytical Validation', desc: 'Computational complexity (Big-O), convergence guarantees, theoretical soundness.' },
+          { heading: isIEEE ? 'V. Empirical Proof of Concept' : '5. Empirical Proof of Concept', desc: 'Prototype validation, preliminary benchmark results referencing figures and tables.' },
+          { heading: isIEEE ? 'VI. Discussion' : '6. Discussion', desc: 'Applicability boundaries, comparison with existing paradigms, assumptions.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Contributions, framework implications, and next steps.' }
+        ];
+        break;
+      case 'casestudy':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction and Domain Context' : '1. Introduction and Domain Context', desc: 'Real-world problem context, operational setting, research objectives.' },
+          { heading: isIEEE ? 'II. Case Environment and Background' : '2. Case Environment and Background', desc: 'Domain architecture, operational constraints, organizational or system landscape.' },
+          { heading: isIEEE ? 'III. System Implementation and Deployment' : '3. System Implementation', desc: 'Deployment pipeline, integration, data collection, workflow execution.' },
+          { heading: isIEEE ? 'IV. Empirical Observations and Outcomes' : '4. Observations and Outcomes', desc: 'Operational metrics, efficiency gains, quantitative outcomes with tables and figures.' },
+          { heading: isIEEE ? 'V. Practical Lessons Learned and Guidelines' : '5. Lessons Learned', desc: 'Actionable guidelines, unexpected edge cases, engineering recommendations.' },
+          { heading: isIEEE ? 'VI. Limitations and Challenges' : '6. Limitations', desc: 'Generalizability boundaries, domain-specific dependencies.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Key takeaways and broader industry/academic impact.' }
+        ];
+        break;
+      default: // 'implementation'
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Research problem, technical gap, core contributions, paper organization.' },
+          { heading: isIEEE ? 'II. Related Work' : '2. Related Work', desc: 'State-of-the-art review positioning this work against existing approaches with citations.' },
+          { heading: isIEEE ? 'III. System Architecture and Methodology' : '3. System Architecture and Methodology', desc: 'Modular architecture, pipeline components, algorithmic formulations.' },
+          { heading: isIEEE ? 'IV. Implementation Details' : '4. Implementation Details', desc: 'Technical stack, configurations, execution parameters, operational mechanisms.' },
+          { heading: isIEEE ? 'V. Experimental Evaluation and Results' : '5. Experimental Evaluation and Results', desc: 'Benchmark datasets, baseline comparison, metrics, detailed analysis referencing Fig. 1 and Table I.' },
+          { heading: isIEEE ? 'VI. Discussion and Threats to Validity' : '6. Discussion and Threats to Validity', desc: 'Ablation insights, computational overhead, internal/external validity.' },
+          { heading: isIEEE ? 'VII. Conclusion and Future Work' : '7. Conclusion and Future Work', desc: 'Summary of contributions, empirical validation summary, future extensions.' }
+        ];
+        break;
+    }
 
     // Build data context for AI
     let dataContext = '';
     if (data && data.length > 0) {
       data.forEach(sheet => {
         dataContext += `\n\nDataset: "${sheet.sheetName}" (${sheet.rows.length} rows)\nColumns: ${sheet.columns.join(', ')}\n`;
-        // Include first 20 rows as sample
-        const sample = sheet.rows.slice(0, 20);
-        dataContext += 'Sample data:\n';
+        const sample = sheet.rows.slice(0, 25);
+        dataContext += 'Sample data rows:\n';
         sample.forEach(row => {
           dataContext += JSON.stringify(row) + '\n';
         });
-        if (sheet.rows.length > 20) dataContext += `... and ${sheet.rows.length - 20} more rows\n`;
+        if (sheet.rows.length > 25) dataContext += `... and ${sheet.rows.length - 25} more rows\n`;
       });
     }
 
@@ -2009,7 +2123,7 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
 
     let chartsContext = '';
     if (charts && charts.length > 0) {
-      chartsContext = '\n\nCharts to be included in the paper:\n';
+      chartsContext = '\n\nVisualizations to be referenced in the paper:\n';
       charts.forEach(c => {
         chartsContext += `- ${c.chartTitle} (${c.type} chart): X-axis = ${c.xColumn}, Y-axis = ${c.yColumns.join(', ')}${c.description ? '. ' + c.description : ''}\n`;
       });
@@ -2017,7 +2131,6 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
 
     const authorsStr = (authors || []).map(a => `${a.name}${a.affiliation ? ' (' + a.affiliation + ')' : ''}`).join(', ') || 'Research Author';
 
-    // Determine in-text citation format instructions
     let citationInstructions = '';
     switch (style) {
       case 'APA':
@@ -2027,75 +2140,71 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
         citationInstructions = 'Use MLA 9th edition in-text citations like (Author Page). Use "et al." for 3+ authors. Do not use footnotes for citations.';
         break;
       case 'IEEE':
-        citationInstructions = 'Use IEEE-style numbered citations like [1], [2], [3]. Number references in order of first appearance in the text.';
+        citationInstructions = 'Use IEEE-style numbered citations like [1], [2], [3]. Number references in order of first appearance in the text. NEVER use author-date citations.';
         break;
       case 'CHICAGO':
         citationInstructions = 'Use Chicago author-date in-text citations like (Author Year). Use "et al." for 4+ authors.';
         break;
     }
 
-    const prompt = `You are an expert academic research paper writer. Write a complete, publication-ready academic paper draft based on the following information.
+    const sectionsJsonSchema = sectionTemplates.map(s => `    {
+      "heading": "${s.heading}",
+      "content": "Deep, rigorous academic text (${paragraphsPerSection} full paragraphs). Focus on ${s.desc} Cite specific references and datasets."
+    }`).join(',\n');
 
+    const prompt = `You are a distinguished senior academic researcher, principal investigator, and peer reviewer for IEEE Transactions and ACM Journals. Write an authentic, publication-grade academic paper draft.
+
+PAPER TYPE: ${resolvedPaperType.toUpperCase()} PAPER
+TARGET VENUE: ${resolvedVenue.toUpperCase()} (${resolvedVenue === 'conference' ? 'Dense, contribution-focused, rigorous' : 'Comprehensive, exhaustive literature and theoretical depth'})
+TARGET PAGE BUDGET: ${resolvedPages} Pages (Require ${paragraphsPerSection} substantial, rich paragraphs per body section)
 PAPER TITLE: ${meta.title?.trim() ? `"${meta.title.trim()}"` : `Generate a publication-worthy academic paper title (Provisional topic: "${resolvedTitle}")`}
 AUTHORS: ${authorsStr}
 RESEARCH AREA: ${meta.researchArea || 'Computer Science and Information Systems'}
 OBJECTIVE: ${meta.objective || 'Provide rigorous analysis and evidence-based synthesis of the presented findings and literature'}
 METHODOLOGY: ${meta.methodology || 'Systematic Analysis and Empirical Evaluation'}
-ABSTRACT NOTES: ${meta.abstract || 'Generate based on the data and context'}
+ABSTRACT GUIDANCE: ${meta.abstract || 'Synthesize findings and contributions concisely'}
 KEYWORDS: ${meta.keywords || 'Generate relevant academic keywords'}
+CITATION STYLE: ${style}
+${citationInstructions}
 ${dataContext}
 ${refsContext}
 ${chartsContext}
 
-CITATION STYLE: ${style}
-${citationInstructions}
+══════════════════════════════════════════════════════════════
+CRITICAL SCHOLARLY WRITING & ANTI-PLAGIARISM GUIDELINES:
+══════════════════════════════════════════════════════════════
+1. ABSOLUTE BAN ON AI CLICHES & DETECTABLE BUZZWORDS:
+   DO NOT use any of the following words or phrases:
+   - "delve", "tapestry", "beacon", "testament", "pivotal", "paramount", "crucial", "vital", "multifaceted", "plethora", "myriad", "cornerstone", "revolutionize", "ever-evolving", "landscape", "underscores", "serves as a testament", "in conclusion", "furthermore", "moreover", "it is noteworthy that", "it is worth mentioning", "in summary", "harnessing", "unraveling".
+   Write with natural, human academic prose. Use precise analytical verbs: "demonstrates", "exhibits", "indicates", "corroborates", "delineates", "diverges", "attenuates", "corresponds to".
 
-Write the following sections. Each section should be substantial (3-5 paragraphs minimum for body sections). Write in formal academic tone. Naturally cite the provided references where relevant throughout the text.
+2. HIGH SYNTACTIC BURSTINESS & PERPLEXITY:
+   Vary sentence structure and length dynamically. Alternate concise empirical observations (8-14 words) with complex, compound analytical comparisons (25-40 words) evaluating methodological trade-offs. Avoid beginning consecutive sentences with similar conjunctions or introductory clauses.
 
-${charts && charts.length > 0 ? `When discussing results, reference the charts by their titles (e.g., "As shown in Figure 1: ${charts[0]?.chartTitle || 'Chart Title'}..."). Number figures sequentially.` : ''}
+3. CONCRETE DATA GROUNDING:
+   Every section discussing results or datasets MUST explicitly quote real numbers, categories, distributions, and percentages from the provided spreadsheet data rows. Do not use generic statements like "the model performed well". State exact values: "Method C achieved 95.1% accuracy compared to Method B at 88.3%."
 
-Return ONLY a valid JSON object with the following structure (no markdown fences, no extra text):
+4. RIGOROUS CRITICAL STANCE:
+   Write with authentic scholarly skepticism. Discuss boundary conditions, computational trade-offs, potential latency penalties, data distribution skew, and threats to validity. Avoid promotional or marketing language.
+
+5. SECTIONS REQUIRED:
+   Write each of the following ${sectionTemplates.length} sections with ${paragraphsPerSection} full, detailed paragraphs (NOT bullet points):
+${sectionTemplates.map((s, idx) => `   ${idx + 1}. ${s.heading}: ${s.desc}`).join('\n')}
+
+6. FIGURE & TABLE REFERENCES:
+   - Refer to figures as "${isIEEE ? 'Fig. 1' : 'Figure 1'}".
+   - Refer to tables as "${isIEEE ? 'Table I' : 'Table 1'}".
+
+Return ONLY a valid JSON object matching this exact schema (no markdown fences, no explanatory text):
 {
-  "title": "The full paper title",
-  "abstract": "A comprehensive 200-300 word abstract",
+  "title": "${meta.title?.trim() || 'Descriptive Academic Title'}",
+  "abstract": "${isIEEE ? 'Dense 150-250 word IEEE-style abstract (no citations in abstract).' : 'Dense 200-250 word abstract stating problem, method, results, and significance.'}",
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
   "sections": [
-    {
-      "heading": "1. Introduction",
-      "content": "Full introduction text with in-text citations..."
-    },
-    {
-      "heading": "2. Literature Review",
-      "content": "Comprehensive literature review synthesizing the references..."
-    },
-    {
-      "heading": "3. Methodology",
-      "content": "Detailed methodology section..."
-    },
-    {
-      "heading": "4. Results and Analysis",
-      "content": "Results section referencing figures and data tables..."
-    },
-    {
-      "heading": "5. Discussion",
-      "content": "Discussion of findings, implications, and comparison with existing work..."
-    },
-    {
-      "heading": "6. Conclusion and Future Work",
-      "content": "Conclusion summarizing contributions and future directions..."
-    }
+${sectionsJsonSchema}
   ],
-  "acknowledgments": "Brief acknowledgments text (optional, can be empty string)"
-}
-
-CRITICAL RULES:
-1. Each section content must be at least 3-4 substantial paragraphs (not bullet points).
-2. Naturally weave in citations from the provided references throughout the text.
-3. Reference specific data points, trends, and findings from the provided datasets.
-4. The Results section MUST reference figures and data tables by number.
-5. Write cohesive, flowing academic prose — NOT bulleted lists.
-6. Ensure logical flow between sections.
-7. The abstract should be self-contained and summarize the entire paper.`;
+  "acknowledgments": "Brief formal acknowledgment of funding, institutional facilities, and contributors."
+}`;
 
     const result = await callGeminiWithRetry(genAI, prompt);
     let text = result.response.text();
@@ -2222,6 +2331,13 @@ CRITICAL RULES:
       citationStyle: style,
       pageNumberFormat: pageNumberFormat || 'arabic',
       authors: authors || [],
+      paperType: resolvedPaperType,
+      venueType: resolvedVenue,
+      targetPages: resolvedPages,
+      fontFamily: fontFamily || 'Times New Roman',
+      fontSize: fontSize || '10',
+      lineSpacing: lineSpacing || '1.0',
+      columns: columns || 'auto'
     });
 
   } catch (error) {
