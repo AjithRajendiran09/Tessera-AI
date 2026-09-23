@@ -3242,10 +3242,15 @@ window.closeModal = closeModal;
       const dataTables = generatedResult.dataTables || [];
       const authors = generatedResult.authors || [];
 
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 25;
-      const contentWidth = pageWidth - margin * 2;
+      const pageWidth = doc.internal.pageSize.getWidth();   // 210
+      const pageHeight = doc.internal.pageSize.getHeight();  // 297
+      const marginL = 25.4;  // 1 inch
+      const marginR = 25.4;
+      const marginTop = 25.4;
+      const marginBot = 25.4;
+      const contentWidth = pageWidth - marginL - marginR;    // ~159mm
+      const lineHeight = 6;   // body text line height in mm
+      const paraIndent = 8;   // first-line indent in mm
       let pageNum = 0;
 
       function formatPageNum(n) {
@@ -3259,164 +3264,276 @@ window.closeModal = closeModal;
         const pn = formatPageNum(pageNum);
         if (pn) {
           doc.setFontSize(10);
-          doc.setTextColor(150);
-          doc.text(pn, pageWidth / 2, pageHeight - 10, { align: 'center' });
+          doc.setTextColor(128);
+          doc.text(pn, pageWidth / 2, pageHeight - 12, { align: 'center' });
           doc.setTextColor(0);
         }
       }
 
-      function addHeader() {
+      function addRunningHeader() {
         doc.setFontSize(8);
-        doc.setTextColor(150);
-        const shortTitle = (draft.title || '').substring(0, 60);
-        doc.text(shortTitle, margin, 12);
+        doc.setTextColor(160);
+        const shortTitle = (draft.title || '').substring(0, 70);
+        doc.text(shortTitle, marginL, 12);
         doc.setTextColor(0);
       }
 
+      function newPage() {
+        doc.addPage();
+        addPageNumber();
+        addRunningHeader();
+        return marginTop;
+      }
+
       function checkPage(y, needed) {
-        if (y + needed > pageHeight - 20) {
-          doc.addPage();
-          addPageNumber();
-          addHeader();
-          return 25;
+        if (y + needed > pageHeight - marginBot) {
+          return newPage();
         }
         return y;
       }
 
-      // ── Title Page ──
-      doc.setFontSize(28);
-      doc.setFont('helvetica', 'bold');
-      const titleLines = doc.splitTextToSize(draft.title || 'Untitled Paper', contentWidth);
-      const titleY = 80;
-      doc.text(titleLines, pageWidth / 2, titleY, { align: 'center' });
+      // ── Utility: write paragraph with first-line indent ──
+      function writeParagraph(text, y, fontSize, indent) {
+        doc.setFontSize(fontSize || 11);
+        doc.setFont('helvetica', 'normal');
+        const firstLineWidth = contentWidth - (indent || paraIndent);
+        const restWidth = contentWidth;
+        const words = text.split(/\s+/);
+        let currentLine = '';
+        let isFirstLine = true;
 
-      let ty = titleY + titleLines.length * 12 + 15;
+        for (const word of words) {
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const maxW = isFirstLine ? firstLineWidth : restWidth;
+          if (doc.getTextWidth(testLine) > maxW && currentLine) {
+            y = checkPage(y, lineHeight);
+            const xPos = isFirstLine ? marginL + (indent || paraIndent) : marginL;
+            doc.text(currentLine, xPos, y);
+            y += lineHeight;
+            currentLine = word;
+            isFirstLine = false;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) {
+          y = checkPage(y, lineHeight);
+          const xPos = isFirstLine ? marginL + (indent || paraIndent) : marginL;
+          doc.text(currentLine, xPos, y);
+          y += lineHeight;
+        }
+        return y;
+      }
+
+      // ── Utility: write body text without indent ──
+      function writeText(text, y, fontSize) {
+        doc.setFontSize(fontSize || 11);
+        const lines = doc.splitTextToSize(text, contentWidth);
+        for (const line of lines) {
+          y = checkPage(y, lineHeight);
+          doc.text(line, marginL, y);
+          y += lineHeight;
+        }
+        return y;
+      }
+
+      // ── Utility: select key columns for wide tables ──
+      function selectKeyColumns(table) {
+        const MAX_COLS = 6;
+        const cols = table.columns;
+        if (cols.length <= MAX_COLS) return cols;
+
+        // Priority columns by name pattern
+        const priorityPatterns = [
+          /^#$/i, /^no$/i, /^s\.?no/i, /^index/i, /^id$/i,
+          /title/i, /name/i,
+          /author/i, /creator/i,
+          /year/i, /date/i, /pub/i,
+          /venue/i, /journal/i, /conference/i, /source/i,
+          /doi$/i,
+          /quartile/i, /scopus/i, /indexed/i,
+          /type/i, /category/i,
+          /publisher/i,
+          /country/i, /region/i,
+          /cited/i, /citation/i,
+          /abstract/i
+        ];
+
+        const selected = [];
+        const used = new Set();
+
+        // Always include a numeric index column if present
+        const idxCol = cols.find(c => /^(#|no|s\.?no|index|id)$/i.test(c.trim()));
+        if (idxCol) { selected.push(idxCol); used.add(idxCol); }
+
+        // Walk priority patterns
+        for (const pattern of priorityPatterns) {
+          if (selected.length >= MAX_COLS) break;
+          for (const col of cols) {
+            if (used.has(col)) continue;
+            if (pattern.test(col.trim())) {
+              selected.push(col);
+              used.add(col);
+              break;
+            }
+          }
+        }
+
+        // Fill remaining slots with first unselected columns (skip URL-like ones)
+        for (const col of cols) {
+          if (selected.length >= MAX_COLS) break;
+          if (used.has(col)) continue;
+          if (/url|link|http|scopus_url/i.test(col)) continue;
+          selected.push(col);
+          used.add(col);
+        }
+
+        return selected;
+      }
+
+      // ── Utility: truncate cell text for tables ──
+      function truncateCell(val, maxLen) {
+        const s = String(val ?? '').trim();
+        if (s.length <= maxLen) return s;
+        return s.substring(0, maxLen - 1) + '…';
+      }
+
+      // ════════════════════════════════════════
+      // PAGE 1 — TITLE PAGE
+      // ════════════════════════════════════════
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      const titleLines = doc.splitTextToSize(draft.title || 'Untitled Paper', contentWidth - 20);
+      const titleStartY = 85;
+      doc.text(titleLines, pageWidth / 2, titleStartY, { align: 'center' });
+
+      let ty = titleStartY + titleLines.length * 10 + 15;
 
       // Authors
       if (authors.length > 0) {
-        doc.setFontSize(13);
+        doc.setFontSize(12);
         doc.setFont('helvetica', 'normal');
         authors.forEach(a => {
           doc.text(a.name, pageWidth / 2, ty, { align: 'center' });
           ty += 6;
           if (a.affiliation) {
             doc.setFontSize(10);
-            doc.setTextColor(100);
+            doc.setTextColor(80);
             doc.text(a.affiliation, pageWidth / 2, ty, { align: 'center' });
             doc.setTextColor(0);
             ty += 5;
           }
           if (a.email) {
             doc.setFontSize(9);
-            doc.setTextColor(120);
+            doc.setTextColor(100);
             doc.text(a.email, pageWidth / 2, ty, { align: 'center' });
             doc.setTextColor(0);
             ty += 5;
           }
           ty += 3;
-          doc.setFontSize(13);
+          doc.setFontSize(12);
         });
       }
 
       // Date
       doc.setFontSize(11);
-      doc.setTextColor(100);
-      doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth / 2, ty + 10, { align: 'center' });
+      doc.setTextColor(80);
+      doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth / 2, ty + 12, { align: 'center' });
       doc.setTextColor(0);
 
-      // Citation style badge
-      doc.setFontSize(9);
-      doc.setTextColor(130);
-      doc.text(`Citation Format: ${citationStyle} | Generated by Tessera AI`, pageWidth / 2, pageHeight - 25, { align: 'center' });
+      // Footer
+      doc.setFontSize(8);
+      doc.setTextColor(140);
+      doc.text(`Citation Format: ${citationStyle} | Generated by Tessera AI`, pageWidth / 2, pageHeight - 20, { align: 'center' });
       doc.setTextColor(0);
-
       addPageNumber();
 
-      // ── Abstract Page ──
-      doc.addPage();
-      addPageNumber();
-      let y = 25;
+      // ════════════════════════════════════════
+      // PAGE 2 — ABSTRACT
+      // ════════════════════════════════════════
+      let y = newPage();
 
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text('Abstract', margin, y);
+      doc.text('Abstract', pageWidth / 2, y, { align: 'center' });
       y += 10;
 
       doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
-      const absLines = doc.splitTextToSize(draft.abstract || '', contentWidth);
-      absLines.forEach(line => {
-        y = checkPage(y, 6);
-        doc.text(line, margin, y);
-        y += 5.5;
-      });
+      y = writeText(draft.abstract || '', y, 11);
 
       // Keywords
       if (draft.keywords && draft.keywords.length > 0) {
-        y += 5;
-        y = checkPage(y, 10);
+        y += 4;
+        y = checkPage(y, 12);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
-        doc.text('Keywords: ', margin, y);
+        const kwLabel = 'Keywords: ';
+        doc.text(kwLabel, marginL, y);
         doc.setFont('helvetica', 'italic');
-        doc.text(draft.keywords.join(', '), margin + doc.getTextWidth('Keywords: '), y);
+        const kwText = draft.keywords.join('; ');
+        const kwLines = doc.splitTextToSize(kwText, contentWidth - doc.getTextWidth(kwLabel));
+        kwLines.forEach((line, i) => {
+          if (i === 0) {
+            doc.text(line, marginL + doc.getTextWidth(kwLabel), y);
+          } else {
+            y += lineHeight;
+            y = checkPage(y, lineHeight);
+            doc.text(line, marginL, y);
+          }
+        });
         doc.setFont('helvetica', 'normal');
-        y += 10;
+        y += lineHeight + 4;
       }
 
-      // ── Sections ──
+      // ════════════════════════════════════════
+      // BODY SECTIONS
+      // ════════════════════════════════════════
       for (const section of (draft.sections || [])) {
         y += 8;
-        y = checkPage(y, 20);
+        y = checkPage(y, 24);
 
         // Section heading
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text(section.heading, margin, y);
+        doc.text(section.heading, marginL, y);
         y += 8;
 
         // Section content
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-
-        // Get possibly-edited content
         const sIdx = draft.sections.indexOf(section);
         const editedEl = document.getElementById(`draft-section-content-${sIdx}`);
         const content = editedEl ? (editedEl.tagName === 'TEXTAREA' ? editedEl.value : editedEl.textContent) : section.content;
 
         const paragraphs = content.split(/\n\n+/);
         for (const para of paragraphs) {
-          const lines = doc.splitTextToSize(para.trim(), contentWidth);
-          for (const line of lines) {
-            y = checkPage(y, 6);
-            doc.text(line, margin, y);
-            y += 5.5;
-          }
-          y += 3; // paragraph spacing
+          const trimmed = para.trim();
+          if (!trimmed) continue;
+          y = writeParagraph(trimmed, y, 11, paraIndent);
+          y += 2; // inter-paragraph spacing
         }
 
-        // Insert charts after Results section
+        // Insert charts + tables after the Results section
         if (section.heading.toLowerCase().includes('result')) {
-          // Charts
+          // ── Charts ──
           for (const chart of chartData) {
-            y += 5;
-            y = checkPage(y, 80);
+            y += 6;
+            y = checkPage(y, 85);
 
-            // Render chart to hidden canvas and get image
             try {
               const chartImg = await renderChartToImage(chart);
               if (chartImg) {
-                const imgWidth = contentWidth * 0.85;
+                const imgWidth = contentWidth * 0.82;
                 const imgHeight = imgWidth * 0.5;
-                y = checkPage(y, imgHeight + 20);
-                const xOffset = margin + (contentWidth - imgWidth) / 2;
+                y = checkPage(y, imgHeight + 18);
+                const xOffset = marginL + (contentWidth - imgWidth) / 2;
                 doc.addImage(chartImg, 'PNG', xOffset, y, imgWidth, imgHeight);
-                y += imgHeight + 5;
+                y += imgHeight + 4;
 
-                // Caption
+                // Figure caption
                 doc.setFontSize(9);
                 doc.setFont('helvetica', 'italic');
-                doc.text(`Figure ${chart.figureNumber}: ${chart.title}`, pageWidth / 2, y, { align: 'center' });
+                const caption = `Figure ${chart.figureNumber}: ${chart.title}`;
+                doc.text(caption, pageWidth / 2, y, { align: 'center' });
                 doc.setFont('helvetica', 'normal');
                 y += 10;
               }
@@ -3425,89 +3542,145 @@ window.closeModal = closeModal;
             }
           }
 
-          // Data Tables
+          // ── Data Tables (intelligently formatted) ──
           for (const table of dataTables) {
-            y += 5;
-            y = checkPage(y, 30);
+            y += 6;
+            y = checkPage(y, 35);
 
-            // Table title
+            // Select key columns (max 6) for readability
+            const keyCols = selectKeyColumns(table);
+            const totalCols = table.columns.length;
+            const omittedCount = totalCols - keyCols.length;
+
+            // Table caption
             doc.setFontSize(9);
             doc.setFont('helvetica', 'italic');
-            doc.text(table.title, pageWidth / 2, y, { align: 'center' });
+            const tableCaption = table.title + (omittedCount > 0 ? ` (showing ${keyCols.length} of ${totalCols} columns)` : '');
+            doc.text(tableCaption, pageWidth / 2, y, { align: 'center' });
             doc.setFont('helvetica', 'normal');
             y += 5;
 
-            // Use autoTable
-            const tableRows = table.rows.slice(0, 50).map(row => table.columns.map(c => String(row[c] ?? '')));
+            // Build table rows with truncation
+            const maxRows = Math.min(table.rows.length, 30);
+            const tableRows = table.rows.slice(0, maxRows).map((row, rIdx) => {
+              return keyCols.map(col => {
+                const val = row[col];
+                // Title/abstract columns get more space, others less
+                const isWide = /title|abstract|name/i.test(col);
+                return truncateCell(val, isWide ? 60 : 30);
+              });
+            });
+
+            // Column width proportions
+            const colStyles = {};
+            keyCols.forEach((col, idx) => {
+              const isWide = /title|abstract|name/i.test(col);
+              const isNarrow = /^(#|no|year|vol|issue|s\.?no|id|quartile)$/i.test(col.trim());
+              if (isWide) {
+                colStyles[idx] = { cellWidth: 'auto', minCellWidth: 40 };
+              } else if (isNarrow) {
+                colStyles[idx] = { cellWidth: 14 };
+              }
+            });
+
             const renderTable = typeof autoTable === 'function' ? autoTable : (doc.autoTable ? doc.autoTable.bind(doc) : null);
             if (renderTable) {
               renderTable(doc, {
-                head: [table.columns],
+                head: [keyCols],
                 body: tableRows,
                 startY: y,
-                margin: { left: margin, right: margin },
-                styles: { fontSize: 8, cellPadding: 2 },
-                headStyles: { fillColor: [124, 92, 255], textColor: 255, fontStyle: 'bold' },
-                alternateRowStyles: { fillColor: [245, 243, 255] },
-                theme: 'grid'
+                margin: { left: marginL, right: marginR },
+                styles: {
+                  fontSize: 7,
+                  cellPadding: 1.5,
+                  overflow: 'linebreak',
+                  lineWidth: 0.2,
+                  lineColor: [180, 180, 180],
+                  textColor: [30, 30, 30],
+                  valign: 'top'
+                },
+                headStyles: {
+                  fillColor: [55, 45, 90],
+                  textColor: [255, 255, 255],
+                  fontStyle: 'bold',
+                  fontSize: 7,
+                  halign: 'center'
+                },
+                alternateRowStyles: { fillColor: [248, 247, 252] },
+                columnStyles: colStyles,
+                theme: 'grid',
+                tableWidth: 'auto'
               });
-              y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 40) + 10;
+
+              // Get the final Y after the table
+              const finalY = doc.lastAutoTable
+                ? doc.lastAutoTable.finalY
+                : (doc.previousAutoTable ? doc.previousAutoTable.finalY : y + 40);
+              y = finalY + 4;
+
+              // Note about omitted rows/cols
+              if (omittedCount > 0 || table.rows.length > maxRows) {
+                doc.setFontSize(7);
+                doc.setTextColor(120);
+                let note = '';
+                if (table.rows.length > maxRows) note += `Showing ${maxRows} of ${table.totalRows || table.rows.length} rows. `;
+                if (omittedCount > 0) note += `${omittedCount} columns omitted for readability.`;
+                doc.text(note.trim(), pageWidth / 2, y, { align: 'center' });
+                doc.setTextColor(0);
+                y += 8;
+              } else {
+                y += 4;
+              }
             }
           }
         }
       }
 
-      // Acknowledgments
+      // ════════════════════════════════════════
+      // ACKNOWLEDGMENTS
+      // ════════════════════════════════════════
       if (draft.acknowledgments) {
         y += 8;
-        y = checkPage(y, 20);
-        doc.setFontSize(14);
+        y = checkPage(y, 24);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text('Acknowledgments', margin, y);
+        doc.text('Acknowledgments', marginL, y);
         y += 8;
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        const ackLines = doc.splitTextToSize(draft.acknowledgments, contentWidth);
-        for (const line of ackLines) {
-          y = checkPage(y, 6);
-          doc.text(line, margin, y);
-          y += 5.5;
-        }
+        y = writeParagraph(draft.acknowledgments, y, 11, 0);
       }
 
-      // ── References ──
+      // ════════════════════════════════════════
+      // REFERENCES
+      // ════════════════════════════════════════
       if (refs.length > 0) {
-        doc.addPage();
-        addPageNumber();
-        addHeader();
-        y = 25;
+        y = newPage();
 
-        doc.setFontSize(14);
+        doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text('References', margin, y);
+        doc.text('References', marginL, y);
         y += 10;
 
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
 
         refs.forEach((ref) => {
-          // Strip markdown italic markers for PDF
           const cleanRef = ref.formatted.replace(/\*/g, '');
           const lines = doc.splitTextToSize(cleanRef, contentWidth - 10);
-          y = checkPage(y, lines.length * 5 + 4);
+          y = checkPage(y, lines.length * 5 + 3);
           lines.forEach((line, lIdx) => {
-            doc.text(line, margin + (lIdx === 0 ? 0 : 8), y);
-            y += 4.5;
+            doc.text(line, marginL + (lIdx === 0 ? 0 : 8), y);
+            y += 4.8;
           });
-          y += 3;
+          y += 2.5;
         });
       }
 
-      // Save
+      // ════════════════════════════════════════
+      // SAVE
+      // ════════════════════════════════════════
       const filename = (draft.title || 'paper_draft').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50) + '.pdf';
       doc.save(filename);
 
-      // Go to step 4
       goToDraftStep(4);
       $('draft-download-meta').innerHTML = `
         <span>📄 ${citationStyle} Format</span>
@@ -3515,6 +3688,7 @@ window.closeModal = closeModal;
         <span>📋 ${dataTables.length} Tables</span>
         <span>📚 ${refs.length} References</span>
         <span>📝 ${(draft.sections || []).length} Sections</span>
+        <span>📃 ${pageNum} Pages</span>
       `;
 
       toast('PDF downloaded!');
