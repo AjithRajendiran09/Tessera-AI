@@ -3152,118 +3152,314 @@ window.closeModal = closeModal;
     }
   }
 
+  // ── Utility: select key columns for tables ──
+  function selectKeyColumns(table, maxCols = 5) {
+    if (!table || !table.columns) return [];
+    const cols = table.columns;
+    if (cols.length <= maxCols) return cols;
+
+    const priorityPatterns = [
+      /^#$/i, /^no$/i, /^s\.?no/i, /^index/i, /^id$/i,
+      /title/i, /name/i,
+      /author/i, /creator/i,
+      /year/i, /date/i, /pub/i,
+      /venue/i, /journal/i, /conference/i,
+      /accuracy/i, /f1/i, /precision/i, /recall/i, /score/i, /metric/i, /result/i, /method/i
+    ];
+
+    const selected = [];
+    const used = new Set();
+
+    const idxCol = cols.find(c => /^(#|no|s\.?no|index|id)$/i.test(c.trim()));
+    if (idxCol) { selected.push(idxCol); used.add(idxCol); }
+
+    for (const pattern of priorityPatterns) {
+      if (selected.length >= maxCols) break;
+      for (const col of cols) {
+        if (used.has(col)) continue;
+        if (pattern.test(col.trim())) {
+          selected.push(col);
+          used.add(col);
+          break;
+        }
+      }
+    }
+
+    for (const col of cols) {
+      if (selected.length >= maxCols) break;
+      if (used.has(col)) continue;
+      if (/url|link|http|doi|scopus_url/i.test(col)) continue;
+      selected.push(col);
+      used.add(col);
+    }
+
+    return selected.length > 0 ? selected : cols.slice(0, maxCols);
+  }
+
+  function truncateCell(val, maxLen = 30) {
+    const s = String(val ?? '').trim();
+    if (s.length <= maxLen) return s;
+    return s.substring(0, maxLen - 1) + '…';
+  }
+
   function renderDraftPreview() {
     const container = $('draft-preview-paper');
-    const draft = generatedResult.draft;
+    if (!container || !generatedResult) return;
+
+    const draft = generatedResult.draft || {};
     const refs = generatedResult.formattedReferences || [];
     const chartData = generatedResult.chartData || [];
     const dataTables = generatedResult.dataTables || [];
     const authors = generatedResult.authors || [];
 
-    // Toggle IEEE styling class
-    if (citationStyle === 'IEEE') {
-      container.classList.add('ieee-style');
-    } else {
-      container.classList.remove('ieee-style');
-    }
+    const pType = generatedResult.paperType || paperType || 'implementation';
+    const vType = generatedResult.venueType || venueType || 'conference';
+    const fFamily = generatedResult.fontFamily || fontFamily || 'Times New Roman';
+    const cols = generatedResult.columns || columns || 'auto';
+    const isTwoCol = cols === '2' || (cols === 'auto' && (citationStyle === 'IEEE' || vType === 'conference'));
+
+    container.className = 'draft-preview-paper' + (isTwoCol ? ' ieee-style' : ' standard-style');
 
     let html = '';
 
-    // Title
-    html += `<h1 class="draft-paper-title">${draft.title || parsedExcel.metadata?.title || 'Untitled Paper'}</h1>`;
+    if (isTwoCol) {
+      // ══════════════════════════════════════════════════════════
+      // AUTHENTIC OVERLEAF IEEE TWO-COLUMN FORMAT
+      // ══════════════════════════════════════════════════════════
+      const authorsHtml = authors.length > 0
+        ? `<div class="draft-ieee-authors">
+            ${authors.map(a => `
+              <div class="draft-ieee-author-col">
+                <span class="draft-ieee-author-name">${a.name}</span>
+                ${a.affiliation ? `<span class="draft-ieee-author-affil">${a.affiliation}</span>` : ''}
+                ${a.email ? `<span class="draft-ieee-author-email">${a.email}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>`
+        : '';
 
-    // Authors
-    if (authors.length > 0) {
-      html += `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}${a.email ? ' · <span style="font-family:monospace">' + a.email + '</span>' : ''}`).join(' &nbsp;•&nbsp; ')}</p>`;
-    }
+      const kwText = Array.isArray(draft.keywords) ? draft.keywords.join(', ') : (draft.keywords || '');
 
-    // Abstract
-    html += `
-      <div class="draft-paper-abstract">
-        <h4>Abstract</h4>
-        <p>${draft.abstract || ''}</p>
-      </div>
-    `;
-
-    // Keywords / Index Terms
-    if (draft.keywords && draft.keywords.length > 0) {
-      if (citationStyle === 'IEEE') {
-        html += `<div class="draft-paper-keywords"><strong>Index Terms</strong> ${draft.keywords.join(', ')}</div>`;
-      } else {
-        html += `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>`;
-      }
-    }
-
-    // Sections
-    (draft.sections || []).forEach((section, sIdx) => {
       html += `
-        <div class="draft-section" id="draft-section-${sIdx}">
-          <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})">✏️ Edit</button>
-          <h2 class="draft-section-heading">${section.heading}</h2>
-          <div class="draft-section-content" id="draft-section-content-${sIdx}">${section.content}</div>
-        </div>
-      `;
-
-      // Insert charts/tables after Results section
-      if (section.heading.toLowerCase().includes('result')) {
-        // Charts
-        chartData.forEach((chart, cIdx) => {
-          html += `
-            <div class="draft-chart-container" id="draft-chart-preview-${cIdx}">
-              <canvas id="draft-chart-preview-canvas-${cIdx}" width="700" height="350"></canvas>
-              <p class="chart-caption">${citationStyle === 'IEEE' ? 'Fig.' : 'Figure'} ${chart.figureNumber}: ${chart.title}</p>
-            </div>
-          `;
-        });
-
-        // Data Tables
-        dataTables.forEach(table => {
-          const maxPreviewRows = 15;
-          const rows = table.rows.slice(0, maxPreviewRows);
-          html += `
-            <div class="draft-data-table-wrap">
-              <h4>${table.title}</h4>
-              <table>
-                <thead><tr>${table.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
-                <tbody>${rows.map(row => `<tr>${table.columns.map(c => `<td>${row[c] ?? ''}</td>`).join('')}</tr>`).join('')}</tbody>
-              </table>
-              ${table.totalRows > maxPreviewRows ? `<p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:4px">Showing ${maxPreviewRows} of ${table.totalRows} rows</p>` : ''}
-            </div>
-          `;
-        });
-      }
-    });
-
-    // Acknowledgments
-    if (draft.acknowledgments) {
-      html += `
-        <div class="draft-section">
-          <h2 class="draft-section-heading">Acknowledgments</h2>
-          <div class="draft-section-content">${draft.acknowledgments}</div>
-        </div>
-      `;
-    }
-
-    // References
-    if (refs.length > 0) {
-      html += `
-        <div class="draft-references-section">
-          <h3>References</h3>
-          <div class="draft-ref-list">
-            ${refs.map(r => `<p class="draft-ref-formatted">${r.formatted}</p>`).join('')}
+        <header class="draft-ieee-header">
+          <h1 class="draft-ieee-title">${(draft.title || parsedExcel?.metadata?.title || 'Research Paper Title').toUpperCase()}</h1>
+          ${authorsHtml}
+          <div class="draft-ieee-abstract-box">
+            <p class="draft-ieee-abstract-p"><span class="draft-ieee-lead">Abstract—</span>${draft.abstract || ''}</p>
+            ${kwText ? `<p class="draft-ieee-keywords-p"><span class="draft-ieee-lead">Index Terms—</span>${kwText}</p>` : ''}
           </div>
-        </div>
+        </header>
+
+        <div class="draft-ieee-body-columns">
       `;
+
+      let chartsPlaced = false;
+      let tablesPlaced = false;
+
+      (draft.sections || []).forEach((section, sIdx) => {
+        const romanNum = toRoman(sIdx + 1).toUpperCase();
+        let headingText = section.heading.trim();
+        if (!headingText.match(/^[IVXLCDM]+\./i)) {
+          headingText = `${romanNum}. ${headingText.toUpperCase()}`;
+        } else {
+          headingText = headingText.toUpperCase();
+        }
+
+        const rawContent = section.content || '';
+        const paras = rawContent.split(/\n\n+/).filter(p => p.trim());
+
+        html += `
+          <div class="draft-ieee-section" id="draft-section-${sIdx}">
+            <div class="draft-ieee-section-title-row">
+              <h2 class="draft-ieee-section-heading">${headingText}</h2>
+              <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})" title="Edit section content">✏️</button>
+            </div>
+            <div class="draft-ieee-section-content" id="draft-section-content-${sIdx}">
+              ${paras.map(p => `<p class="draft-ieee-p">${p.trim()}</p>`).join('')}
+            </div>
+          </div>
+        `;
+
+        // Check subsections if any
+        if (section.subsections && Array.isArray(section.subsections)) {
+          section.subsections.forEach((sub, subIdx) => {
+            const letter = String.fromCharCode(65 + subIdx);
+            const subTitle = `${letter}. ${sub.title}`;
+            const subParas = (sub.content || '').split(/\n\n+/).filter(p => p.trim());
+            html += `
+              <div class="draft-ieee-subsection">
+                <h3 class="draft-ieee-subsection-heading">${subTitle}</h3>
+                <div class="draft-ieee-section-content">
+                  ${subParas.map(p => `<p class="draft-ieee-p">${p.trim()}</p>`).join('')}
+                </div>
+              </div>
+            `;
+          });
+        }
+
+        const isEvalSec = section.heading.toLowerCase().includes('result') ||
+                          section.heading.toLowerCase().includes('evaluation') ||
+                          section.heading.toLowerCase().includes('experiment') ||
+                          sIdx === Math.min(2, (draft.sections || []).length - 1);
+
+        if (isEvalSec && !chartsPlaced && chartData.length > 0) {
+          chartsPlaced = true;
+          chartData.forEach((chart, cIdx) => {
+            html += `
+              <figure class="draft-ieee-figure" id="draft-chart-preview-${cIdx}">
+                <div class="draft-ieee-canvas-wrap">
+                  <canvas id="draft-chart-preview-canvas-${cIdx}" width="650" height="360"></canvas>
+                </div>
+                <figcaption class="draft-ieee-fig-caption"><em>Fig. ${chart.figureNumber}.</em> ${chart.title}</figcaption>
+              </figure>
+            `;
+          });
+        }
+
+        if (isEvalSec && !tablesPlaced && dataTables.length > 0) {
+          tablesPlaced = true;
+          dataTables.forEach((table, tIdx) => {
+            const keyCols = selectKeyColumns(table, 5);
+            const maxPreviewRows = 8;
+            const rows = (table.rows || []).slice(0, maxPreviewRows);
+
+            html += `
+              <div class="draft-ieee-table-card ${table.columns.length > 5 ? 'wide-table' : ''}">
+                <div class="draft-ieee-table-num">TABLE ${toRoman(tIdx + 1).toUpperCase()}</div>
+                <div class="draft-ieee-table-title">${(table.title || 'Summary of Corpus Data').toUpperCase()}</div>
+                <table class="draft-ieee-table">
+                  <thead>
+                    <tr>${keyCols.map(c => `<th>${c}</th>`).join('')}</tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map(row => `
+                      <tr>${keyCols.map(c => `<td>${truncateCell(row[c], 28)}</td>`).join('')}</tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                ${(table.totalRows || table.rows.length) > maxPreviewRows ? `<p class="draft-ieee-table-note">Showing ${maxPreviewRows} of ${table.totalRows || table.rows.length} rows</p>` : ''}
+              </div>
+            `;
+          });
+        }
+      });
+
+      // Acknowledgments
+      if (draft.acknowledgments) {
+        html += `
+          <div class="draft-ieee-section">
+            <div class="draft-ieee-section-title-row">
+              <h2 class="draft-ieee-section-heading">ACKNOWLEDGMENT</h2>
+            </div>
+            <div class="draft-ieee-section-content">
+              <p class="draft-ieee-p">${draft.acknowledgments}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      // References
+      if (refs.length > 0) {
+        html += `
+          <div class="draft-ieee-section draft-ieee-references">
+            <div class="draft-ieee-section-title-row">
+              <h2 class="draft-ieee-section-heading">REFERENCES</h2>
+            </div>
+            <div class="draft-ieee-ref-list">
+              ${refs.map(r => {
+                const clean = r.formatted.replace(/\*/g, '');
+                return `<p class="draft-ieee-ref-item">${clean}</p>`;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`; // Close draft-ieee-body-columns
+
+    } else {
+      // ══════════════════════════════════════════════════════════
+      // STANDARD SINGLE-COLUMN MANUSCRIPT (APA / MLA / CHICAGO)
+      // ══════════════════════════════════════════════════════════
+      html += `
+        <h1 class="draft-paper-title">${draft.title || parsedExcel?.metadata?.title || 'Untitled Paper'}</h1>
+        ${authors.length > 0 ? `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}${a.email ? ' · ' + a.email : ''}`).join(' &nbsp;•&nbsp; ')}</p>` : ''}
+        <div class="draft-paper-abstract">
+          <h4>Abstract</h4>
+          <p>${draft.abstract || ''}</p>
+        </div>
+        ${draft.keywords && draft.keywords.length > 0 ? `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>` : ''}
+      `;
+
+      (draft.sections || []).forEach((section, sIdx) => {
+        const rawContent = section.content || '';
+        const paras = rawContent.split(/\n\n+/).filter(p => p.trim());
+
+        html += `
+          <div class="draft-section" id="draft-section-${sIdx}">
+            <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})">✏️ Edit</button>
+            <h2 class="draft-section-heading">${section.heading}</h2>
+            <div class="draft-section-content" id="draft-section-content-${sIdx}">
+              ${paras.map(p => `<p class="draft-standard-p">${p.trim()}</p>`).join('')}
+            </div>
+          </div>
+        `;
+
+        if (section.heading.toLowerCase().includes('result') || section.heading.toLowerCase().includes('evaluation')) {
+          chartData.forEach((chart, cIdx) => {
+            html += `
+              <div class="draft-chart-container" id="draft-chart-preview-${cIdx}">
+                <canvas id="draft-chart-preview-canvas-${cIdx}" width="700" height="350"></canvas>
+                <p class="chart-caption">Figure ${chart.figureNumber}: ${chart.title}</p>
+              </div>
+            `;
+          });
+
+          dataTables.forEach((table, tIdx) => {
+            const keyCols = selectKeyColumns(table, 6);
+            const maxPreviewRows = 12;
+            const rows = (table.rows || []).slice(0, maxPreviewRows);
+            html += `
+              <div class="draft-data-table-wrap">
+                <h4>Table ${tIdx + 1}: ${table.title}</h4>
+                <table class="draft-standard-table">
+                  <thead><tr>${keyCols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+                  <tbody>${rows.map(row => `<tr>${keyCols.map(c => `<td>${truncateCell(row[c], 35)}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table>
+              </div>
+            `;
+          });
+        }
+      });
+
+      if (draft.acknowledgments) {
+        html += `
+          <div class="draft-section">
+            <h2 class="draft-section-heading">Acknowledgments</h2>
+            <div class="draft-section-content"><p>${draft.acknowledgments}</p></div>
+          </div>
+        `;
+      }
+
+      if (refs.length > 0) {
+        html += `
+          <div class="draft-references-section">
+            <h3>References</h3>
+            <div class="draft-ref-list">
+              ${refs.map(r => `<p class="draft-ref-formatted">${r.formatted.replace(/\*/g, '')}</p>`).join('')}
+            </div>
+          </div>
+        `;
+      }
     }
 
     container.innerHTML = html;
 
-    // Render Chart.js charts after DOM update
-    setTimeout(() => renderPreviewCharts(chartData), 200);
+    // Render Chart.js charts
+    setTimeout(() => renderPreviewCharts(chartData), 150);
   }
 
   function renderPreviewCharts(chartData) {
-    // Destroy old chart instances
     chartInstances.forEach(c => { try { c.destroy(); } catch(e){} });
     chartInstances = [];
 
@@ -3271,6 +3467,9 @@ window.closeModal = closeModal;
       const canvas = document.getElementById(`draft-chart-preview-canvas-${idx}`);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
       const instance = new Chart(ctx, {
         type: chart.type === 'pie' ? 'pie' : chart.type === 'line' ? 'line' : 'bar',
         data: chart.data,
@@ -3278,15 +3477,41 @@ window.closeModal = closeModal;
           ...chart.options,
           responsive: true,
           maintainAspectRatio: true,
-          animation: { duration: 800 },
+          animation: { duration: 500 },
           plugins: {
-            ...(chart.options?.plugins || {}),
             title: {
               display: true,
               text: `Figure ${chart.figureNumber}: ${chart.title}`,
-              font: { size: 14, weight: 'bold' }
+              font: { size: 12, weight: 'bold', family: "'Times New Roman', serif" },
+              color: '#111111'
+            },
+            legend: {
+              labels: { color: '#222222', font: { size: 10, family: "'Times New Roman', serif" } }
             }
-          }
+          },
+          scales: chart.type !== 'pie' ? {
+            y: {
+              beginAtZero: true,
+              ticks: { color: '#333333', font: { size: 9, family: "'Times New Roman', serif" } },
+              grid: { color: '#f0f0f0' },
+              title: {
+                display: !!chart.options?.scales?.y?.title?.text,
+                text: chart.options?.scales?.y?.title?.text || '',
+                color: '#333333',
+                font: { size: 9.5, family: "'Times New Roman', serif" }
+              }
+            },
+            x: {
+              ticks: { color: '#333333', font: { size: 9, family: "'Times New Roman', serif" } },
+              grid: { color: '#f8f8f8' },
+              title: {
+                display: !!chart.options?.scales?.x?.title?.text,
+                text: chart.options?.scales?.x?.title?.text || '',
+                color: '#333333',
+                font: { size: 9.5, family: "'Times New Roman', serif" }
+              }
+            }
+          } : undefined
         }
       });
       chartInstances.push(instance);
@@ -3300,22 +3525,23 @@ window.closeModal = closeModal;
     if (!contentEl) return;
 
     if (contentEl.tagName === 'DIV') {
-      const text = contentEl.textContent;
+      const text = contentEl.innerText || contentEl.textContent;
       const textarea = document.createElement('textarea');
       textarea.className = 'draft-section-textarea';
-      textarea.value = text;
+      textarea.value = text.trim();
       textarea.id = `draft-section-content-${sIdx}`;
       contentEl.replaceWith(textarea);
-      btn.textContent = '💾 Save';
+      if (btn) btn.textContent = '💾';
     } else {
       const text = contentEl.value;
       const div = document.createElement('div');
-      div.className = 'draft-section-content';
+      const isIEEE = $('draft-preview-paper')?.classList.contains('ieee-style');
+      div.className = isIEEE ? 'draft-ieee-section-content' : 'draft-section-content';
       div.id = `draft-section-content-${sIdx}`;
-      div.textContent = text;
+      const paras = text.split(/\n\n+/).filter(p => p.trim());
+      div.innerHTML = paras.map(p => `<p class="${isIEEE ? 'draft-ieee-p' : 'draft-standard-p'}">${p.trim()}</p>`).join('');
       contentEl.replaceWith(div);
-      btn.textContent = '✏️ Edit';
-      // Update draft data
+      if (btn) btn.textContent = '✏️';
       if (generatedResult?.draft?.sections?.[sIdx]) {
         generatedResult.draft.sections[sIdx].content = text;
       }
@@ -3551,8 +3777,7 @@ window.closeModal = closeModal;
 
       // Helper to generate docx Table
       function createDocxTable(table) {
-        const maxCols = 6;
-        const cols = table.columns.slice(0, maxCols);
+        const cols = selectKeyColumns(table, isTwoCol ? 4 : 6);
         const rows = (table.rows || []).slice(0, 15);
 
         const headerRow = new TableRow({

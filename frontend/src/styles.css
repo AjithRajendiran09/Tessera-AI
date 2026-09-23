@@ -3240,7 +3240,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 .draft-data-table-wrap h4 {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-dim);
+  color: #111111 !important;
   font-style: italic;
   text-align: center;
   margin: 0 0 12px;
@@ -3250,21 +3250,23 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  background: #ffffff !important;
 }
 
 .draft-data-table-wrap th {
   padding: 8px 10px;
   text-align: left;
-  background: rgba(124,92,255,0.08);
-  border-bottom: 2px solid #7c5cff;
-  color: #a78bfa;
+  background: #f4f4f7 !important;
+  border-bottom: 2px solid #333333 !important;
+  color: #000000 !important;
   font-weight: 700;
 }
 
 .draft-data-table-wrap td {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: #111111 !important;
+  background: #ffffff !important;
 }
 
 .draft-no-data {
@@ -3288,112 +3290,347 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   gap: 10px;
 }
 
-/* IEEE Format Specific Preview Styles (Overleaf Style) */
-.draft-preview-paper.ieee-style {
-  font-family: 'Times New Roman', Times, Georgia, serif;
-  color: #111;
-  background: #ffffff;
-  padding: 48px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+/* ══════════════════════════════════════════════════════════════
+   AUTHENTIC IEEE OVERLEAF PREVIEW STYLES
+   \documentclass[conference]{IEEEtran}
+   ══════════════════════════════════════════════════════════════ */
+.draft-preview-paper {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-radius: 4px;
+  padding: 44px 40px;
+  max-width: 860px;
+  margin: 20px auto;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.16);
+  border: 1px solid #cbd5e1;
 }
 
-.draft-preview-paper.ieee-style .draft-paper-title {
-  font-size: 22px;
+.draft-preview-paper.ieee-style {
+  font-family: 'Times New Roman', Times, Georgia, serif !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+}
+
+/* IEEE Header (Page 1 Top - Full Width) */
+.draft-ieee-header {
+  text-align: center;
+  margin-bottom: 16px;
+  border-bottom: none;
+}
+
+.draft-ieee-title {
+  font-size: 21px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #000000 !important;
+  margin: 0 0 14px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.draft-ieee-authors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.draft-ieee-author-col {
+  text-align: center;
+  min-width: 140px;
+}
+
+.draft-ieee-author-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #000000 !important;
+  display: block;
+}
+
+.draft-ieee-author-affil {
+  font-size: 10px;
+  font-style: italic;
+  color: #222222 !important;
+  display: block;
+  margin-top: 2px;
+}
+
+.draft-ieee-author-email {
+  font-size: 9.5px;
+  font-family: 'Courier New', Courier, monospace, serif;
+  color: #444444 !important;
+  display: block;
+  margin-top: 1px;
+}
+
+/* IEEE Abstract & Keywords Box */
+.draft-ieee-abstract-box {
+  border-top: 1px solid #000000;
+  border-bottom: 1px solid #000000;
+  padding: 10px 8px;
+  margin: 14px auto 20px;
+  text-align: justify;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #111111 !important;
+}
+
+.draft-ieee-abstract-p {
+  margin: 0 0 6px 0;
+  text-align: justify;
+}
+
+.draft-ieee-keywords-p {
+  margin: 0;
+  text-align: justify;
+}
+
+.draft-ieee-lead {
+  font-weight: 700;
+  font-style: italic;
+  color: #000000 !important;
+  margin-right: 4px;
+}
+
+/* ── TWO-COLUMN IEEE BODY ── */
+.draft-ieee-body-columns {
+  column-count: 2;
+  column-gap: 28px;
+  column-rule: 1px solid #f0f0f0;
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
+}
+
+.draft-ieee-section {
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.draft-ieee-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 16px 0 6px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.draft-ieee-section-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 0;
+  color: #000000 !important;
+  border-bottom: none !important;
+}
+
+.draft-ieee-subsection {
+  margin: 10px 0 4px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.draft-ieee-subsection-heading {
+  font-size: 10.5px;
+  font-weight: 700;
+  font-style: italic;
+  text-align: left;
+  margin: 0 0 4px;
+  color: #000000 !important;
+}
+
+.draft-ieee-p {
+  text-indent: 15px;
+  margin: 0 0 5px;
+  font-size: 10px;
+  line-height: 1.34;
+  color: #111111 !important;
+  text-align: justify;
+}
+
+.draft-section-edit-btn {
+  opacity: 0.25;
+  transition: opacity 0.2s;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+.draft-ieee-section:hover .draft-section-edit-btn,
+.draft-section:hover .draft-section-edit-btn {
+  opacity: 1;
+}
+
+/* IEEE Figures inside 2-Column */
+.draft-ieee-figure {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin: 14px 0;
+  text-align: center;
+  background: #ffffff !important;
+  padding: 8px 4px;
+  border: 0.5px solid #e2e8f0;
+}
+
+.draft-ieee-canvas-wrap {
+  width: 100%;
+  background: #ffffff !important;
+}
+
+.draft-ieee-canvas-wrap canvas {
+  width: 100% !important;
+  height: auto !important;
+  background: #ffffff !important;
+}
+
+.draft-ieee-fig-caption {
+  font-size: 9px;
+  color: #111111 !important;
+  margin-top: 6px;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.25;
+}
+
+/* IEEE Tables inside 2-Column (Booktabs Style) */
+.draft-ieee-table-card {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  margin: 14px 0;
+  width: 100%;
+  text-align: center;
+  background: #ffffff !important;
+}
+
+.draft-ieee-table-card.wide-table {
+  column-span: all;
+  margin: 20px 0;
+}
+
+.draft-ieee-table-num {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #000000 !important;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.draft-ieee-table-title {
+  font-size: 9px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #000;
-  margin-bottom: 12px;
+  color: #000000 !important;
+  text-align: center;
+  margin-bottom: 6px;
 }
 
-.draft-preview-paper.ieee-style .draft-paper-authors {
-  font-size: 13px;
-  color: #222;
-  margin-bottom: 24px;
-  line-height: 1.5;
+.draft-ieee-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1.5px solid #000000 !important;
+  border-bottom: 1.5px solid #000000 !important;
+  margin: 0 auto;
+  background: #ffffff !important;
 }
 
-.draft-preview-paper.ieee-style .draft-paper-abstract {
-  background: transparent;
-  border-left: none;
-  border-top: 1px solid #ddd;
-  border-bottom: 1px solid #ddd;
-  border-radius: 0;
-  padding: 14px 0;
-  margin: 0 auto 24px;
-  max-width: 90%;
-  font-size: 12px;
+.draft-ieee-table th {
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 1px solid #000000 !important;
+  padding: 4px 6px !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+  font-size: 8.5px !important;
+}
+
+.draft-ieee-table td {
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: 0.5px solid #e5e5e5 !important;
+  padding: 3px 6px !important;
+  color: #111111 !important;
+  background: #ffffff !important;
+  font-size: 8px !important;
+  text-align: left;
+  line-height: 1.25;
+}
+
+.draft-ieee-table tr:last-child td {
+  border-bottom: none !important;
+}
+
+.draft-ieee-table-note {
+  font-size: 8px;
+  font-style: italic;
+  color: #555555 !important;
+  text-align: center;
+  margin-top: 4px;
+}
+
+/* IEEE References in 2-Column */
+.draft-ieee-references {
+  break-inside: avoid;
+  margin-top: 14px;
+}
+
+.draft-ieee-ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.draft-ieee-ref-item {
+  font-size: 8.5px;
+  line-height: 1.28;
+  color: #111111 !important;
+  padding-left: 18px;
+  text-indent: -18px;
+  margin: 0 0 3px 0;
+  text-align: justify;
+}
+
+/* Standard Single-Column Manuscript Preview (APA / MLA / Chicago) */
+.draft-preview-paper.standard-style {
+  font-family: Georgia, 'Times New Roman', serif;
   line-height: 1.6;
-  text-align: justify;
 }
 
-.draft-preview-paper.ieee-style .draft-paper-abstract h4 {
-  display: inline;
-  font-size: 12px;
-  font-weight: 700;
-  font-style: italic;
-  margin-right: 6px;
-  color: #000;
+.draft-standard-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  background: #ffffff !important;
 }
 
-.draft-preview-paper.ieee-style .draft-paper-abstract h4::after {
-  content: '—';
-}
-
-.draft-preview-paper.ieee-style .draft-paper-abstract p {
-  display: inline;
-  color: #111;
-}
-
-.draft-preview-paper.ieee-style .draft-paper-keywords {
-  margin: 8px 0 0;
-  font-size: 12px;
-}
-
-.draft-preview-paper.ieee-style .draft-paper-keywords strong {
-  font-style: italic;
-  font-weight: 700;
-}
-
-.draft-preview-paper.ieee-style .draft-paper-keywords strong::after {
-  content: '—';
-}
-
-.draft-preview-paper.ieee-style .draft-section-heading {
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin: 28px 0 14px;
-  border-bottom: none;
-  color: #000;
-}
-
-.draft-preview-paper.ieee-style .draft-section-content {
-  font-size: 12px;
-  line-height: 1.65;
-  text-align: justify;
-  text-indent: 18px;
-  color: #222;
-}
-
-.draft-preview-paper.ieee-style .draft-references-section h3 {
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #000;
-  border-bottom: none;
-}
-
-.draft-preview-paper.ieee-style .draft-ref-formatted {
+.draft-standard-table th {
+  border-top: 1.5px solid #111;
+  border-bottom: 1px solid #111;
+  padding: 6px 10px;
+  color: #000000 !important;
+  background: #f8fafc !important;
   font-size: 11px;
-  line-height: 1.5;
-  text-align: justify;
-  color: #222;
-  padding-left: 24px;
-  text-indent: -24px;
 }
+
+.draft-standard-table td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 6px 10px;
+  color: #111111 !important;
+  background: #ffffff !important;
+  font-size: 10.5px;
+}
+
 

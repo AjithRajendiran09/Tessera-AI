@@ -2314,6 +2314,93 @@ ${sectionsJsonSchema}
       });
     }
 
+    // Fallback: If no explicit charts configured, auto-synthesize from data
+    if (chartData.length === 0 && data && data.length > 0) {
+      for (const sheet of data) {
+        if (!sheet.rows || sheet.rows.length === 0) continue;
+        const yearCol = sheet.columns.find(c => /year|pub.*year|date/i.test(c));
+        const catCol = sheet.columns.find(c => /domain|category|topic|venue|journal|type/i.test(c));
+
+        if (yearCol) {
+          const counts = {};
+          sheet.rows.forEach(r => {
+            const y = String(r[yearCol] ?? '').trim();
+            if (y && /^\d{4}$/.test(y)) counts[y] = (counts[y] || 0) + 1;
+          });
+          const labels = Object.keys(counts).sort((a, b) => Number(a) - Number(b));
+          if (labels.length > 1) {
+            chartData.push({
+              figureNumber: 1,
+              title: 'Distribution of Selected Publications by Year',
+              description: 'Chronological progression of publications analyzed in the study.',
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Publication Count',
+                  data: labels.map(l => counts[l]),
+                  backgroundColor: 'rgba(59, 130, 246, 0.75)',
+                  borderColor: 'rgba(37, 99, 235, 1)',
+                  borderWidth: 1.5
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  title: { display: true, text: 'Distribution of Publications by Year', color: '#111111' },
+                  legend: { display: false }
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { precision: 0, color: '#333333' }, title: { display: true, text: 'Number of Papers', color: '#333333' } },
+                  x: { ticks: { color: '#333333' }, title: { display: true, text: 'Year', color: '#333333' } }
+                }
+              }
+            });
+            break;
+          }
+        }
+
+        if (chartData.length === 0 && catCol) {
+          const counts = {};
+          sheet.rows.forEach(r => {
+            const val = String(r[catCol] ?? '').trim();
+            if (val) counts[val] = (counts[val] || 0) + 1;
+          });
+          const labels = Object.keys(counts).slice(0, 8);
+          if (labels.length > 1) {
+            chartData.push({
+              figureNumber: 1,
+              title: `Distribution of Corpus by ${catCol}`,
+              description: `Classification of corpus based on ${catCol}.`,
+              type: 'bar',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Count',
+                  data: labels.map(l => counts[l]),
+                  backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                  borderColor: 'rgba(5, 150, 105, 1)',
+                  borderWidth: 1.5
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: {
+                  title: { display: true, text: `Distribution by ${catCol}`, color: '#111111' },
+                  legend: { display: false }
+                },
+                scales: {
+                  y: { beginAtZero: true, ticks: { precision: 0, color: '#333333' }, title: { display: true, text: 'Count', color: '#333333' } },
+                  x: { ticks: { color: '#333333' } }
+                }
+              }
+            });
+            break;
+          }
+        }
+      }
+    }
+
     // Build data tables for the PDF
     const dataTables = (data || []).map((sheet, idx) => ({
       tableNumber: idx + 1,
