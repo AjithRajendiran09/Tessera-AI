@@ -33,15 +33,20 @@ async function fetchAPI(endpoint, options = {}) {
     try {
       rawText = await res.text();
       const errorData = JSON.parse(rawText);
-      throw new Error(errorData.error || `HTTP ${res.status}: ${JSON.stringify(errorData)}`);
+      const msg = errorData.error?.message || errorData.error || `HTTP ${res.status}: ${JSON.stringify(errorData)}`;
+      throw new Error(msg);
     } catch (e) {
-      if (e.message.includes('HTTP')) throw e;
+      if (e.message.includes('HTTP') || (e.message && !e.message.startsWith('Unexpected'))) throw e;
       throw new Error(`HTTP ${res.status}: ${rawText.substring(0, 100)}`);
     }
   }
   // For 204 No Content
   if (res.status === 204) return null;
-  return await res.json();
+  const json = await res.json();
+  if (json && json.success !== undefined && json.data !== undefined) {
+    return json.data;
+  }
+  return json;
 }
 
 // ── AUTH ──
@@ -349,5 +354,123 @@ export async function generatePaperDraft(payload) {
   return fetchAPI('/paper-draft/generate', {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+// ============================================================
+// RESEARCH-GRADE INTELLIGENCE PLATFORM (V2.0)
+// ============================================================
+
+// ── Evidence Items & Claims ──
+export async function getPaperEvidence(paperId) {
+  return fetchAPI(`/papers/${paperId}/evidence`);
+}
+
+// ── Human-in-the-Loop Verification ──
+export async function verifyEntity({ entity_type, entity_id, action, original_value, correction, notes }) {
+  return fetchAPI('/verify', {
+    method: 'POST',
+    body: JSON.stringify({ entity_type, entity_id, action, original_value, correction, notes })
+  });
+}
+
+export async function getVerificationHistory(entityId) {
+  return fetchAPI(`/verify/history/${entityId}`);
+}
+
+// ── Research Gap Engine 2.0 ──
+export async function synthesizeGaps({ paper_ids, workspace_id, research_focus }) {
+  return fetchAPI('/gaps/synthesize', {
+    method: 'POST',
+    body: JSON.stringify({ paper_ids, workspace_id, research_focus })
+  });
+}
+
+export async function getGapEvidence(gapId) {
+  return fetchAPI(`/gaps/${gapId}/evidence`);
+}
+
+// ── Cross-Paper Synthesis Matrix ──
+export async function crossPaperSynthesis({ paper_ids, workspace_id, focus }) {
+  return fetchAPI('/synthesis/cross-paper', {
+    method: 'POST',
+    body: JSON.stringify({ paper_ids, workspace_id, focus })
+  });
+}
+
+// ── Evidence-Based Research Questions ──
+export async function generateResearchQuestions({ gap_id, workspace_id }) {
+  return fetchAPI('/research-questions/generate', {
+    method: 'POST',
+    body: JSON.stringify({ gap_id, workspace_id })
+  });
+}
+
+export async function getResearchQuestions(params = {}) {
+  const q = new URLSearchParams();
+  if (params.workspace_id) q.set('workspace_id', params.workspace_id);
+  if (params.gap_id) q.set('gap_id', params.gap_id);
+  const qs = q.toString() ? `?${q.toString()}` : '';
+  return fetchAPI(`/research-questions${qs}`);
+}
+
+// ── Research Novelty Assistant ──
+export async function evaluateNovelty({ proposed_idea, workspace_id }) {
+  return fetchAPI('/novelty/evaluate', {
+    method: 'POST',
+    body: JSON.stringify({ proposed_idea, workspace_id })
+  });
+}
+
+// ── Citation & Metadata Verification ──
+export async function verifyCitations({ paper_ids }) {
+  return fetchAPI('/citations/verify', {
+    method: 'POST',
+    body: JSON.stringify({ paper_ids })
+  });
+}
+
+// ── Research Trends Analysis ──
+export async function getResearchTrends(workspace_id) {
+  const qs = workspace_id ? `?workspace_id=${workspace_id}` : '';
+  return fetchAPI(`/trends${qs}`);
+}
+
+// ── AI Model Traceability & Prompt Registry ──
+export async function getPrompts() {
+  return fetchAPI('/prompts');
+}
+
+export async function getAiRuns() {
+  return fetchAPI('/ai/runs');
+}
+
+export async function evaluateAiBenchmark(payload) {
+  return fetchAPI('/ai/evaluate', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function getAiEvaluations() {
+  return fetchAPI('/ai/evaluations');
+}
+
+export async function getAuditLogs() {
+  return fetchAPI('/audit/logs');
+}
+
+// ── Relevance Calibration ──
+export async function recalculatePaperRelevance(paperId, researchTopic = '') {
+  return fetchAPI(`/papers/${paperId}/recalculate-relevance`, {
+    method: 'POST',
+    body: JSON.stringify({ research_topic: researchTopic })
+  });
+}
+
+export async function rescoreWorkspacePapers(workspaceId, researchTopic = '') {
+  return fetchAPI(`/workspaces/${workspaceId}/rescore-papers`, {
+    method: 'POST',
+    body: JSON.stringify({ research_topic: researchTopic })
   });
 }

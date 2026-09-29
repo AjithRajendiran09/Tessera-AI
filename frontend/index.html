@@ -146,8 +146,20 @@
         <button class="nav-item" data-page="discover">
           <span class="nav-icon">🔍</span> Discover Papers
         </button>
+        <button class="nav-item" data-page="synthesis">
+          <span class="nav-icon">⚖️</span> Cross-Paper Matrix
+        </button>
+        <button class="nav-item" data-page="trends">
+          <span class="nav-icon">📈</span> Research Trends
+        </button>
+        <button class="nav-item" data-page="novelty">
+          <span class="nav-icon">💡</span> Novelty Assistant
+        </button>
         <button class="nav-item" data-page="paper-draft">
           <span class="nav-icon">📝</span> Paper Draft
+        </button>
+        <button class="nav-item" data-page="traceability">
+          <span class="nav-icon">🛡️</span> Model Traceability
         </button>
         <!-- Admin nav item (hidden by default, shown for admin users) -->
         <button class="nav-item nav-admin" data-page="admin" id="nav-admin" style="display:none">
@@ -263,13 +275,50 @@
           <div class="gaps-grid" id="gaps-grid"></div>
         </div>
 
-      <!-- Page: Knowledge Graph -->
+      <!-- Page: Knowledge Graph 2.0 -->
       <div id="page-graph" class="page">
-        <div class="page-header" style="margin-bottom: 10px; flex-shrink: 0;">
-          <h1>Knowledge Graph</h1>
-          <p class="page-desc">Interactive visualization of Papers, Domains, and Gaps.</p>
+        <div class="page-header" style="margin-bottom: 12px; flex-shrink: 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h1>Academic Knowledge Graph 2.0</h1>
+            <p class="page-desc">Interactive semantic network connecting Papers, Methodologies, Datasets, Empirical Findings, and Research Gaps.</p>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn btn-secondary btn-sm" id="btn-kg-stabilize" title="Freeze / Resume dynamic physics">⏸️ Physics</button>
+            <button class="btn btn-secondary btn-sm" id="btn-kg-fit" title="Fit all nodes in view">🎯 Fit View</button>
+          </div>
         </div>
-        <div id="kg-network" style="flex: 1; height: 100%; width: 100%; min-height: 600px; background: var(--surface1); border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(0,0,0,0.2);"></div>
+
+        <!-- Graph Filter Controls -->
+        <div class="kg-controls-bar" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; padding:10px 14px; background:var(--surface1); border:1px solid var(--border); border-radius:12px;">
+          <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-right:6px;">Filter Entities:</span>
+          <button class="kg-filter-btn active" data-group="all">All Entities</button>
+          <button class="kg-filter-btn active" data-group="paper" style="border-left: 3px solid #38bdf8;">📄 Papers</button>
+          <button class="kg-filter-btn active" data-group="domain" style="border-left: 3px solid #a855f7;">🌐 Domains</button>
+          <button class="kg-filter-btn active" data-group="method" style="border-left: 3px solid #10b981;">⚙️ Methods</button>
+          <button class="kg-filter-btn active" data-group="dataset" style="border-left: 3px solid #06b6d4;">📊 Datasets</button>
+          <button class="kg-filter-btn active" data-group="finding" style="border-left: 3px solid #f43f5e;">💡 Findings</button>
+          <button class="kg-filter-btn active" data-group="gap" style="border-left: 3px solid #f59e0b;">⚡ Gaps</button>
+        </div>
+
+        <!-- Graph Work Area & Evidence Drawer -->
+        <div class="kg-work-container" style="display:flex; gap:16px; flex:1; min-height:620px; position:relative;">
+          <div id="kg-network" style="flex:1; height:100%; min-height:620px; background:radial-gradient(ellipse at center, rgba(124,92,255,0.04) 0%, rgba(12,15,29,0.98) 100%); border-radius:16px; border:1px solid var(--border); box-shadow:0 8px 32px rgba(0,0,0,0.35);"></div>
+
+          <!-- KG Evidence Drawer -->
+          <div id="kg-evidence-drawer" class="kg-drawer" style="width:360px; max-width:100%; background:var(--surface1); border:1px solid var(--border); border-radius:16px; padding:18px; display:flex; flex-direction:column; overflow-y:auto; box-shadow: -4px 0 20px rgba(0,0,0,0.3);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+              <span id="kg-drawer-type-badge" class="badge" style="background:rgba(124,92,255,0.15); color:var(--accent);">Entity Details</span>
+              <button class="btn btn-secondary btn-sm" id="btn-kg-drawer-close" style="padding:2px 8px; font-size:0.8rem;">✕</button>
+            </div>
+            <div id="kg-drawer-content">
+              <div style="text-align:center; padding:40px 10px; color:var(--text-muted);">
+                <div style="font-size:2.2rem; margin-bottom:10px;">🕸️</div>
+                <div style="font-weight:600; color:var(--text); margin-bottom:6px;">Evidence Inspector</div>
+                <p style="font-size:0.82rem; line-height:1.5;">Click any node or directional edge in the knowledge graph to view extracted empirical evidence, provenance, and relationships.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Page: Discover Papers -->
@@ -822,6 +871,292 @@
         <div class="empty-state" id="admin-empty" style="display:none">
           <span class="empty-icon">👤</span>
           <p>No users found.</p>
+        </div>
+      </div>
+
+      <!-- Page: Cross-Paper Synthesis Matrix -->
+      <div id="page-synthesis" class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">⚖️ Cross-Paper Synthesis Matrix</h1>
+            <p class="page-subtitle">Comparative meta-analysis across methodologies, datasets, findings, and repeated limitations</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-primary" id="btn-run-synthesis">
+              <span>⚡</span> Run Cross-Paper Synthesis
+            </button>
+          </div>
+        </div>
+
+        <!-- Synthesis Overview Cards -->
+        <div class="synthesis-insights-grid" id="synthesis-insights-grid">
+          <div class="insight-card">
+            <div class="insight-icon">⚔️</div>
+            <div class="insight-content">
+              <h4>Conflicting Findings</h4>
+              <p id="insight-conflicts">No conflicting empirical claims detected yet.</p>
+            </div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-icon">🛠️</div>
+            <div class="insight-content">
+              <h4>Common Methodologies</h4>
+              <p id="insight-methods">Extracting dominant frameworks...</p>
+            </div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-icon">💾</div>
+            <div class="insight-content">
+              <h4>Underexplored Datasets</h4>
+              <p id="insight-datasets">Identifying data gap areas...</p>
+            </div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-icon">🔄</div>
+            <div class="insight-content">
+              <h4>Repeated Limitations</h4>
+              <p id="insight-limitations">Analyzing shared constraints...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matrix Filters -->
+        <div class="matrix-filter-bar">
+          <input type="text" class="input-search" id="matrix-search" placeholder="Filter matrix by method, dataset, or keyword..." />
+          <select class="input-select" id="matrix-domain-filter">
+            <option value="">All Domains</option>
+          </select>
+          <select class="input-select" id="matrix-quartile-filter">
+            <option value="">All Quartiles (Q1-Q4)</option>
+            <option value="Q1">Q1 Only</option>
+            <option value="Q2">Q2 Only</option>
+            <option value="Q3">Q3 Only</option>
+            <option value="Q4">Q4 Only</option>
+          </select>
+        </div>
+
+        <!-- Comparative Table -->
+        <div class="table-responsive">
+          <table class="data-table" id="matrix-table">
+            <thead>
+              <tr>
+                <th>Paper</th>
+                <th>Year</th>
+                <th>Methodology</th>
+                <th>Dataset</th>
+                <th>Key Finding / Metric</th>
+                <th>Core Limitation</th>
+                <th>Research Gap</th>
+              </tr>
+            </thead>
+            <tbody id="matrix-tbody">
+              <tr>
+                <td colspan="7" class="table-loading">Click "Run Cross-Paper Synthesis" or load papers to view comparative matrix.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Page: Research Trends -->
+      <div id="page-trends" class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">📈 Research Trends & Trajectories</h1>
+            <p class="page-subtitle">Temporal evolution of methodologies, models, and datasets across publication years</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="btn-refresh-trends">
+              <span>🔄</span> Refresh Trends
+            </button>
+          </div>
+        </div>
+
+        <div class="trends-stats-grid" id="trends-stats-grid">
+          <div class="stat-card">
+            <span class="stat-icon">📚</span>
+            <div class="stat-value" id="trends-total-papers">0</div>
+            <div class="stat-label">Corpus Papers</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">🚀</span>
+            <div class="stat-value" id="trends-top-method">-</div>
+            <div class="stat-label">Leading Methodology</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">📊</span>
+            <div class="stat-value" id="trends-top-dataset">-</div>
+            <div class="stat-label">Dominant Dataset</div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">📅</span>
+            <div class="stat-value" id="trends-year-span">-</div>
+            <div class="stat-label">Temporal Span</div>
+          </div>
+        </div>
+
+        <div class="trends-charts-grid">
+          <div class="chart-card">
+            <h3>Publication Trajectory Over Time</h3>
+            <div class="chart-container">
+              <canvas id="chart-pub-trajectory"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3>Top Methodologies Distribution</h3>
+            <div class="chart-container">
+              <canvas id="chart-method-trends"></canvas>
+            </div>
+          </div>
+          <div class="chart-card chart-full-width">
+            <h3>Dataset Utilization by Year</h3>
+            <div class="chart-container">
+              <canvas id="chart-dataset-trends"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Research Novelty Assistant -->
+      <div id="page-novelty" class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">💡 Research Novelty Assistant</h1>
+            <p class="page-subtitle">Prudent literature differentiation engine comparing your proposed thesis against existing literature</p>
+          </div>
+        </div>
+
+        <div class="novelty-input-card">
+          <h3>Formulate Your Proposed Research Idea / Thesis</h3>
+          <p class="form-help">Describe your proposed algorithmic framework, theoretical model, or empirical hypothesis. The assistant will benchmark it against your ingested corpus and flag overlapping prior art, threats to novelty, and potential differentiation vectors.</p>
+          <textarea id="novelty-proposal-text" class="input-textarea" rows="4" placeholder="e.g. Runtime verification of multi-agent LLM systems using localized temporal logic monitors on mobile edge devices..."></textarea>
+          <div class="novelty-actions">
+            <button class="btn btn-primary" id="btn-eval-novelty">
+              <span>🔍</span> Evaluate Literature Differentiation
+            </button>
+          </div>
+        </div>
+
+        <div id="novelty-results" class="novelty-results-container" style="display: none;">
+          <div class="novelty-verdict-banner" id="novelty-verdict-banner">
+            <div class="verdict-tag" id="novelty-verdict-tag">Potential Differentiation Identified</div>
+            <p id="novelty-verdict-summary" class="verdict-summary"></p>
+          </div>
+
+          <div class="novelty-details-grid">
+            <div class="novelty-card">
+              <h4>🎯 Potential Differentiation Vectors</h4>
+              <ul id="novelty-differentiation-list" class="styled-bullet-list"></ul>
+            </div>
+            <div class="novelty-card">
+              <h4>⚠️ Potential Threats to Novelty</h4>
+              <ul id="novelty-threats-list" class="styled-bullet-list"></ul>
+            </div>
+            <div class="novelty-card">
+              <h4>📚 Overlapping Concepts in Ingested Corpus</h4>
+              <ul id="novelty-overlaps-list" class="styled-bullet-list"></ul>
+            </div>
+            <div class="novelty-card">
+              <h4>🔍 Recommended Literature Searches</h4>
+              <ul id="novelty-searches-list" class="styled-bullet-list"></ul>
+            </div>
+          </div>
+
+          <div class="disclaimer-banner">
+            <span class="disclaimer-icon">⚖️</span>
+            <strong>Academic Integrity Notice:</strong> Novelty Assessment is an AI literature differentiation heuristic. It provides preliminary guidance based on your ingested papers and does NOT replace exhaustive peer-reviewed literature validation or formal patent clearance.
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Model Traceability, Verification & Audit -->
+      <div id="page-traceability" class="page">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">🛡️ Model Traceability & Audit Trail</h1>
+            <p class="page-subtitle">Reproducible inference logging, calibrated confidence tiers, and human verification provenance</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="btn-refresh-audit">
+              <span>🔄</span> Refresh Logs
+            </button>
+          </div>
+        </div>
+
+        <!-- Traceability Tabs -->
+        <div class="trace-tabs">
+          <button class="trace-tab-btn active" data-tab="runs">AI Inference Runs</button>
+          <button class="trace-tab-btn" data-tab="prompts">Prompt Versions</button>
+          <button class="trace-tab-btn" data-tab="security">Security & Injection Logs</button>
+          <button class="trace-tab-btn" data-tab="benchmark">AI Evaluation Benchmark</button>
+        </div>
+
+        <div id="trace-panel-runs" class="trace-panel active">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Task Type</th>
+                  <th>Model Used</th>
+                  <th>Latency</th>
+                  <th>Confidence</th>
+                  <th>Verification Status</th>
+                </tr>
+              </thead>
+              <tbody id="trace-runs-tbody">
+                <tr><td colspan="6" class="table-loading">Loading AI analysis audit logs...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="trace-panel-prompts" class="trace-panel" style="display: none;">
+          <div class="prompts-grid" id="trace-prompts-grid"></div>
+        </div>
+
+        <div id="trace-panel-security" class="trace-panel" style="display: none;">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Event Type</th>
+                  <th>Severity</th>
+                  <th>Audit Details</th>
+                  <th>IP Address</th>
+                </tr>
+              </thead>
+              <tbody id="trace-security-tbody">
+                <tr><td colspan="5" class="table-loading">No security incidents logged.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="trace-panel-benchmark" class="trace-panel" style="display: none;">
+          <div class="benchmark-card">
+            <h3>AI Evaluation Benchmark (Precision / Recall / F1)</h3>
+            <p class="form-help">Benchmark Gemini's extracted contributions, limitations, and research gaps against human-labeled ground truth for scientific reproducibility.</p>
+            <div class="benchmark-inputs">
+              <div>
+                <label>Target Paper</label>
+                <select id="benchmark-paper-select" class="input-select"></select>
+              </div>
+              <div class="benchmark-json-row">
+                <div>
+                  <label>Human Labeled Ground Truth (JSON)</label>
+                  <textarea id="benchmark-gt-json" class="input-textarea" rows="6" placeholder='{"gaps": [{"title": "Dataset limitation in mobile edge"}], "contribution": "..."}'></textarea>
+                </div>
+                <div>
+                  <label>AI Predictions (Auto-populated or JSON)</label>
+                  <textarea id="benchmark-pred-json" class="input-textarea" rows="6" placeholder='{"gaps": [{"title": "Dataset limitation in mobile edge"}]}'></textarea>
+                </div>
+              </div>
+              <button class="btn btn-primary" id="btn-run-benchmark"><span>📊</span> Calculate Benchmark Metrics</button>
+            </div>
+            <div id="benchmark-results" class="benchmark-results" style="display: none;"></div>
+          </div>
         </div>
       </div>
 

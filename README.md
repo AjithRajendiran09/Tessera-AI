@@ -1,694 +1,513 @@
-# ◇ Tessera AI — Research Intelligence Platform
+<p align="center">
+  <img src="frontend/public/logo.svg" alt="Tessera AI Logo" width="80" />
+</p>
 
-> A multi-tenant, AI-powered SaaS platform for PhD scholars, researchers, and academics. Upload a PDF and let Google Gemini extract everything — title, authors, domain, gaps, and relevance to *your* specific research topic. Then generate literature reviews, elevator pitches, and visualize your entire research landscape.
+<h1 align="center">Tessera AI</h1>
 
-*"Tessera" comes from the Latin word for a small tile used to create mosaics. Each paper you add becomes a piece of a larger intellectual mosaic — revealing patterns, gaps, and connections across your field of study.*
+<p align="center">
+  <strong>AI-Powered Research Intelligence Platform for PhD Scholars</strong>
+</p>
+
+<p align="center">
+  Organize, analyze, and discover insights across your entire paper collection — powered by Google Gemini AI, Scopus integration, and intelligent knowledge graph visualization.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Frontend-Vite%20+%20Vanilla%20JS-646CFF?style=for-the-badge&logo=vite&logoColor=white" />
+  <img src="https://img.shields.io/badge/Backend-Express.js-000000?style=for-the-badge&logo=express&logoColor=white" />
+  <img src="https://img.shields.io/badge/Database-Supabase%20(PostgreSQL)-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" />
+  <img src="https://img.shields.io/badge/AI-Google%20Gemini-4285F4?style=for-the-badge&logo=google&logoColor=white" />
+</p>
 
 ---
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [What's New in v2.0](#whats-new-in-v20)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Tech Stack](#tech-stack)
-- [Features](#features)
-- [Prerequisites](#prerequisites)
-- [Installation & Setup](#installation--setup)
-- [Database Schema](#database-schema)
-- [API Reference](#api-reference)
-- [AI-Powered PDF Parser](#ai-powered-pdf-parser)
-- [Environment Variables](#environment-variables)
-- [Usage Guide](#usage-guide)
-- [Deployment](#deployment)
-- [Troubleshooting](#troubleshooting)
-- [Author](#author)
-- [License](#license)
+- [Overview](#-overview)
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Prerequisites](#-prerequisites)
+- [Getting Started](#-getting-started)
+  - [1. Clone the Repository](#1-clone-the-repository)
+  - [2. Supabase Setup](#2-supabase-setup)
+  - [3. Backend Setup](#3-backend-setup)
+  - [4. Frontend Setup](#4-frontend-setup)
+- [Environment Variables](#-environment-variables)
+- [Database Schema](#-database-schema)
+- [API Reference](#-api-reference)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [Author](#-author)
+- [License](#-license)
 
 ---
 
-## Overview
+## 🧠 Overview
 
-Tessera AI transforms the traditionally manual process of literature review into an intelligent, data-driven workflow. It helps you:
+**Tessera AI** is a full-stack, multi-tenant research intelligence platform designed for PhD scholars and academic researchers. It transforms the traditionally fragmented process of literature review into an organized, AI-augmented workflow.
 
-- **Register & Login** with secure email-based authentication (Supabase Auth)
-- **Personalize** your experience with a research topic that guides AI relevance scoring
-- **Organize** papers across custom research domains with per-user data isolation
-- **Analyze** your collection with visual dashboards and interactive charts
-- **Extract** metadata automatically from PDFs using Google Gemini AI
-- **Discover** research gaps identified by AI from each uploaded paper
-- **Generate** AI-powered literature reviews and thesis pitch abstracts
-- **Visualize** your research landscape with an interactive Knowledge Graph
-- **Export** domain-specific paper collections to Excel or Word documents
-- **Manage Users** via an admin panel with role-based access control
+Upload a PDF and let Gemini AI extract structured metadata — title, authors, venue, contribution, limitations, relevance scoring, and research gaps — all automatically categorized into your custom research domains. Discover new papers via live Scopus/OpenAlex API integration, visualize your knowledge landscape with an interactive graph, and generate complete academic paper drafts from Excel data.
 
 ---
 
-## What's New in v2.0
+## ✨ Research-Grade Features
 
-| Feature | Description |
-|:--------|:------------|
-| 🔐 **User Authentication** | Register/login with email & password via Supabase Auth |
-| 🎯 **Research Topic Onboarding** | New users set their research focus to guide AI scoring |
-| 🧠 **Context-Aware AI** | Gemini scores paper relevance based on your specific research topic |
-| 👥 **Admin User Management** | Admin panel to view, manage roles, and delete users |
-| 🔒 **Multi-Tenant Data Isolation** | Row Level Security (RLS) ensures users only see their own data |
-| 👤 **User Profile in Sidebar** | Displays name, role, and logout button |
-| 🎯 **Research Topic Badge** | Dashboard shows your research focus, editable anytime |
+### 📄 Verifiable Evidence Pipeline & Claim Attribution
+- **Page-Aware PDF Parsing** — Injects page boundaries (`=== PAGE [X] ===`) during text extraction to guarantee verifiable attribution
+- **Verbatim Quote Provenance** — Extracts methodology, dataset, empirical findings, and limitations anchored to specific page numbers and verbatim quotes
+- **Evidence Inspector & Drawer** — Scholars can review claims side-by-side with exact verbatim paper quotes and confidence metrics
+- **Human-in-the-Loop (HITL) Verification** — Review, confirm, modify, or reject AI extractions with persistent audit trail (`verification_records`)
 
----
+### 🔬 Research Gap Engine 2.0 & Transparent Heuristics
+- **12-Category Gap Synthesis Engine** — Synthesizes gaps across 12 rigorous academic categories (Methodological, Empirical, Theoretical, Evaluation, Scalability, Generalizability, Benchmark, Data Scarcity, Security/Privacy, Ethical/Regulatory, Interdisciplinary, Temporal)
+- **Tessera Evidence-Based Heuristic Score (0-100)** — Auditable mathematical scoring with transparent breakdown:
+  - Repeated Limitations (+20)
+  - Multi-Paper Corroboration (+20)
+  - Evidence Recency (+15)
+  - Explicit Future Work Statements (+15)
+  - Evaluation / Benchmark Deficiency (+10)
+  - Consensus vs. Empirical Divergence (+20)
+- **Explainable Factor Modals** — Click any gap score to inspect the deterministic mathematical breakdown and justification
 
-## Architecture
+### 🧩 Cross-Paper Synthesis & Meta-Analysis
+- **Comparative Synthesis Matrix** — Side-by-side matrix contrasting methodologies, datasets, key results, core limitations, and gaps across multiple papers
+- **Conflicting Findings Detector** — Automatically identifies empirical contradictions and nuances between studies
+- **Underexplored Datasets & Methodological Consensus** — Identifies benchmark oversights and consensus paradigms across your corpus
 
-```
-┌───────────────────────┐       ┌────────────────────────────┐       ┌──────────────────┐
-│                       │       │                            │       │                  │
-│   Frontend (Vite)     │◄─────►│   Backend (Express)        │◄─────►│    Supabase      │
-│   localhost:5173      │ REST  │   localhost:3000            │       │   (PostgreSQL)   │
-│                       │  API  │                            │       │                  │
-│  • Auth (Login/Reg)   │       │  • Auth Middleware (JWT)    │       │  • profiles      │
-│  • Onboarding         │       │  • /api/profile            │       │  • domains       │
-│  • Dashboard + Topic  │       │  • /api/admin/users        │       │  • papers        │
-│  • Paper Management   │       │  • /api/papers             │       │  • research_gaps │
-│  • Domain Explorer    │       │  • /api/domains            │       │  • paper_gaps    │
-│  • Research Gaps      │       │  • /api/gaps               │       │                  │
-│  • Knowledge Graph    │       │  • /api/parse-pdf          │       │  Row Level       │
-│  • Admin Panel        │       │  • /api/dashboard/stats    │       │  Security (RLS)  │
-│  • About Page         │       │  • /api/generate-*         │       │                  │
-│                       │       │                            │       │                  │
-└───────────────────────┘       └──────────┬─────────────────┘       └──────────────────┘
-                                           │
-                          Supabase Auth     │  AI Parsing / Generation
-                          (JWT Tokens)      ▼
-                                   ┌──────────────────┐
-                                   │  Google Gemini    │
-                                   │  (2.5/2.0 Flash)  │
-                                   │                  │
-                                   │  PDF → Metadata  │
-                                   │  + Research Topic │
-                                   │    Context       │
-                                   │  Lit Reviews     │
-                                   │  Elevator Pitch  │
-                                   └──────────────────┘
-```
+### 💡 Evidence-Based PhD Research Question Generator
+- Formulates publication-grade PhD research questions grounded directly in verified research gaps
+- Provides research motivation, missing components, baseline approaches, and suggested experimental/evaluation methodologies
 
-### Auth Flow
+### 🎯 Novelty Evaluation Assistant
+- Literature-grounded novelty assessment comparing proposed hypotheses against ingested corpus
+- Identifies closest baseline papers, missing literature links, differentiation vectors, and potential peer-review pushbacks
 
-```
-User Opens App
-     │
-     ├─ No Session ──► Auth Screen (Login / Register)
-     │                      │
-     │                      ├─ Register ──► Supabase Auth ──► Auto-create Profile ──► Onboarding
-     │                      │
-     │                      └─ Login ──► Supabase Auth ──► Check Profile
-     │                                                         │
-     │                                          ┌──────────────┤
-     │                                          │              │
-     │                                   No Topic?      Has Topic?
-     │                                          │              │
-     │                                    Onboarding       App Shell
-     │                                     Screen         (Dashboard)
-     │
-     └─ Has Session ──► Auto-login ──► App Shell
-```
+### 📈 Temporal Research Trends & Momentum Visualizer
+- Analyzes publication velocity, emerging methodologies, declining techniques, and evolving dataset adoption over time
+- Visualizes growth momentum with interactive Chart.js trend visualizations
+
+### 🕸️ Academic Knowledge Graph 2.0
+- **Multi-Entity Ontology** — Interactive semantic network connecting Domains, Papers, Methodologies, Datasets, Empirical Findings, and Gaps
+- **Directional Typed Edges** — Semantic links (`uses_method`, `evaluated_on`, `reports_finding`, `reveals_gap`, `belongs_to`)
+- **Evidence Drawer & Filtering** — Filter by entity types and click any node or edge to inspect provenance, quotes, and connected papers
+
+### 🛡️ Security & Prompt Injection Defense Firewall
+- **Document Boundary Isolation** — Untrusted PDF text encapsulated in strict `<UNTRUSTED_ACADEMIC_DOCUMENT_CONTENT>` XML boundaries
+- **Regex & Heuristic Scanner** — Detects adversarial instruction overrides, role changes, and delimiter breakouts before invoking LLMs
+- **Sliding-Window Rate Limiting** — In-memory rate limiter protecting against DoS and token exhaustion
+- **Structured Audit Logging** — Centralized logging for security events, parsing runs, and user verifications
+
+### 📝 Paper Draft Generator & Scopus Engine
+- **Excel → Paper** — Upload an Excel spreadsheet with research data and generate a complete academic paper with Chart.js charts
+- **Live Scopus & OpenAlex Discovery** — Multi-source discovery with authoritative Q1–Q4 Scopus quartile validation
+- **Multi-Format Export** — High-resolution PDF and Word (.docx) downloads with APA, MLA, IEEE, and Chicago styles
 
 ---
 
-## Project Structure
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           TESSERA AI CLIENT (Vite / Vanilla JS)                 │
+│                                                                                 │
+│  ┌───────────────────────┐  ┌────────────────────────┐  ┌────────────────────┐ │
+│  │ Knowledge Graph 2.0   │  │ Cross-Paper Synthesis  │  │ Evidence Inspector │ │
+│  │ (Vis-Network)         │  │ Matrix & Trends        │  │ & HITL Badges      │ │
+│  └───────────────────────┘  └────────────────────────┘  └────────────────────┘ │
+└────────────────────────────────────────┬────────────────────────────────────────┘
+                                         │ Bearer JWT Auth & Standardized Envelopes
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           EXPRESS REST BACKEND (Node.js)                         │
+│                                                                                 │
+│  ┌────────────────────────┐  ┌────────────────────────┐  ┌───────────────────┐  │
+│  │ Prompt Injection Guard │  │ Page-Aware PDF Parser  │  │ Gap Evidence      │  │
+│  │ & Sliding Rate Limiter │  │ & Quote Matcher        │  │ Heuristic Scorer  │  │
+│  └────────────────────────┘  └────────────────────────┘  └───────────────────┘  │
+│  ┌────────────────────────┐  ┌────────────────────────┐  ┌───────────────────┐  │
+│  │ Prompt Version Registry│  │ Cross-Paper Synthesis  │  │ Audit & HITL Log  │  │
+│  │ (Declarative Schemas)  │  │ Engine                 │  │ Controller        │  │
+│  └────────────────────────┘  └────────────────────────┘  └───────────────────┘  │
+└──────────────┬─────────────────────────┬────────────────────────────┬───────────┘
+               │                         │                            │
+               ▼                         ▼                            ▼
+   ┌───────────────────────┐ ┌───────────────────────┐  ┌───────────────────────┐
+   │ Google Gemini API     │ │ Academic APIs         │  │ Supabase PostgreSQL   │
+   │ (Flash 2.5 Structured)│ │ Scopus, OpenAlex,     │  │ Normalized Evidence,  │
+   │ Model Fallbacks       │ │ CrossRef Resolvers    │  │ Gaps, HITL & RLS      │
+   └───────────────────────┘ └───────────────────────┘  └───────────────────────┘
+```
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| **Frontend** | Vite + Vanilla JavaScript | SPA with modular architecture |
+| **Styling** | Vanilla CSS (99KB) | Glassmorphism, dark theme, animations |
+| **UI Fonts** | Inter, Outfit, JetBrains Mono | Modern typography via Google Fonts |
+| **Charts** | Chart.js + vis-network | Data visualization & knowledge graph |
+| **PDF Export** | jsPDF + jspdf-autotable | Client-side PDF generation |
+| **DOCX Export** | docx + file-saver | Client-side Word document generation |
+| **Excel Parsing** | SheetJS (xlsx) | Excel file reading for paper draft |
+| **Backend** | Express.js 5 (Node.js) | REST API server |
+| **AI Engine** | Google Gemini (2.5 Flash) | Paper analysis, gap detection, drafting |
+| **Database** | Supabase (PostgreSQL) | Data storage with RLS policies |
+| **Auth** | Supabase Auth | JWT-based authentication |
+| **Paper Discovery** | Scopus API + OpenAlex | Academic paper search & import |
+| **DOI Resolution** | CrossRef API | ISSN lookup and publisher metadata |
+| **PDF Parsing** | pdf-parse | Server-side text extraction from PDFs |
+| **File Upload** | Multer | Multipart form handling (20MB limit) |
+
+---
+
+## 📁 Project Structure
 
 ```
 Tessera-AI/
+├── backend/
+│   ├── server.js              # Express.js API server (2440 lines)
+│   ├── package.json           # Backend dependencies
+│   ├── .env                   # Backend environment variables (gitignored)
+│   └── .env.example           # Template for backend env vars
 │
-├── backend/                       # Node.js + Express API server
-│   ├── server.js                  # Routes, auth middleware, Gemini AI, admin APIs
-│   ├── .env                       # Environment variables (secrets — git-ignored)
-│   ├── .env.example               # Template for environment variables
-│   ├── package.json               # Backend dependencies
-│   └── package-lock.json
-│
-├── frontend/                      # Vite SPA (vanilla JS)
-│   ├── index.html                 # SPA shell: auth screens, onboarding, admin, app
-│   ├── vercel.json                # Vercel proxy rewrites for deployment
-│   ├── .env                       # Frontend env vars (git-ignored)
-│   ├── .env.example               # Template for frontend env vars
+├── frontend/
+│   ├── index.html             # Single-page app HTML (941 lines)
+│   ├── vercel.json            # Vercel deployment config (API proxy)
+│   ├── package.json           # Frontend dependencies
+│   ├── .env                   # Frontend environment variables (gitignored)
+│   ├── .env.example           # Template for frontend env vars
 │   ├── public/
-│   │   └── logo.svg               # Custom AR monogram logo (SVG)
-│   ├── src/
-│   │   ├── api.js                 # Supabase Auth client + REST API with JWT injection
-│   │   ├── main.js                # App logic: auth, onboarding, routing, CRUD, admin
-│   │   └── styles.css             # Complete dark glassmorphic UI theme
-│   └── package.json               # Frontend dependencies
+│   │   ├── logo.svg           # Tessera AI logo
+│   │   ├── favicon.svg        # Browser favicon
+│   │   └── icons.svg          # SVG icon sprite
+│   └── src/
+│       ├── main.js            # Core application logic (5089 lines)
+│       ├── api.js             # API client module (354 lines)
+│       └── styles.css         # Full CSS design system (99KB)
 │
-├── supabase_schema.sql            # Database schema + RLS policies + triggers
+├── supabase_schema.sql        # Complete database schema + RLS policies
 ├── .gitignore
-└── README.md                      # This file
+└── README.md
 ```
 
 ---
 
-## Tech Stack
+## 📦 Prerequisites
 
-| Layer        | Technology                    | Purpose                                        |
-|:-------------|:------------------------------|:-----------------------------------------------|
-| **Frontend** | Vite + Vanilla JS + CSS       | SPA with zero framework overhead               |
-| **Backend**  | Node.js + Express             | REST API server with auth + AI orchestration   |
-| **Auth**     | Supabase Auth (JWT)           | Email/password authentication + session mgmt   |
-| **Database** | Supabase (PostgreSQL)         | Cloud DB with Row Level Security (per-user)    |
-| **AI**       | Google Gemini (2.5/2.0 Flash) | Context-aware PDF parsing, lit reviews, pitch  |
-| **Graph**    | vis-network                   | Interactive Knowledge Graph visualization      |
-| **Upload**   | Multer                        | In-memory PDF file upload handling             |
-| **PDF**      | pdf-parse                     | Extract raw text from PDF documents            |
-| **Excel**    | SheetJS (xlsx)                | Domain-filtered Excel export                   |
-| **Fonts**    | Inter + JetBrains Mono + Outfit | Modern typography via Google Fonts           |
+- **Node.js** ≥ 18.x
+- **npm** ≥ 9.x
+- A [Supabase](https://supabase.com) project (free tier works)
+- A [Google AI Studio](https://aistudio.google.com) API key (for Gemini)
+- *(Optional)* A [Scopus/Elsevier API key](https://dev.elsevier.com) for paper discovery
+- *(Optional)* An email for [OpenAlex polite pool](https://docs.openalex.org) (higher rate limits)
 
 ---
 
-## Features
+## 🚀 Getting Started
 
-### 🔐 User Authentication
-- **Register** with email, password, and full name
-- **Login** with email and password
-- **Session persistence** — auto-login on browser refresh
-- **Logout** from sidebar
-- **Per-user data isolation** — each user sees only their own papers, domains, and gaps
-
-### 🎯 Research Topic Onboarding
-- After first login, users are prompted to enter their specific research topic
-- This topic is stored in the `profiles` table and displayed as a badge on the dashboard
-- Editable anytime from the dashboard by clicking the ✏️ edit button
-- **Used by Gemini AI** to score paper relevance — papers unrelated to your topic get low scores
-
-### 👥 Admin User Management
-- Users with `role = 'admin'` see a **"👥 User Management"** tab in the sidebar
-- Admin dashboard shows all registered users with their:
-  - Full name, email, research topic
-  - Paper count, domain count, gap count
-  - Registration date
-- Admins can **change user roles** (user ↔ admin) and **delete users**
-- Admins cannot delete themselves (safety guard)
-
-### 📊 Interactive Dashboard
-- **Stats cards**: Total papers, domains, open gaps, read/unread counts
-- **Research topic badge**: Shows your focus area with one-click edit
-- **Domain bar chart**: Click any bar → navigates to Papers filtered by that domain
-- **Publication timeline**: Click any year bar → shows papers from that year
-- **Domain overview grid**: Click any card → jumps to Papers filtered by domain
-- **Recent papers list**: Click any entry → opens paper detail modal
-
-### 📄 Paper Management
-- **Full CRUD**: Add, edit, delete papers
-- **AI Auto-fill**: Upload a PDF → Gemini extracts all fields including DOI, URL, and domain
-- **Context-aware scoring**: Relevance scored against your specific research topic
-- **Search**: Filter by title, author, contribution, or year
-- **Domain filter**: Show papers from a specific research domain
-- **Sorting**: By year (↑↓), relevance score, or alphabetical
-- **Read/Unread tracking**: Mark papers as read to track progress
-- **Paper links**: Direct links to arXiv, DOI, or publisher pages
-- **Excel Export**: Download all papers or domain-filtered papers as `.xlsx`
-
-### 🗂️ Smart Domain Management
-- **Create custom domains**: Name, emoji icon, hex color, description
-- **AI auto-creation**: If a paper doesn't fit any existing domain, the AI suggests and creates a new one
-- **Per-domain Excel export**: Each domain card has an "📥 Export" button
-- **AI Literature Review**: Each domain card has a "✨ Lit Review" button that generates a full academic review
-- **Word export**: Download generated literature reviews as `.doc` Word documents
-- **Visual stats**: Paper count and average relevance per domain
-- **Delete domains**: Remove domains that are no longer needed
-
-### 🔬 Research Gap Detection & Elevator Pitch
-- **AI-powered**: When you upload a PDF, Gemini identifies 1–3 open research gaps
-- **Auto-created**: Gaps are automatically saved with severity, description, and domain linkage
-- **Severity levels**: Critical, High, Medium, Low
-- **Status tracking**: Open, Investigating, Addressed, Closed
-- **Source attribution**: Each gap description notes which paper it was identified from
-- **Elevator Pitch Generator**: Select 2–3 gaps → AI drafts a professional abstract/introduction
-- **Optional idea input**: Describe your proposed solution, or let the AI invent one
-- **Word export**: Download your generated pitch as a Word document
-
-### 🕸️ Knowledge Graph
-- **Interactive visualization**: Papers, Domains, and Gaps rendered as an interconnected network
-- **Color-coded nodes**: Domains (boxes), Papers (dots), Gaps (ellipses) with domain colors
-- **Physics engine**: `forceAtlas2Based` layout with smart repulsion for clear cluster visibility
-- **Full-screen rendering**: Dedicated page with locked scrolling for touch support
-- **Zoom & pan**: Pinch-to-zoom and drag to explore on mobile and desktop
-
-### ✨ AI-Powered PDF Parser (Context-Aware)
-
-Upload any academic paper PDF and Gemini extracts:
-
-| Field             | Description                                         |
-|:------------------|:----------------------------------------------------|
-| `title`           | Full paper title                                    |
-| `authors`         | Comma-separated author names                        |
-| `year`            | Publication year                                    |
-| `venue`           | Conference or journal name                          |
-| `doi`             | DOI identifier (auto-detected from text)            |
-| `url`             | Paper URL (arXiv, publisher, or constructed from DOI) |
-| `domain`          | Best-matching or newly created domain               |
-| `contribution`    | 2-3 sentence summary of key contribution            |
-| `limitations`     | Array of identified limitations                     |
-| `research_gaps`   | 1-3 open research questions with severity           |
-| `relevance`       | How the paper relates to YOUR research topic        |
-| `relevance_score` | 0-100 score relative to YOUR research topic         |
-| `category`        | Paper classification category                       |
-
-**Context-Aware Scoring Rules:**
-- Papers **unrelated** to your research topic → score **0–20**
-- Papers with **some overlap** → score **20–50**
-- Papers **directly relevant** → score **60–80**
-- Papers that are **core contributions** → score **80–100**
-
-**3-model fallback chain**: `gemini-2.5-flash` → `gemini-2.0-flash` → `gemini-2.0-flash-lite`
-Auto-retries on rate limits (429) and server overload (503) with 5-second delays.
-
----
-
-## Prerequisites
-
-- **Node.js** ≥ 18.x ([download](https://nodejs.org/))
-- **npm** ≥ 9.x (included with Node.js)
-- **Supabase account** (free tier: [supabase.com](https://supabase.com))
-- **Google AI Studio API key** (free: [aistudio.google.com](https://aistudio.google.com))
-
----
-
-## Installation & Setup
-
-### Step 1: Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/AjithRajendiran09/Tessera-AI.git
 cd Tessera-AI
 ```
 
-### Step 2: Set up Supabase database
+### 2. Supabase Setup
 
-1. Go to [supabase.com](https://supabase.com) → create a new project
-2. Open **SQL Editor** → **New Query**
-3. Copy the entire contents of `supabase_schema.sql` and paste it in
-4. Click **Run** — this creates all 5 tables, RLS policies, triggers, and functions
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor → New Query** and paste the contents of [`supabase_schema.sql`](supabase_schema.sql)
+3. Click **Run** — this creates all tables, RLS policies, triggers, and migration scripts
+4. Go to **Settings → API** and copy:
+   - **Project URL** (e.g., `https://your-project-id.supabase.co`)
+   - **anon / public key**
+   - **service_role key** (keep this secret — server-side only)
 
-> **Important:** Enable email auth in Supabase Dashboard → **Authentication** → **Providers** → **Email**:
-> - **Enable Email provider** → ✅ ON
-> - **Confirm email** → ❌ OFF (for development; enable for production)
+> **Note:** The schema is idempotent — safe to run multiple times. It includes `IF NOT EXISTS` guards and `ADD COLUMN IF NOT EXISTS` migrations.
 
-### Step 3: Configure the backend
+### 3. Backend Setup
 
 ```bash
 cd backend
+
+# Install dependencies
 npm install
+
+# Create environment file
+cp .env.example .env
 ```
 
-Create `backend/.env`:
+Edit `backend/.env` with your credentials:
 
 ```env
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-GEMINI_API_KEY=your-api-key-from-aistudio.google.com
+GEMINI_API_KEY=your-gemini-api-key
 PORT=3000
+
+# Optional
+SCOPUS_API_KEY=your-scopus-key
+OPENALEX_EMAIL=your-email@university.edu
 ```
 
-### Step 4: Set up the frontend
+Start the server:
 
 ```bash
-cd ../frontend
-npm install
+npm start
+# Server runs on http://localhost:3000
 ```
 
-Create `frontend/.env`:
+### 4. Frontend Setup
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Create environment file
+cp .env.example .env
+```
+
+Edit `frontend/.env`:
 
 ```env
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-**Where to find these values:**
+Start the dev server:
 
-| Variable                    | Location                                                    |
-|:----------------------------|:------------------------------------------------------------|
-| `SUPABASE_URL`              | Supabase Dashboard → Settings → API → Project URL           |
-| `SUPABASE_ANON_KEY`         | Supabase Dashboard → Settings → API → `anon` `public` key  |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Dashboard → Settings → API → `service_role` key    |
-| `GEMINI_API_KEY`            | [aistudio.google.com](https://aistudio.google.com) → Get API Key → Create |
-
-### Step 5: Run both servers
-
-Open **two terminal tabs**:
-
-**Terminal 1 — Backend API:**
 ```bash
-cd backend
-node server.js
-```
-Expected output: `Backend API running on http://localhost:3000`
-
-**Terminal 2 — Frontend Dev Server:**
-```bash
-cd frontend
 npm run dev
-```
-Expected output: `VITE ready → Local: http://localhost:5173/`
-
-### Step 6: Register & Promote to Admin
-
-1. Navigate to **http://localhost:5173** in your browser
-2. Click **"Create one"** → Register with email, password, and full name
-3. Complete the **Onboarding** by entering your research topic
-4. To become admin, run in Supabase SQL Editor:
-
-```sql
-UPDATE profiles SET role = 'admin' WHERE email = 'your@email.com';
+# App runs on http://localhost:5173
 ```
 
-5. Refresh the page — you'll see the **"👥 User Management"** tab in the sidebar
+> The frontend auto-detects `localhost` and proxies API requests to `http://localhost:3000/api`. In production, the `vercel.json` rewrites handle the proxy.
 
 ---
 
-## Database Schema
-
-### Tables
-
-#### `profiles` (NEW — linked to Supabase Auth)
-| Column          | Type        | Description                                    |
-|:----------------|:------------|:-----------------------------------------------|
-| `id`            | UUID (PK)   | References `auth.users(id)` — auto-linked      |
-| `email`         | TEXT        | User's email address                            |
-| `full_name`     | TEXT        | Display name                                    |
-| `research_topic`| TEXT        | User's specific research focus (guides AI)      |
-| `role`          | TEXT        | `admin` or `user` (default: `user`)             |
-| `created_at`    | TIMESTAMPTZ | Auto-set on creation                            |
-
-#### `domains`
-| Column       | Type        | Description                              |
-|:-------------|:------------|:-----------------------------------------|
-| `id`         | UUID (PK)   | Auto-generated unique ID                 |
-| `user_id`    | UUID (FK)   | Owner — references `auth.users(id)`      |
-| `name`       | TEXT         | Domain name (unique per user)            |
-| `color`      | TEXT         | Hex color for UI (e.g., `#7c5cff`)       |
-| `icon`       | TEXT         | Emoji icon (e.g., 🛡️)                   |
-| `description`| TEXT         | What this domain covers                  |
-| `created_at` | TIMESTAMPTZ  | Auto-set on creation                    |
-
-#### `papers`
-| Column           | Type        | Description                      |
-|:-----------------|:------------|:---------------------------------|
-| `id`             | UUID (PK)   | Auto-generated unique ID         |
-| `user_id`        | UUID (FK)   | Owner — references `auth.users(id)` |
-| `title`          | TEXT         | Paper title                      |
-| `authors`        | TEXT         | Comma-separated author list      |
-| `year`           | INTEGER      | Publication year                 |
-| `venue`          | TEXT         | Conference/journal name          |
-| `doi`            | TEXT         | Digital Object Identifier        |
-| `url`            | TEXT         | Link to paper                    |
-| `domain_id`      | UUID (FK)    | References `domains.id`         |
-| `category`       | TEXT         | Classification category          |
-| `contribution`   | TEXT         | Key technical contribution       |
-| `limitations`    | TEXT[]       | Array of limitation strings      |
-| `relevance`      | TEXT         | Relevance to user's research topic |
-| `relevance_score`| INTEGER      | 0–100 relevance score           |
-| `notes`          | TEXT         | Personal research notes          |
-| `is_read`        | BOOLEAN      | Read tracking                   |
-| `created_at`     | TIMESTAMPTZ  | Auto-set                        |
-| `updated_at`     | TIMESTAMPTZ  | Auto-updated on modification    |
-
-#### `research_gaps`
-| Column       | Type        | Description                                    |
-|:-------------|:------------|:-----------------------------------------------|
-| `id`         | UUID (PK)   | Auto-generated unique ID                       |
-| `user_id`    | UUID (FK)   | Owner — references `auth.users(id)`            |
-| `title`      | TEXT         | Gap title                                      |
-| `description`| TEXT         | Detailed description + source paper attribution |
-| `domain_id`  | UUID (FK)    | References `domains.id`                        |
-| `severity`   | TEXT         | `critical`, `high`, `medium`, `low`            |
-| `status`     | TEXT         | `open`, `investigating`, `addressed`, `closed` |
-| `created_at` | TIMESTAMPTZ  | Auto-set                                       |
-
-#### `paper_gaps` (junction table)
-| Column     | Type      | Description            |
-|:-----------|:----------|:-----------------------|
-| `paper_id` | UUID (FK) | References `papers.id` |
-| `gap_id`   | UUID (FK) | References `research_gaps.id` |
-
-### Row Level Security (RLS)
-
-All tables have RLS enabled with per-user policies:
-
-| Table          | Policy                                              |
-|:---------------|:----------------------------------------------------|
-| `profiles`     | Users can view/update/insert own profile only       |
-| `profiles`     | Admins can view all profiles (via `is_admin()` fn)  |
-| `domains`      | Users manage own domains only                       |
-| `papers`       | Users manage own papers only                        |
-| `research_gaps`| Users manage own gaps only                          |
-| `paper_gaps`   | Users manage links for own papers only              |
-
-### Triggers & Functions
-
-| Trigger/Function       | Purpose                                            |
-|:-----------------------|:---------------------------------------------------|
-| `handle_new_user()`    | Auto-creates a `profiles` row on user registration |
-| `update_updated_at()`  | Auto-updates `papers.updated_at` on modification   |
-| `is_admin()`           | SECURITY DEFINER function for admin check (avoids RLS recursion) |
-
----
-
-## API Reference
-
-Base URL: `http://localhost:3000/api`
-
-> **Note:** All endpoints except `/health` require a `Authorization: Bearer <token>` header.
-
-### Authentication & Profile
-
-| Method | Endpoint        | Auth    | Description                    |
-|:-------|:----------------|:--------|:-------------------------------|
-| GET    | `/health`       | ❌      | Health check                   |
-| GET    | `/profile`      | ✅ User | Get current user's profile     |
-| PUT    | `/profile`      | ✅ User | Update name or research topic  |
-
-### Admin (requires `role = 'admin'`)
-
-| Method | Endpoint                  | Auth     | Description                      |
-|:-------|:--------------------------|:---------|:---------------------------------|
-| GET    | `/admin/users`            | ✅ Admin | List all users with stats        |
-| PUT    | `/admin/users/:id/role`   | ✅ Admin | Change a user's role             |
-| DELETE | `/admin/users/:id`        | ✅ Admin | Delete a user and all their data |
-
-### Domains
-
-| Method | Endpoint                            | Auth    | Description                                 |
-|:-------|:------------------------------------|:--------|:--------------------------------------------|
-| GET    | `/domains`                          | ✅ User | List user's domains                         |
-| POST   | `/domains`                          | ✅ User | Create a new domain                         |
-| DELETE | `/domains/:id`                      | ✅ User | Delete a domain                             |
-| GET    | `/domains/:id/generate-lit-review`  | ✅ User | AI-generated literature review for a domain |
-
-### Papers
-
-| Method | Endpoint          | Auth    | Description                        |
-|:-------|:------------------|:--------|:-----------------------------------|
-| GET    | `/papers`         | ✅ User | List user's papers (with domain)   |
-| GET    | `/papers/:id`     | ✅ User | Get single paper                   |
-| POST   | `/papers`         | ✅ User | Create a new paper                 |
-| PUT    | `/papers/:id`     | ✅ User | Update a paper                     |
-| DELETE | `/papers/:id`     | ✅ User | Delete a paper                     |
-
-### Research Gaps
-
-| Method | Endpoint      | Auth    | Description                      |
-|:-------|:--------------|:--------|:---------------------------------|
-| GET    | `/gaps`       | ✅ User | List user's gaps (with domain)   |
-| POST   | `/gaps`       | ✅ User | Create a new gap                 |
-| PUT    | `/gaps/:id`   | ✅ User | Update a gap                     |
-| DELETE | `/gaps/:id`   | ✅ User | Delete a gap                     |
-
-### Paper-Gap Links
-
-| Method | Endpoint              | Auth    | Description              |
-|:-------|:----------------------|:--------|:-------------------------|
-| POST   | `/paper-gaps`         | ✅ User | Link a paper to a gap    |
-| GET    | `/papers/:id/gaps`    | ✅ User | Get all gaps for a paper |
-
-### AI Features
-
-| Method | Endpoint                            | Auth    | Description                                          |
-|:-------|:------------------------------------|:--------|:-----------------------------------------------------|
-| POST   | `/parse-pdf`                        | ✅ User | Upload PDF → AI metadata + context-aware scoring     |
-| GET    | `/domains/:id/generate-lit-review`  | ✅ User | Generate AI literature review for a domain           |
-| POST   | `/generate-pitch`                   | ✅ User | Generate elevator pitch from selected gaps           |
-
-### Dashboard
-
-| Method | Endpoint             | Auth    | Description                          |
-|:-------|:---------------------|:--------|:-------------------------------------|
-| GET    | `/dashboard/stats`   | ✅ User | Aggregated stats for user's dashboard |
-
----
-
-## Environment Variables
+## 🔑 Environment Variables
 
 ### Backend (`backend/.env`)
 
-| Variable                    | Required | Description                                    |
-|:----------------------------|:---------|:-----------------------------------------------|
-| `SUPABASE_URL`              | ✅       | Supabase project URL                          |
-| `SUPABASE_ANON_KEY`         | ✅       | Supabase anonymous/public API key             |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅       | Supabase service role key (bypasses RLS for admin) |
-| `GEMINI_API_KEY`            | ✅       | Google AI Studio API key                      |
-| `PORT`                      | ❌       | Server port (default: `3000`)                 |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | ✅ | Your Supabase project URL |
+| `SUPABASE_ANON_KEY` | ✅ | Supabase anonymous/public API key |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Supabase service role key (bypasses RLS) |
+| `GEMINI_API_KEY` | ✅ | Google Gemini AI API key |
+| `PORT` | ❌ | Server port (default: `3000`) |
+| `SCOPUS_API_KEY` | ❌ | Elsevier Scopus API key for paper discovery |
+| `OPENALEX_EMAIL` | ❌ | Email for OpenAlex polite pool (higher rate limits) |
 
 ### Frontend (`frontend/.env`)
 
-| Variable              | Required | Description                        |
-|:----------------------|:---------|:-----------------------------------|
-| `VITE_SUPABASE_URL`   | ✅       | Supabase project URL              |
-| `VITE_SUPABASE_ANON_KEY` | ✅    | Supabase anonymous/public API key |
-
-> **Security Note:** The `VITE_` prefix makes these available in browser code. Only use the `anon` key (not the service role key) in the frontend.
-
-### Gemini API Free Tier Limits
-
-| Limit                  | Value       |
-|:-----------------------|:------------|
-| Requests per minute    | 10          |
-| Requests per day       | 500         |
-| Tokens per minute      | 250,000     |
-| Context window         | 1M tokens   |
-
-> **Tip:** If you hit rate limits frequently, enable billing on Google AI Studio. Google provides $300 in free credits on first setup.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `VITE_SUPABASE_URL` | ✅ | Your Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Supabase anonymous/public API key |
 
 ---
 
-## Usage Guide
+## 🗄 Database Schema
 
-### Registering & Logging In
-1. Navigate to **http://localhost:5173**
-2. Click **"Create one"** to register, or sign in with existing credentials
-3. On first login, enter your **research topic** (e.g., "Runtime AI Governance for Autonomous Agents")
-4. You'll be taken to the dashboard
+The Supabase PostgreSQL schema consists of 6 tables with full Row Level Security:
 
-### Adding a Paper via AI (Recommended)
-1. Click **Papers** → **＋ Add Paper**
-2. Click **✨ Auto-fill with AI (Upload PDF)**
-3. Select a PDF file from your computer
-4. Wait for Gemini to process (10–30 seconds)
-5. All fields auto-fill — relevance is scored against **your research topic**
-6. Research gaps are **automatically created** in the Gaps module
-7. If no existing domain fits, a **new domain is auto-created**
-8. Review, adjust if needed, click **💾 Save**
+```
+profiles          ← Linked to Supabase Auth (auto-created on signup)
+  ├── id (UUID, PK → auth.users)
+  ├── email, full_name, research_topic
+  └── role (admin | user)
 
-### Adding a Paper Manually
-1. Click **Papers** → **＋ Add Paper**
-2. Fill in the form fields manually
-3. Click **💾 Save**
+workspaces        ← Per-user research projects
+  ├── id (UUID, PK)
+  ├── user_id (FK → auth.users)
+  ├── name, description, research_topic
+  ├── icon, color, is_default
+  └── custom_schema (JSONB) — AI extraction field definitions
 
-### Generating a Literature Review
-1. Click **Domains** → find the domain you want
-2. Click **✨ Lit Review** on the domain card
-3. Wait ~15 seconds for AI to synthesize all papers in that domain
-4. View the formatted review in the modal
-5. Click **📄 Download Word** to export as a `.doc` file
+domains           ← Research categorization
+  ├── id (UUID, PK)
+  ├── user_id, workspace_id
+  └── name, color, icon, description
 
-### Generating an Elevator Pitch
-1. Click **Research Gaps**
-2. Check the boxes on 2–3 gaps you want to address in your paper
-3. Click **✍️ Generate Pitch**
-4. Optionally describe your proposed solution (or leave blank for AI to suggest one)
-5. View the generated abstract/introduction
-6. Click **📄 Download Word** to export
+papers            ← Core paper repository
+  ├── id (UUID, PK)
+  ├── user_id, workspace_id, domain_id
+  ├── title, authors, year, venue, doi, url
+  ├── category, contribution, limitations[]
+  ├── relevance, relevance_score (0–100)
+  ├── publisher, scopus_indexed, quartile
+  ├── research_domain, is_read, notes
+  └── extended_metadata (JSONB) — deep AI analysis
 
-### Editing Your Research Topic
-1. On the **Dashboard**, find the 🎯 research topic badge (top-right)
-2. Click the ✏️ edit button
-3. Update your topic and click **💾 Save**
-4. Future PDF uploads will be scored against the new topic
+research_gaps     ← Identified open questions
+  ├── id (UUID, PK)
+  ├── user_id, workspace_id, domain_id
+  ├── title, description
+  ├── severity (critical | high | medium | low)
+  └── status (open | investigating | addressed | closed)
 
-### Managing Users (Admin Only)
-1. Click **👥 User Management** in the sidebar
-2. View all registered users and their stats
-3. Use the **role dropdown** to promote/demote users
-4. Click **🗑** to delete a user and all their data
+paper_gaps        ← Many-to-many linking table
+  ├── paper_id (FK → papers)
+  └── gap_id (FK → research_gaps)
+```
 
-### Navigating via Dashboard
-- Click any **domain bar** in "Papers by Domain" → jumps to Papers filtered by that domain
-- Click any **year bar** in "Publication Timeline" → shows papers from that year
-- Click any **domain card** → jumps to Papers filtered by that domain
-- Click any **recent paper** → opens the paper detail modal
-
-### Exporting Papers to Excel
-- **All papers**: Go to Papers page → click **📥 Export**
-- **By domain**: Go to Domains page → click **📥 Export** on any domain card
+### Key Database Features
+- **Row Level Security (RLS)** on all tables — users can only access their own data
+- **Admin override** via `is_admin()` security definer function
+- **Auto-profile creation** via `handle_new_user()` trigger on `auth.users`
+- **Auto-updated timestamps** via `update_updated_at()` trigger on `papers` and `workspaces`
+- **Cascading deletes** — deleting a user removes all their data
 
 ---
 
-## Deployment
+## 📡 API Reference
 
-### Frontend (Vercel)
+All endpoints are prefixed with `/api` and require Bearer token authentication (except `/api/health`).
 
-1. Push your code to GitHub
-2. Import the `frontend/` directory in [Vercel](https://vercel.com)
-3. Add environment variables in Vercel Settings → Environment Variables:
+### Health
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Server health check |
+
+### Authentication & Profile
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/profile` | Get current user's profile |
+| `PUT` | `/api/profile` | Update profile (full_name, research_topic) |
+
+### Workspaces
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/workspaces` | List user's workspaces (auto-creates default) |
+| `POST` | `/api/workspaces` | Create a new workspace |
+| `PUT` | `/api/workspaces/:id` | Update a workspace |
+| `DELETE` | `/api/workspaces/:id` | Delete workspace + all contained data |
+
+### Domains
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/domains` | List domains (optional `?workspace_id=`) |
+| `POST` | `/api/domains` | Create a domain |
+| `DELETE` | `/api/domains/:id` | Delete a domain |
+| `GET` | `/api/domains/:id/generate-lit-review` | AI-generated literature review for a domain |
+
+### Papers
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/papers` | List papers (optional `?workspace_id=`) |
+| `GET` | `/api/papers/:id` | Get a single paper with domain info |
+| `POST` | `/api/papers` | Create a paper manually |
+| `PUT` | `/api/papers/:id` | Update a paper |
+| `DELETE` | `/api/papers/:id` | Delete a paper |
+| `POST` | `/api/papers/:id/autofill` | AI auto-fill all assessment fields |
+| `POST` | `/api/papers/autofill-preview` | Preview AI auto-fill before saving |
+
+### Research Gaps
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/gaps` | List research gaps (optional `?workspace_id=`) |
+| `POST` | `/api/gaps` | Create a research gap |
+| `PUT` | `/api/gaps/:id` | Update a research gap |
+| `DELETE` | `/api/gaps/:id` | Delete a research gap |
+
+### Paper-Gap Links
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/paper-gaps` | Link a paper to a gap |
+| `GET` | `/api/papers/:id/gaps` | Get all gaps linked to a paper |
+
+### AI Features
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/parse-pdf` | Upload PDF → AI-extracted structured metadata |
+| `POST` | `/api/generate-pitch` | Generate elevator pitch from selected gaps |
+| `POST` | `/api/paper-draft/parse-excel` | Parse Excel file for paper draft |
+| `POST` | `/api/paper-draft/generate` | Generate complete AI paper draft |
+
+### Discovery
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/discover` | Search Scopus/OpenAlex for papers |
+| `POST` | `/api/discover/import` | Import a discovered paper with AI auto-fill |
+
+### Admin (requires admin role)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/admin/users` | List all users with counts |
+| `PUT` | `/api/admin/users/:id/role` | Change user role (admin/user) |
+| `DELETE` | `/api/admin/users/:id` | Delete a user account |
+
+---
+
+## 🌐 Deployment
+
+### Frontend — Vercel
+
+The frontend is configured for [Vercel](https://vercel.com) deployment:
+
+1. Connect your GitHub repository to Vercel
+2. Set the **Root Directory** to `frontend`
+3. Add environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. Deploy — the `vercel.json` file automatically proxies `/api/*` requests to your Render backend
+4. Deploy — the `vercel.json` automatically rewrites `/api/*` requests to the backend
 
-### Backend (Render)
+### Backend — Render
 
-1. Create a new Web Service on [Render](https://render.com)
-2. Set the root directory to `backend/`
-3. Build command: `npm install`
-4. Start command: `node server.js`
-5. Add environment variables:
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `GEMINI_API_KEY`
+The backend is deployed on [Render](https://render.com):
 
-### Supabase Auth Settings (Production)
+1. Create a new **Web Service** linked to your repository
+2. Set the **Root Directory** to `backend`
+3. Set **Build Command**: `npm install`
+4. Set **Start Command**: `npm start`
+5. Add all backend environment variables
+6. Update `frontend/vercel.json` with your Render URL:
 
-For production deployment, configure these in Supabase Dashboard → Authentication:
-- **Site URL**: Set to your Vercel frontend URL (e.g., `https://tessera-ai.vercel.app`)
-- **Redirect URLs**: Add your production URL
-- **Confirm email**: Enable for production to verify user emails
+```json
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://your-app.onrender.com/api/:path*"
+    }
+  ]
+}
+```
 
----
-
-## Troubleshooting
-
-| Issue | Solution |
-|:------|:---------|
-| `supabaseUrl is required` | Create `frontend/.env` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. **Restart** the Vite dev server after creating it. |
-| `Email logins are disabled` | Enable Email provider in Supabase Dashboard → Authentication → Providers → Email |
-| `Email not confirmed` | Disable "Confirm email" toggle in Supabase Email provider settings (for dev) |
-| `infinite recursion detected in policy for relation "profiles"` | Run the `is_admin()` function fix from `supabase_schema.sql` |
-| `Missing or invalid Authorization header` | You're not logged in. Check that the frontend `.env` has correct Supabase credentials |
-| `Supabase credentials not configured` | Ensure `backend/.env` exists with valid `SUPABASE_URL` and `SUPABASE_ANON_KEY` |
-| `Could not find table 'public.papers'` | Run `supabase_schema.sql` in your Supabase SQL Editor |
-| `429 Too Many Requests` on PDF upload | Free tier quota exhausted. Wait 1 min or enable billing on Google AI Studio |
-| `503 Service Unavailable` | Gemini servers overloaded. App auto-retries with fallback models |
-| Port 3000 already in use | Run `lsof -ti :3000 \| xargs kill -9` then restart |
-| Frontend can't reach backend | Ensure backend runs on port 3000. Check `api.js` has correct `API_URL` |
-| Admin tab not showing | Run `UPDATE profiles SET role = 'admin' WHERE email = 'your@email.com';` in Supabase SQL Editor, then refresh |
-| Knowledge Graph blank on mobile | Ensure you're on the Graph tab; scrolling is locked to prevent canvas misalignment |
+> **Note:** Render's free tier has cold starts (~30s). The frontend handles this with a 120-second timeout and user-friendly retry messages.
 
 ---
 
-## Author
+## 🤝 Contributing
+
+Contributions are welcome! To get started:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes and commit: `git commit -m "Add your feature"`
+4. Push to your branch: `git push origin feature/your-feature`
+5. Open a Pull Request
+
+### Development Tips
+- The backend uses Gemini model fallback: `gemini-2.5-flash` → `gemini-2.5-flash-lite` → `gemini-flash-latest` → etc.
+- Custom extraction schemas are stored as JSONB in the `workspaces` table and passed to the AI prompt
+- The frontend uses a global `state` object with reactive re-rendering on data changes
+
+---
+
+## 👤 Author
 
 **Ajith Rajendiran**
-Assistant Professor · Christ Academy Institute for Advanced Studies
-PhD Scholar · Alliance University
 
 ---
 
-## License
+## 📄 License
 
-ISC
-
----
-
-© 2026 Ajith Rajendiran. All rights reserved.
-Tessera AI v2.0.0 · Research Intelligence Platform
+This project is licensed under the [ISC License](https://opensource.org/licenses/ISC).

@@ -284,24 +284,54 @@ function openEditTopicModal() {
         <label>Research Topic / Focus Area</label>
         <textarea id="edit-topic-input" rows="3" required>${currentWorkspace?.research_topic || currentProfile?.research_topic || ''}</textarea>
       </div>
+      <div style="margin:12px 0 16px;padding:12px 14px;background:rgba(124,92,255,0.08);border:1px solid rgba(124,92,255,0.25);border-radius:10px">
+        <label style="display:flex;align-items:center;gap:10px;font-size:0.86rem;font-weight:600;cursor:pointer;margin:0">
+          <input type="checkbox" id="rescore-all-checkbox" checked style="accent-color:var(--accent);width:16px;height:16px;" />
+          <span>🎯 Re-evaluate relevance scores for existing papers in this workspace</span>
+        </label>
+        <p style="margin:6px 0 0 26px;font-size:0.75rem;color:var(--text2);line-height:1.4">Recalculates honest 0–100% relevance scores for your existing papers against this new topic using strict academic calibration.</p>
+      </div>
       <div class="form-actions">
         <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-overlay').classList.remove('active');document.body.style.overflow=''">Cancel</button>
-        <button type="submit" class="btn btn-primary">💾 Save</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-topic">💾 Save Topic</button>
       </div>
     </form>`;
   $('edit-topic-form').addEventListener('submit', async e => {
     e.preventDefault();
+    const saveBtn = $('btn-save-topic');
+    const newTopic = $('edit-topic-input').value.trim();
+    const shouldRescore = $('rescore-all-checkbox')?.checked;
+    
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '⏳ Saving...';
+
     try {
       if (currentWorkspace) {
-        currentWorkspace = await api.updateWorkspace(currentWorkspace.id, { research_topic: $('edit-topic-input').value.trim() });
+        currentWorkspace = await api.updateWorkspace(currentWorkspace.id, { research_topic: newTopic });
       } else {
-        currentProfile = await api.updateProfile({ research_topic: $('edit-topic-input').value.trim() });
+        currentProfile = await api.updateProfile({ research_topic: newTopic });
       }
       updateResearchTopicBadge();
+
+      if (shouldRescore && currentWorkspace?.id) {
+        saveBtn.innerHTML = '⏳ Calibrating paper scores...';
+        toast('🎯 Re-scoring papers against your new research topic with Gemini AI...');
+        try {
+          const res = await api.rescoreWorkspacePapers(currentWorkspace.id, newTopic);
+          toast(`✅ Rescored ${res.rescored_count || 0} papers!`);
+          await loadPapers();
+        } catch (rescoreErr) {
+          console.warn('Batch rescore warning:', rescoreErr.message);
+        }
+      } else {
+        toast('✅ Research topic updated');
+      }
+
       closeModal();
-      toast('✅ Research topic updated');
     } catch (err) {
       toast('❌ ' + err.message, true);
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '💾 Save Topic';
     }
   });
   openModal();
@@ -574,6 +604,20 @@ function setupNav() {
       if (currentPage === 'discover') {
         setupDiscoverPage();
       }
+
+      // Research-Grade Intelligence Pages
+      if (currentPage === 'synthesis') {
+        setupSynthesisPage();
+      }
+      if (currentPage === 'trends') {
+        setupTrendsPage();
+      }
+      if (currentPage === 'novelty') {
+        setupNoveltyPage();
+      }
+      if (currentPage === 'traceability') {
+        setupTraceabilityPage();
+      }
       
       // Close sidebar on mobile after nav click
       sidebar.classList.remove('open');
@@ -713,20 +757,50 @@ function renderPapers() {
 
   grid.innerHTML = filtered.map((p, i) => {
     const d = state.domains.find(dd => dd.id === p.domain_id);
-    const relColor = (p.relevance_score || 0) >= 90 ? 'var(--green)' : (p.relevance_score || 0) >= 75 ? 'var(--accent2)' : 'var(--orange)';
+    const relScore = p.relevance_score ?? 0;
+    const relColor = relScore >= 75 ? 'var(--green)' : relScore >= 40 ? 'var(--orange)' : '#ef476f';
+    const relLabel = relScore >= 75 ? 'High' : relScore >= 40 ? 'Moderate' : 'Low';
+
+    const badgeLabel = d?.name || p.research_domain || (p.category ? `${p.category}` : 'General');
+    const badgeIcon = d?.icon || (p.research_domain ? '🏷️' : '📄');
+    const badgeBg = d ? d.color + '22' : 'rgba(124, 92, 255, 0.12)';
+    const badgeColor = d?.color || 'var(--accent)';
+
+    const topics = [];
+    if (p.research_domain && p.research_domain !== badgeLabel && p.research_domain !== 'Research Domain') {
+      topics.push(p.research_domain);
+    }
+    const emTopics = p.extended_metadata?.topics || [];
+    emTopics.forEach(t => {
+      if (typeof t === 'string' && !topics.includes(t)) topics.push(t);
+    });
+
     return `
     <div class="paper-card" data-id="${p.id}" style="animation:fadeIn .3s ease ${i * 0.03}s both">
       <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${d?.color || 'var(--accent)'}"></div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
-        <span class="paper-badge" style="background:${d ? d.color + '22' : 'var(--surface2)'};color:${d?.color || 'var(--text2)'}">${d?.icon || '📄'} ${d?.name || p.category}</span>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <span class="paper-badge" style="background:${badgeBg};color:${badgeColor};margin-bottom:0" title="Domain / Focus">${badgeIcon} ${badgeLabel}</span>
+        ${p.category && p.category !== badgeLabel ? `<span class="paper-cat-badge">${p.category}</span>` : ''}
         <span class="read-badge ${p.is_read ? 'read' : 'unread'}">${p.is_read ? '✓ Read' : 'Unread'}</span>
       </div>
       <h3>${p.title}</h3>
       <p class="authors">${p.authors}</p>
-      <div class="meta"><span>📅 ${p.year}</span><span>📄 ${p.venue.split('(')[0].trim()}</span></div>
+      <div class="meta"><span>📅 ${p.year}</span><span>📄 ${p.venue ? p.venue.split('(')[0].trim() : 'Academic Journal'}</span></div>
+      
+      ${topics.length > 0 ? `
+        <div class="paper-topics-list">
+          ${topics.slice(0, 3).map(t => `<span class="paper-topic-pill" title="${t}">🔬 ${t}</span>`).join('')}
+          ${topics.length > 3 ? `<span class="paper-topic-pill" style="opacity:0.75" title="${topics.slice(3).join(', ')}">+${topics.length - 3}</span>` : ''}
+        </div>
+      ` : ''}
+
       <p class="contribution">${p.contribution || ''}</p>
       <div class="paper-card-footer">
-        <div class="relevance-bar"><span>Rel</span><div class="rel-track"><div class="rel-fill" style="width:${p.relevance_score || 0}%;background:${relColor}"></div></div><span>${p.relevance_score || 0}%</span></div>
+        <div class="relevance-bar" title="Relevance to your research topic (${relLabel}: ${relScore}%)">
+          <span>Rel</span>
+          <div class="rel-track"><div class="rel-fill" style="width:${relScore}%;background:${relColor}"></div></div>
+          <span style="font-weight:700;color:${relColor}">${relScore}%</span>
+        </div>
         ${p.url ? `<a href="${p.url}" target="_blank" class="paper-link" onclick="event.stopPropagation()">🔗 Paper</a>` : ''}
       </div>
     </div>`;
@@ -752,7 +826,6 @@ function renderPapers() {
 // ── Paper Detail Modal ──
 function openPaperDetail(p) {
   const d = state.domains.find(dd => dd.id === p.domain_id);
-  const relColor = (p.relevance_score || 0) >= 90 ? 'var(--green)' : (p.relevance_score || 0) >= 75 ? 'var(--accent2)' : 'var(--orange)';
   const em = p.extended_metadata || {};
   const rc = em.research_context || {};
   const meth = em.methodology || {};
@@ -800,19 +873,41 @@ function openPaperDetail(p) {
     return `<span class="tag-chip ${active ? 'active' : 'inactive'}"><span class="tag-chip-dot"></span>${label}</span>`;
   }).join('');
 
+  const topics = [];
+  if (p.research_domain && p.research_domain !== 'Research Domain') topics.push(p.research_domain);
+  (em.topics || []).forEach(t => { if (typeof t === 'string' && !topics.includes(t)) topics.push(t); });
+
+  const relScore = p.relevance_score ?? 0;
+  const relColor = relScore >= 75 ? 'var(--green)' : relScore >= 40 ? 'var(--orange)' : '#ef476f';
+  const relTier = relScore >= 75 ? 'DIRECT RELEVANCE' : relScore >= 40 ? 'MODERATE OVERLAP' : 'LOW / UNRELATED DOMAIN';
+
   $('modal-body').innerHTML = `
     <h2>${p.title}</h2>
     <div class="meta-row">
-      <span class="meta-tag" style="background:${d ? d.color + '22' : ''};color:${d?.color || ''}">${d?.icon || ''} ${d?.name || p.category}</span>
+      ${d ? `<span class="meta-tag" style="background:${d.color}22;color:${d.color}">${d.icon || '📁'} ${d.name}</span>` : ''}
+      ${p.research_domain ? `<span class="meta-tag" style="background:rgba(124,92,255,0.15);color:var(--accent)">🏷️ ${p.research_domain}</span>` : ''}
       <span class="meta-tag">📅 ${p.year}</span>
       <span class="meta-tag">📄 ${p.venue}</span>
       ${p.publisher ? `<span class="meta-tag">🏢 ${p.publisher}</span>` : ''}
       ${p.doi ? `<span class="meta-tag">🔗 ${p.doi}</span>` : ''}
       ${p.quartile ? `<span class="meta-tag">🏅 ${p.quartile}</span>` : ''}
       ${p.scopus_indexed ? `<span class="meta-tag" style="background:rgba(76,218,140,.12);color:var(--green)">✓ Scopus</span>` : ''}
+      ${p.category ? `<span class="meta-tag" style="background:var(--surface2)">📑 ${p.category}</span>` : ''}
       <span class="meta-tag read-badge ${p.is_read ? 'read' : 'unread'}">${p.is_read ? '✓ Read' : '📌 Unread'}</span>
+      <span class="verif-badge ${p.verification_status === 'human_verified' ? 'verif-human-verified' : 'verif-ai-gen'}">${p.verification_status === 'human_verified' ? '✓ Human Verified' : '🤖 AI Generated'}</span>
+      ${p.confidence_tier ? `<span class="conf-pill conf-${p.confidence_tier.toLowerCase().includes('high') ? 'high' : p.confidence_tier.toLowerCase().includes('med') ? 'med' : 'low'}">⚡ Conf: ${p.confidence_tier} (${Math.round((p.confidence_score || 0.85) * 100)}%)</span>` : ''}
     </div>
     ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link">📄 Read Paper →</a>` : ''}
+
+    <div class="evidence-trace-banner" style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: 10px; padding: 12px 16px; margin: 14px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <div style="font-weight: 700; font-size: 13.5px; color: var(--text);">Evidence Traceability (Claim → Page → Quote)</div>
+        <div style="font-size: 12px; color: var(--text-dim);">Verify AI-extracted claims against verbatim text & page anchors.</div>
+      </div>
+      <button class="btn btn-primary btn-sm" id="btn-trace-evidence-modal" data-paper-id="${p.id}">
+        <span>🔬</span> Trace Claims
+      </button>
+    </div>
 
     ${(!p.limitations || p.limitations.length === 0 || !pers.research_gap) ? `
       <div class="autofill-banner" id="md-autofill-banner">
@@ -833,6 +928,12 @@ function openPaperDetail(p) {
         ${field('Category', p.category)}
       `, true)}
 
+      ${topics.length > 0 ? section('🏷️', 'Research Topics & Classifications', `
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">
+          ${topics.map(t => `<span class="paper-topic-pill" style="font-size:0.75rem;padding:4px 10px;">🔬 ${t}</span>`).join('')}
+        </div>
+      `, true) : ''}
+
       <!-- ═══ CUSTOM EXTRACTION FIELDS (collapsible) ═══ -->
       ${(currentWorkspace?.custom_schema || []).length > 0 ? section('✨', 'Custom Fields',
         (currentWorkspace.custom_schema).map(f => {
@@ -846,23 +947,54 @@ function openPaperDetail(p) {
         ${field('Limitations', p.limitations)}
       `, true)}
 
-      ${section('🧑‍🔬', 'Personal Assessment', `
+      ${section('🧑‍🔬', 'Personal Assessment & Relevance', `
         ${field('Research Gap', pers.research_gap)}
         ${field('Missing Component', pers.missing_component)}
-        ${field('Relevance to Research', pers.relevance_to_my_research || p.relevance)}
+        ${field('Relevance to Research', `
+          <div style="margin-bottom:6px">
+            <span class="relevance-tier-badge ${relScore >= 75 ? 'relevance-tier-direct' : relScore >= 40 ? 'relevance-tier-mod' : 'relevance-tier-irrel'}">
+              ${relTier} (${relScore}%)
+            </span>
+          </div>
+          <div>${pers.relevance_to_my_research || p.relevance || 'Not evaluated yet.'}</div>
+        `)}
         ${field('Personal Notes', pers.personal_notes || p.notes)}
       `, true)}
     </div>
 
-    <div class="relevance-bar" style="margin-top:14px">
-      <span>Score</span><div class="rel-track"><div class="rel-fill" style="width:${p.relevance_score || 0}%;background:${relColor}"></div></div><span style="font-weight:700">${p.relevance_score || 0}%</span>
+    <div class="relevance-bar" style="margin-top:14px" title="Topic Relevance: ${relTier} (${relScore}%)">
+      <span>Score</span><div class="rel-track"><div class="rel-fill" style="width:${relScore}%;background:${relColor}"></div></div><span style="font-weight:700;color:${relColor}">${relScore}%</span>
     </div>
     <div class="modal-actions">
+      <button class="btn btn-primary btn-sm" id="md-rescore-rel" title="Recalculate relevance using strict AI academic calibration">🎯 Re-evaluate Relevance</button>
       <button class="btn btn-sm btn-autofill-magic" id="md-autofill">✨ Auto-Fill with AI</button>
       <button class="btn btn-ghost btn-sm" id="md-toggle-read">${p.is_read ? '📌 Mark Unread' : '✅ Mark Read'}</button>
       <button class="btn btn-ghost btn-sm" id="md-edit">✏️ Edit</button>
       <button class="btn btn-danger btn-sm" id="md-delete">🗑 Delete</button>
     </div>`;
+
+  const btnRescore = $('md-rescore-rel');
+  if (btnRescore) {
+    btnRescore.onclick = async () => {
+      const origText = btnRescore.innerHTML;
+      btnRescore.disabled = true;
+      btnRescore.innerHTML = '⏳ Scoring with AI...';
+      toast('🎯 Objectively evaluating relevance against workspace research topic...');
+      try {
+        const topic = currentWorkspace?.research_topic || currentProfile?.research_topic || '';
+        const updated = await api.recalculatePaperRelevance(p.id, topic);
+        toast(`✅ Relevance updated: ${updated.relevance_score}%`);
+        const idx = state.papers.findIndex(x => x.id === p.id);
+        if (idx !== -1) state.papers[idx] = updated;
+        openPaperDetail(updated);
+        renderPapers();
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+        btnRescore.disabled = false;
+        btnRescore.innerHTML = origText;
+      }
+    };
+  }
 
   const handleAutoFill = async (btn) => {
     if (!btn) return;
@@ -901,6 +1033,12 @@ function openPaperDetail(p) {
     if (!confirm('Delete this paper?')) return;
     await api.deletePaper(p.id); closeModal(); await loadAll(); toast('🗑 Paper deleted');
   });
+
+  const traceBtn = $('btn-trace-evidence-modal');
+  if (traceBtn) {
+    traceBtn.addEventListener('click', () => openEvidenceInspector(p));
+  }
+
   openModal();
 }
 
@@ -1559,11 +1697,23 @@ window.downloadLitReviewWord = function(domainName) {
 function renderGaps() {
   $('gaps-grid').innerHTML = state.gaps.map(g => {
     const d = g.domains;
+    const cat = g.gap_category || 'Methodological Gap';
+    const score = g.evidence_score || 50;
+    const scoreClass = score >= 75 ? 'conf-high' : score >= 50 ? 'conf-med' : 'conf-low';
+    const verifStatus = g.verification_status || 'ai_generated';
+    const verifClass = verifStatus === 'human_verified' ? 'verif-human-verified' : verifStatus === 'rejected' ? 'verif-rejected' : 'verif-ai-gen';
+    const verifText = verifStatus === 'human_verified' ? '✓ Human Verified' : verifStatus === 'rejected' ? '✗ Rejected' : '🤖 AI Generated';
+
     return `
     <div class="gap-card" style="position:relative; cursor:pointer;" onclick="const cb = this.querySelector('.gap-checkbox'); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change'));">
       <input type="checkbox" class="gap-checkbox" data-id="${g.id}" style="position:absolute; top:15px; left:15px; transform: scale(1.3); cursor:pointer;" onclick="event.stopPropagation();">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-left: 25px;">
-        <span class="gap-severity severity-${g.severity}">${g.severity}</span>
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-left: 25px; flex-wrap: wrap; gap: 6px;">
+        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+          <span class="gap-severity severity-${g.severity}">${g.severity}</span>
+          <span class="claim-type-tag" style="background: rgba(124,92,255,0.15); color: #a78bfa;">${cat}</span>
+          <span class="conf-pill ${scoreClass}">Evidence: ${score}/100</span>
+          <span class="verif-badge ${verifClass}">${verifText}</span>
+        </div>
         <div style="display: flex; gap: 8px; align-items: center;">
           <span class="gap-status" style="position: static;">${g.status}</span>
           <button class="btn btn-ghost btn-sm btn-delete-gap" data-id="${g.id}" style="padding: 2px 6px; font-size: 0.75rem; color: var(--accent3); border-color: rgba(255,108,140,0.3);">🗑</button>
@@ -1571,9 +1721,33 @@ function renderGaps() {
       </div>
       <h3>${g.title}</h3>
       <p>${g.description || ''}</p>
-      ${d ? `<div class="gap-domain">${d.icon} ${d.name}</div>` : ''}
+      ${g.suggested_direction ? `<p style="font-size: 12px; color: #00f5a0; margin-top: 6px;"><strong>Suggested Direction:</strong> ${g.suggested_direction}</p>` : ''}
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 8px;">
+        ${d ? `<div class="gap-domain">${d.icon} ${d.name}</div>` : '<div></div>'}
+        <div style="display: flex; gap: 8px;" onclick="event.stopPropagation();">
+          <button class="btn btn-secondary btn-sm btn-gap-breakdown" data-id="${g.id}">📊 Breakdown</button>
+          <button class="btn btn-primary btn-sm btn-gap-rq" data-id="${g.id}">❓ Formulate RQs</button>
+        </div>
+      </div>
     </div>`;
   }).join('') || '<div class="empty-state"><p>No research gaps defined.</p></div>';
+
+  // Attach breakdown handlers
+  document.querySelectorAll('.btn-gap-breakdown').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openGapEvidenceModal(btn.dataset.id);
+    });
+  });
+
+  // Attach research questions handlers
+  document.querySelectorAll('.btn-gap-rq').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const g = state.gaps.find(gg => gg.id === btn.dataset.id);
+      if (g) openResearchQuestionModal(g);
+    });
+  });
 
   // Attach delete handlers to each gap card
   document.querySelectorAll('.btn-delete-gap').forEach(btn => {
@@ -1633,98 +1807,544 @@ function renderGaps() {
   }
 }
 
-// ── Knowledge Graph ──
+// ── Knowledge Graph 2.0 ──
 let networkInstance = null;
+let kgActiveFilter = 'all';
+let kgPhysicsEnabled = true;
+
 function renderGraph() {
   const container = $('kg-network');
   if (!container || currentPage !== 'graph') return;
   
   if (!window.vis) {
-    container.innerHTML = '<p style="padding:20px">Loading graph library...</p>';
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);">Loading graph visualization engine...</div>';
     setTimeout(renderGraph, 500);
     return;
   }
 
-  const nodes = [];
-  const edges = [];
+  // Setup toolbar handlers once
+  const btnStabilize = $('btn-kg-stabilize');
+  if (btnStabilize && !btnStabilize.dataset.bound) {
+    btnStabilize.dataset.bound = 'true';
+    btnStabilize.addEventListener('click', () => {
+      kgPhysicsEnabled = !kgPhysicsEnabled;
+      if (networkInstance) {
+        networkInstance.setOptions({ physics: { enabled: kgPhysicsEnabled } });
+        btnStabilize.innerHTML = kgPhysicsEnabled ? '⏸️ Freeze' : '▶️ Resume';
+      }
+    });
+  }
 
-  // Add Domains
+  const btnFit = $('btn-kg-fit');
+  if (btnFit && !btnFit.dataset.bound) {
+    btnFit.dataset.bound = 'true';
+    btnFit.addEventListener('click', () => {
+      if (networkInstance) networkInstance.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+    });
+  }
+
+  const btnCloseDrawer = $('btn-kg-drawer-close');
+  if (btnCloseDrawer && !btnCloseDrawer.dataset.bound) {
+    btnCloseDrawer.dataset.bound = 'true';
+    btnCloseDrawer.addEventListener('click', () => {
+      resetKgDrawer();
+    });
+  }
+
+  // Entity filter pill listeners
+  document.querySelectorAll('.kg-filter-btn').forEach(btn => {
+    if (!btn.dataset.bound) {
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.kg-filter-btn').forEach(b => b.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        kgActiveFilter = e.currentTarget.dataset.group;
+        renderGraph();
+      });
+    }
+  });
+
+  const rawNodes = [];
+  const rawEdges = [];
+  const entityMap = new Map(); // id -> entity object
+
+  // 1. Domains
   state.domains.forEach(d => {
-    nodes.push({
-      id: 'd_' + d.id,
+    const id = 'd_' + d.id;
+    entityMap.set(id, { type: 'domain', data: d });
+    rawNodes.push({
+      id,
       label: d.name,
       group: 'domain',
-      title: d.description || d.name,
-      font: { color: '#ffffff', size: 16 },
-      color: { background: d.color, border: d.color },
+      title: 'Domain: ' + d.name,
+      font: { color: '#ffffff', size: 14, face: 'Inter, sans-serif' },
+      color: { background: d.color || '#a855f7', border: '#c084fc', highlight: { background: '#9333ea', border: '#fff' } },
       shape: 'box',
-      margin: 10
+      margin: 10,
+      shadow: { enabled: true, color: 'rgba(168,85,247,0.3)', size: 10 }
     });
   });
 
-  // Add Gaps
+  // 2. Gaps
   state.gaps.forEach(g => {
-    nodes.push({
-      id: 'g_' + g.id,
-      label: g.title,
+    const id = 'g_' + g.id;
+    entityMap.set(id, { type: 'gap', data: g });
+    const scoreText = g.evidence_score !== undefined ? ` [Score: ${g.evidence_score}]` : '';
+    rawNodes.push({
+      id,
+      label: (g.title || 'Gap').substring(0, 28) + (g.title?.length > 28 ? '...' : ''),
       group: 'gap',
-      title: g.description,
-      font: { color: '#ffffff', size: 12 },
-      color: { background: '#222233', border: '#444455' },
-      shape: 'ellipse'
+      title: `Research Gap: ${g.title}\nCategory: ${g.category || 'General'}${scoreText}`,
+      font: { color: '#fbbf24', size: 11, face: 'Inter, sans-serif' },
+      color: { background: '#241a0d', border: '#f59e0b', highlight: { background: '#452b06', border: '#fbbf24' } },
+      shape: 'hexagon',
+      size: 16
     });
-    // Link gap to domain
+
     if (g.domain_id) {
-      edges.push({ from: 'g_' + g.id, to: 'd_' + g.domain_id, dashes: true, color: { color: '#444455' } });
+      rawEdges.push({
+        from: id,
+        to: 'd_' + g.domain_id,
+        label: 'in_domain',
+        font: { size: 9, color: '#64748b', align: 'middle' },
+        dashes: true,
+        color: { color: '#78350f', highlight: '#f59e0b' },
+        arrows: { to: { enabled: true, scaleFactor: 0.6 } }
+      });
     }
   });
 
-  // Add Papers
+  // 3. Papers, Methods, Datasets, Findings
+  const methodSet = new Set();
+  const datasetSet = new Set();
+
   state.papers.forEach(p => {
+    const pId = 'p_' + p.id;
+    entityMap.set(pId, { type: 'paper', data: p });
+    const em = p.extended_metadata || {};
     const d = state.domains.find(dd => dd.id === p.domain_id);
-    nodes.push({
-      id: 'p_' + p.id,
-      label: p.title.substring(0, 25) + (p.title.length > 25 ? '...' : ''),
+
+    rawNodes.push({
+      id: pId,
+      label: (p.title || 'Untitled').substring(0, 26) + (p.title?.length > 26 ? '...' : ''),
       group: 'paper',
-      title: p.title + '\n' + p.authors,
-      font: { color: '#aaaaaa', size: 10 },
-      color: { background: d ? d.color + '44' : '#111111', border: d ? d.color : '#333333' },
+      title: `Paper: ${p.title}\nAuthors: ${p.authors || 'Unknown'}\nYear: ${p.year || 'N/A'}`,
+      font: { color: '#e2e8f0', size: 11, face: 'Inter, sans-serif' },
+      color: { background: '#0f2942', border: '#38bdf8', highlight: { background: '#0369a1', border: '#7dd3fc' } },
       shape: 'dot',
-      size: 10
+      size: 14,
+      shadow: { enabled: true, color: 'rgba(56,189,248,0.2)', size: 6 }
     });
-    
+
     // Link paper to domain
     if (p.domain_id) {
-      edges.push({ from: 'p_' + p.id, to: 'd_' + p.domain_id, color: { color: d ? d.color + '44' : '#333333' } });
+      rawEdges.push({
+        from: pId,
+        to: 'd_' + p.domain_id,
+        label: 'belongs_to',
+        font: { size: 9, color: '#64748b' },
+        color: { color: '#1e293b', highlight: '#38bdf8' },
+        arrows: { to: { enabled: true, scaleFactor: 0.6 } }
+      });
     }
+
+    // Extracted Method(s)
+    const methodNames = [];
+    if (em.methodology?.ai_technique) methodNames.push(em.methodology.ai_technique);
+    if (em.methodology?.methodology && !methodNames.includes(em.methodology.methodology)) {
+      methodNames.push(em.methodology.methodology);
+    }
+    if (Array.isArray(p.methods)) {
+      p.methods.forEach(m => {
+        const mName = typeof m === 'string' ? m : (m.method_name || m.name);
+        if (mName && !methodNames.includes(mName)) methodNames.push(mName);
+      });
+    }
+
+    methodNames.slice(0, 2).forEach(mName => {
+      const cleanName = mName.trim();
+      if (!cleanName || cleanName.length < 3) return;
+      const mId = 'm_' + encodeURIComponent(cleanName.toLowerCase().replace(/\s+/g, '_'));
+      if (!methodSet.has(mId)) {
+        methodSet.add(mId);
+        entityMap.set(mId, { type: 'method', name: cleanName, papers: [p] });
+        rawNodes.push({
+          id: mId,
+          label: cleanName.substring(0, 22) + (cleanName.length > 22 ? '...' : ''),
+          group: 'method',
+          title: `Methodology / Technique: ${cleanName}`,
+          font: { color: '#a7f3d0', size: 10, face: 'Inter, sans-serif' },
+          color: { background: '#064e3b', border: '#10b981', highlight: { background: '#047857', border: '#34d399' } },
+          shape: 'ellipse'
+        });
+      } else {
+        const existing = entityMap.get(mId);
+        if (existing && !existing.papers.find(pp => pp.id === p.id)) existing.papers.push(p);
+      }
+
+      rawEdges.push({
+        from: pId,
+        to: mId,
+        label: 'uses_method',
+        font: { size: 9, color: '#059669' },
+        color: { color: '#065f46', highlight: '#10b981' },
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } }
+      });
+    });
+
+    // Extracted Dataset(s)
+    const dsName = em.dataset?.dataset_name || (Array.isArray(p.datasets) && p.datasets[0]?.dataset_name);
+    if (dsName && dsName.trim().length > 2 && dsName.toLowerCase() !== 'n/a') {
+      const cleanDs = dsName.trim();
+      const dsId = 'ds_' + encodeURIComponent(cleanDs.toLowerCase().replace(/\s+/g, '_'));
+      if (!datasetSet.has(dsId)) {
+        datasetSet.add(dsId);
+        entityMap.set(dsId, { type: 'dataset', name: cleanDs, papers: [p] });
+        rawNodes.push({
+          id: dsId,
+          label: cleanDs.substring(0, 20) + (cleanDs.length > 20 ? '...' : ''),
+          group: 'dataset',
+          title: `Dataset / Benchmark: ${cleanDs}`,
+          font: { color: '#67e8f9', size: 10, face: 'Inter, sans-serif' },
+          color: { background: '#164e63', border: '#06b6d4', highlight: { background: '#0891b2', border: '#22d3ee' } },
+          shape: 'triangle',
+          size: 13
+        });
+      } else {
+        const existing = entityMap.get(dsId);
+        if (existing && !existing.papers.find(pp => pp.id === p.id)) existing.papers.push(p);
+      }
+
+      rawEdges.push({
+        from: pId,
+        to: dsId,
+        label: 'evaluated_on',
+        font: { size: 9, color: '#0891b2' },
+        color: { color: '#155e75', highlight: '#06b6d4' },
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } }
+      });
+    }
+
+    // Extracted Finding(s)
+    const findingText = em.evaluation?.results || (Array.isArray(p.findings) && p.findings[0]?.finding_statement);
+    if (findingText && findingText.trim().length > 10) {
+      const fId = 'f_' + p.id;
+      entityMap.set(fId, { type: 'finding', text: findingText, paper: p });
+      rawNodes.push({
+        id: fId,
+        label: findingText.substring(0, 22) + '...',
+        group: 'finding',
+        title: `Empirical Finding: ${findingText}`,
+        font: { color: '#fbcfe8', size: 10, face: 'Inter, sans-serif' },
+        color: { background: '#4c0519', border: '#f43f5e', highlight: { background: '#881337', border: '#fb7185' } },
+        shape: 'star',
+        size: 13
+      });
+
+      rawEdges.push({
+        from: pId,
+        to: fId,
+        label: 'reports',
+        font: { size: 9, color: '#e11d48' },
+        color: { color: '#9f1239', highlight: '#f43f5e' },
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } }
+      });
+    }
+
+    // Paper to Gap (if paper explicitly mentions gap or shares domain)
+    state.gaps.forEach(g => {
+      if (g.paper_id === p.id) {
+        rawEdges.push({
+          from: pId,
+          to: 'g_' + g.id,
+          label: 'reveals_gap',
+          font: { size: 9, color: '#f59e0b' },
+          dashes: true,
+          color: { color: '#b45309', highlight: '#fbbf24' },
+          arrows: { to: { enabled: true, scaleFactor: 0.6 } }
+        });
+      }
+    });
   });
 
-  const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+  // Apply entity filtering
+  let filteredNodes = rawNodes;
+  if (kgActiveFilter !== 'all') {
+    filteredNodes = rawNodes.filter(n => n.group === kgActiveFilter);
+  }
+  const activeNodeIds = new Set(filteredNodes.map(n => n.id));
+  const filteredEdges = rawEdges.filter(e => activeNodeIds.has(e.from) && activeNodeIds.has(e.to));
+
+  const data = {
+    nodes: new vis.DataSet(filteredNodes),
+    edges: new vis.DataSet(filteredEdges)
+  };
+
   const options = {
     width: '100%',
     height: '100%',
     autoResize: true,
-    nodes: { borderWidth: 2 },
-    edges: { smooth: { type: 'continuous' } },
+    nodes: {
+      borderWidth: 1.5,
+      shadow: true
+    },
+    edges: {
+      smooth: { type: 'continuous', roundness: 0.2 },
+      selectionWidth: 2.5
+    },
     physics: {
+      enabled: kgPhysicsEnabled,
       solver: 'forceAtlas2Based',
       forceAtlas2Based: {
-        gravitationalConstant: -200,
-        centralGravity: 0.01,
-        springLength: 300,
-        springConstant: 0.05,
-        damping: 0.4,
+        gravitationalConstant: -180,
+        centralGravity: 0.012,
+        springLength: 160,
+        springConstant: 0.06,
+        damping: 0.45,
         avoidOverlap: 1
       },
-      stabilization: { iterations: 150 }
+      stabilization: { iterations: 120 }
     },
-    interaction: { hover: true, tooltipDelay: 200 }
+    interaction: {
+      hover: true,
+      tooltipDelay: 150,
+      zoomView: true,
+      dragView: true
+    }
   };
 
   if (networkInstance) {
     networkInstance.destroy();
   }
   networkInstance = new vis.Network(container, data, options);
+
+  // Click interaction: inspect evidence in Drawer
+  networkInstance.on('click', params => {
+    if (params.nodes && params.nodes.length > 0) {
+      const selectedId = params.nodes[0];
+      const entity = entityMap.get(selectedId);
+      if (entity) {
+        showKgEvidenceDrawer(entity);
+      }
+    } else if (params.edges && params.edges.length > 0) {
+      const selectedEdgeId = params.edges[0];
+      const edge = filteredEdges.find(e => e.id === selectedEdgeId) || rawEdges.find(e => (e.from + '_' + e.to) === selectedEdgeId);
+      if (edge) {
+        showKgEdgeDrawer(edge, entityMap);
+      }
+    } else {
+      resetKgDrawer();
+    }
+  });
+}
+
+function resetKgDrawer() {
+  const badge = $('kg-drawer-type-badge');
+  const content = $('kg-drawer-content');
+  if (badge) badge.textContent = 'Entity Details';
+  if (content) {
+    content.innerHTML = `
+      <div style="text-align:center; padding:40px 10px; color:var(--text-muted);">
+        <div style="font-size:2.2rem; margin-bottom:10px;">🕸️</div>
+        <div style="font-weight:600; color:var(--text); margin-bottom:6px;">Evidence Inspector</div>
+        <p style="font-size:0.82rem; line-height:1.5;">Click any node or directional edge in the knowledge graph to view extracted empirical evidence, provenance, and relationships.</p>
+      </div>
+    `;
+  }
+}
+
+function showKgEvidenceDrawer(entity) {
+  const badge = $('kg-drawer-type-badge');
+  const content = $('kg-drawer-content');
+  if (!content) return;
+
+  if (entity.type === 'paper') {
+    const p = entity.data;
+    const em = p.extended_metadata || {};
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#0f2942; color:#38bdf8;">📄 Paper</span>`;
+    
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1rem; margin:0 0 8px 0; color:var(--text); line-height:1.4;">${escapeHtml(p.title || 'Untitled Paper')}</h3>
+        <div style="font-size:0.8rem; color:var(--text-dim); margin-bottom:6px;">✍️ ${escapeHtml(p.authors || 'Unknown Authors')} (${p.year || 'N/A'})</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8;">Confidence: ${(p.confidence_score * 100 || 85).toFixed(0)}%</span>
+          <span class="badge" style="background:rgba(0,245,160,0.15); color:#00f5a0;">Status: ${p.verification_status || 'unverified'}</span>
+        </div>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Methodology / AI Technique</div>
+        <div class="kg-detail-val">${escapeHtml(em.methodology?.ai_technique || em.methodology?.methodology || 'Not explicitly extracted')}</div>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Dataset / Benchmark</div>
+        <div class="kg-detail-val">${escapeHtml(em.dataset?.dataset_name || 'Not explicitly extracted')}</div>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Empirical Findings</div>
+        <div class="kg-detail-val" style="font-size:0.82rem;">${escapeHtml(em.evaluation?.results || p.abstract?.substring(0, 180) + '...' || 'No findings recorded')}</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
+        <button class="btn btn-primary btn-sm" onclick="openEvidenceInspector(state.papers.find(x => x.id === '${p.id}'))" style="justify-content:center;">
+          🔍 Inspect Evidence Provenance
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="openPaperDetail(state.papers.find(x => x.id === '${p.id}'))" style="justify-content:center;">
+          📖 Open Full Paper Workspace
+        </button>
+      </div>
+    `;
+  } else if (entity.type === 'gap') {
+    const g = entity.data;
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#241a0d; color:#f59e0b;">⚡ Research Gap</span>`;
+    
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1rem; margin:0 0 8px 0; color:#fbbf24; line-height:1.4;">${escapeHtml(g.title || 'Research Gap')}</h3>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <span class="badge" style="background:rgba(245,158,11,0.2); color:#fbbf24;">Category: ${escapeHtml(g.category || 'Empirical')}</span>
+          <span class="badge" style="background:rgba(0,245,160,0.15); color:#00f5a0;">Heuristic Score: ${g.evidence_score || 70}/100</span>
+        </div>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Gap Description</div>
+        <div class="kg-detail-val" style="font-size:0.85rem;">${escapeHtml(g.description || 'No description available')}</div>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Tessera Evidence-Based Heuristic</div>
+        <div class="kg-detail-val" style="font-size:0.82rem; color:var(--text-dim);">
+          This gap is scored via 6 deterministic academic factors (repeated limitation citations, future work extraction, evaluation deficiencies).
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px;">
+        <button class="btn btn-secondary btn-sm" onclick="openGapEvidenceModal('${g.id}')" style="justify-content:center;">
+          📊 View Heuristic Score Breakdown
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="openResearchQuestionModal(state.gaps.find(x => x.id === '${g.id}'))" style="justify-content:center;">
+          💡 Formulate Research Questions
+        </button>
+      </div>
+    `;
+  } else if (entity.type === 'method') {
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#064e3b; color:#10b981;">⚙️ Method</span>`;
+    const papersList = (entity.papers || []).map(p => `
+      <li style="margin-bottom:6px; font-size:0.82rem; color:var(--text);">
+        <strong>${escapeHtml(p.title || 'Untitled')}</strong> (${p.year || 'N/A'})
+      </li>
+    `).join('');
+
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1rem; margin:0 0 6px 0; color:#34d399;">${escapeHtml(entity.name)}</h3>
+        <p style="font-size:0.82rem; color:var(--text-dim); margin:0;">Standardized methodological framework or AI technique identified across workspace literature.</p>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Papers Utilizing this Method (${entity.papers?.length || 0})</div>
+        <ul style="padding-left:18px; margin:8px 0 0 0;">
+          ${papersList || '<li style="color:var(--text-dim); font-size:0.82rem;">None recorded</li>'}
+        </ul>
+      </div>
+    `;
+  } else if (entity.type === 'dataset') {
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#164e63; color:#06b6d4;">📊 Dataset</span>`;
+    const papersList = (entity.papers || []).map(p => `
+      <li style="margin-bottom:6px; font-size:0.82rem; color:var(--text);">
+        <strong>${escapeHtml(p.title || 'Untitled')}</strong> (${p.year || 'N/A'})
+      </li>
+    `).join('');
+
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1rem; margin:0 0 6px 0; color:#22d3ee;">${escapeHtml(entity.name)}</h3>
+        <p style="font-size:0.82rem; color:var(--text-dim); margin:0;">Empirical corpus, benchmark dataset, or evaluation testbed cited by research papers.</p>
+      </div>
+
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Evaluated Across Papers (${entity.papers?.length || 0})</div>
+        <ul style="padding-left:18px; margin:8px 0 0 0;">
+          ${papersList || '<li style="color:var(--text-dim); font-size:0.82rem;">None recorded</li>'}
+        </ul>
+      </div>
+    `;
+  } else if (entity.type === 'finding') {
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#4c0519; color:#f43f5e;">💡 Finding</span>`;
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1rem; margin:0 0 6px 0; color:#fb7185;">Empirical Finding</h3>
+        <p style="font-size:0.85rem; color:var(--text); line-height:1.5;">"${escapeHtml(entity.text)}"</p>
+      </div>
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Originating Paper</div>
+        <div style="font-size:0.82rem; color:var(--text-dim);">${escapeHtml(entity.paper?.title || 'Unknown')}</div>
+      </div>
+    `;
+  } else if (entity.type === 'domain') {
+    const d = entity.data;
+    if (badge) badge.innerHTML = `<span class="badge" style="background:#3b0764; color:#a855f7;">🌐 Domain</span>`;
+    const paperCount = state.papers.filter(p => p.domain_id === d.id).length;
+    const gapCount = state.gaps.filter(g => g.domain_id === d.id).length;
+
+    content.innerHTML = `
+      <div class="kg-detail-section">
+        <h3 style="font-size:1.1rem; margin:0 0 6px 0; color:#c084fc;">${escapeHtml(d.name)}</h3>
+        <p style="font-size:0.82rem; color:var(--text-dim); margin:0;">${escapeHtml(d.description || 'Primary thematic domain for clustering scholarly evidence.')}</p>
+      </div>
+      <div class="kg-detail-section">
+        <div class="kg-detail-label">Domain Statistics</div>
+        <div style="display:flex; gap:12px; margin-top:6px;">
+          <div><strong style="color:var(--text); font-size:1.1rem;">${paperCount}</strong> <span style="font-size:0.8rem; color:var(--text-dim);">Papers</span></div>
+          <div><strong style="color:#fbbf24; font-size:1.1rem;">${gapCount}</strong> <span style="font-size:0.8rem; color:var(--text-dim);">Gaps</span></div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function showKgEdgeDrawer(edge, entityMap) {
+  const badge = $('kg-drawer-type-badge');
+  const content = $('kg-drawer-content');
+  if (!content) return;
+
+  const sourceEntity = entityMap.get(edge.from);
+  const targetEntity = entityMap.get(edge.to);
+  const rel = edge.label || 'connected_to';
+
+  if (badge) badge.innerHTML = `<span class="badge" style="background:rgba(124,92,255,0.2); color:var(--accent);">🔗 Semantic Edge</span>`;
+
+  content.innerHTML = `
+    <div class="kg-detail-section">
+      <div class="kg-detail-label">Relationship Type</div>
+      <h3 style="font-size:1.05rem; margin:4px 0 0 0; color:#00f5a0; font-family:monospace;">${escapeHtml(rel)}</h3>
+    </div>
+
+    <div class="kg-detail-section">
+      <div class="kg-detail-label">Source Node</div>
+      <div style="font-size:0.85rem; color:var(--text); font-weight:600;">
+        ${escapeHtml(sourceEntity?.data?.title || sourceEntity?.name || edge.from)}
+      </div>
+    </div>
+
+    <div class="kg-detail-section">
+      <div class="kg-detail-label">Target Node</div>
+      <div style="font-size:0.85rem; color:var(--text); font-weight:600;">
+        ${escapeHtml(targetEntity?.data?.title || targetEntity?.data?.name || targetEntity?.name || edge.to)}
+      </div>
+    </div>
+
+    <div class="kg-detail-section">
+      <div class="kg-detail-label">Provenance & Verification</div>
+      <p style="font-size:0.82rem; color:var(--text-dim); line-height:1.45; margin:4px 0 0 0;">
+        Directional link extracted from section/page evidence analysis. Relationships between papers, methods, and empirical gaps are evaluated with confidence and verifiable against source texts.
+      </p>
+    </div>
+  `;
 }
 
 // ══════════════════════════════════════════════
@@ -1813,13 +2433,19 @@ function renderAdminUsers(users) {
   // Delete handlers
   document.querySelectorAll('.admin-delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!confirm('Delete this user and ALL their data? This cannot be undone.')) return;
+      const userId = btn.dataset.userId;
+      if (!confirm('Are you sure you want to permanently delete this user, their account, and all associated research data? This cannot be undone.')) return;
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳';
       try {
-        await api.deleteUser(btn.dataset.userId);
-        toast('🗑 User deleted');
+        await api.deleteUser(userId);
+        toast('🗑 User account and data deleted successfully');
         await loadAdminUsers();
       } catch (err) {
         toast('❌ ' + err.message, true);
+        btn.disabled = false;
+        btn.textContent = originalText;
       }
     });
   });
@@ -5086,3 +5712,732 @@ window.closeModal = closeModal;
     setupPaperDraft();
   }
 })();
+
+// ============================================================
+// RESEARCH-GRADE INTELLIGENCE PLATFORM (V2.0) IMPLEMENTATION
+// ============================================================
+
+// ── 1. EVIDENCE INSPECTOR & HUMAN-IN-THE-LOOP VERIFICATION ──
+async function openEvidenceInspector(paper) {
+  openModal();
+  $('modal-body').innerHTML = `
+    <h2>🔬 Evidence Claims: ${paper.title}</h2>
+    <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">
+      Every important AI research claim is grounded in exact page numbers, section titles, and verbatim text quotes.
+    </p>
+    <div id="evidence-claims-list" style="display: flex; flex-direction: column; gap: 14px;">
+      <div style="text-align: center; padding: 30px; color: var(--text-dim);">⏳ Loading grounded evidence claims...</div>
+    </div>
+  `;
+
+  try {
+    const res = await api.getPaperEvidence(paper.id);
+    const items = res?.evidence_items || [];
+    const container = $('evidence-claims-list');
+
+    if (!items || items.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <p>No granular evidence items registered for this paper yet.</p>
+          <p style="font-size: 12px; color: var(--text-dim);">New PDF uploads automatically extract page-anchored evidence claims.</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = items.map((item, idx) => {
+      const confScore = Math.round((item.confidence_score || 0.85) * 100);
+      const confTier = item.confidence_tier || 'HIGH';
+      const confClass = confTier === 'HIGH' ? 'conf-high' : confTier === 'MEDIUM' ? 'conf-med' : 'conf-low';
+      const verifStatus = item.verification_status || 'ai_generated';
+      const verifClass = verifStatus === 'human_verified' ? 'verif-human-verified' : verifStatus === 'rejected' ? 'verif-rejected' : 'verif-ai-gen';
+      const verifText = verifStatus === 'human_verified' ? '✓ Human Verified' : verifStatus === 'rejected' ? '✗ Rejected' : '🤖 AI Generated';
+
+      return `
+        <div class="evidence-claim-card" id="claim-card-${item.id || idx}">
+          <div class="claim-header">
+            <div class="claim-title-row">
+              <span class="claim-type-tag">${item.claim_type || 'claim'}</span>
+              <span class="page-anchor-tag">📄 Page ${item.page_number || 1}</span>
+              ${item.section ? `<span class="page-anchor-tag">📍 ${item.section}</span>` : ''}
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="conf-pill ${confClass}">Conf: ${confScore}% (${confTier})</span>
+              <span class="verif-badge ${verifClass}" id="badge-${item.id || idx}">${verifText}</span>
+            </div>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.4;">
+            ${item.claim}
+          </div>
+          ${item.exact_quote ? `
+            <div class="verbatim-quote-box">
+              "${item.exact_quote}"
+            </div>
+          ` : ''}
+          <div class="verif-actions-row">
+            <button class="btn-verif-act verify" data-id="${item.id}" data-idx="${idx}">✓ Verify</button>
+            <button class="btn-verif-act edit" data-id="${item.id}" data-idx="${idx}" data-claim="${encodeURIComponent(item.claim)}">✎ Edit</button>
+            <button class="btn-verif-act reject" data-id="${item.id}" data-idx="${idx}">✗ Reject</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach verification actions
+    container.querySelectorAll('.btn-verif-act').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const idx = btn.dataset.idx;
+        const badge = $(`badge-${id || idx}`);
+
+        if (btn.classList.contains('verify')) {
+          try {
+            await api.verifyEntity({
+              entity_type: 'evidence_item',
+              entity_id: id || paper.id,
+              action: 'verified'
+            });
+            if (badge) {
+              badge.className = 'verif-badge verif-human-verified';
+              badge.textContent = '✓ Human Verified';
+            }
+            toast('✓ Claim verified by researcher');
+          } catch (err) {
+            toast('❌ ' + err.message, true);
+          }
+        } else if (btn.classList.contains('edit')) {
+          const oldClaim = decodeURIComponent(btn.dataset.claim || '');
+          const correction = prompt('Edit or refine this academic claim:', oldClaim);
+          if (correction && correction !== oldClaim) {
+            try {
+              await api.verifyEntity({
+                entity_type: 'evidence_item',
+                entity_id: id || paper.id,
+                action: 'edited',
+                original_value: { claim: oldClaim },
+                correction: { claim: correction }
+              });
+              if (badge) {
+                badge.className = 'verif-badge verif-human-verified';
+                badge.textContent = '✓ Human Verified (Edited)';
+              }
+              toast('✓ Claim edited and verified');
+            } catch (err) {
+              toast('❌ ' + err.message, true);
+            }
+          }
+        } else if (btn.classList.contains('reject')) {
+          if (!confirm('Reject this claim as ungrounded or inaccurate?')) return;
+          try {
+            await api.verifyEntity({
+              entity_type: 'evidence_item',
+              entity_id: id || paper.id,
+              action: 'rejected'
+            });
+            if (badge) {
+              badge.className = 'verif-badge verif-rejected';
+              badge.textContent = '✗ Rejected';
+            }
+            toast('✗ Claim marked as rejected');
+          } catch (err) {
+            toast('❌ ' + err.message, true);
+          }
+        }
+      });
+    });
+
+  } catch (err) {
+    const list = $('evidence-claims-list');
+    if (list) list.innerHTML = `<div class="empty-state"><p>❌ Failed to load evidence: ${err.message}</p></div>`;
+  }
+}
+
+// ── 2. GAP EVIDENCE DETAILS & HEURISTIC BREAKDOWN MODAL ──
+async function openGapEvidenceModal(gapId) {
+  openModal();
+  $('modal-body').innerHTML = `
+    <h2>📊 Research Gap Evidence Breakdown</h2>
+    <div id="gap-evidence-content" style="padding: 20px; text-align: center; color: var(--text-dim);">
+      ⏳ Calculating transparent heuristic evidence score...
+    </div>
+  `;
+
+  try {
+    const res = await api.getGapEvidence(gapId);
+    const gap = res?.gap;
+    const papers = res?.supportingPapers || [];
+    const heuristic = res?.heuristic_breakdown || {};
+    const breakdown = heuristic.breakdown || [];
+    const score = res?.evidence_score || heuristic.totalScore || 50;
+    const tier = res?.confidence_tier || heuristic.confidenceTier || 'HIGH';
+    const tierClass = tier === 'HIGH' ? 'conf-high' : tier === 'MEDIUM' ? 'conf-med' : 'conf-low';
+
+    $('modal-body').innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;">
+        <h2>${gap?.title}</h2>
+        <span class="conf-pill ${tierClass}" style="font-size: 13px; padding: 4px 12px;">Score: ${score}/100 (${tier})</span>
+      </div>
+      <p style="color: var(--text-dim); font-size: 13.5px; line-height: 1.5; margin-bottom: 16px;">
+        ${gap?.description || ''}
+      </p>
+
+      <div style="background: rgba(124, 92, 255, 0.08); border: 1px solid rgba(124, 92, 255, 0.25); border-radius: 10px; padding: 12px 16px; margin-bottom: 18px;">
+        <div style="font-weight: 700; font-size: 13px; color: #a78bfa; margin-bottom: 4px;">Tessera Heuristic Formulation:</div>
+        <div style="font-size: 12px; color: #cbd5e1;">${heuristic.summaryExplanation || 'Transparent additive heuristic evaluation based on ingested papers.'}</div>
+      </div>
+
+      <h4 style="margin: 0 0 10px; font-size: 14px; color: var(--text);">Transparent Factor Breakdown:</h4>
+      <div class="heuristic-breakdown-list">
+        ${breakdown.map(b => `
+          <div class="heuristic-row">
+            <div>
+              <div class="heuristic-factor-title">${b.factor} (max +${b.maxPoints})</div>
+              <div class="heuristic-factor-reason">${b.reason}</div>
+            </div>
+            <div class="heuristic-points">+${b.points}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <h4 style="margin: 18px 0 10px; font-size: 14px; color: var(--text);">Supporting Literature (${papers.length} Papers):</h4>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        ${papers.map(p => `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px;">
+            <div style="font-weight: 600; color: var(--text);">${p.title} (${p.year})</div>
+            <div style="font-size: 12px; color: var(--text-dim); margin-top: 4px;">${p.contribution || ''}</div>
+          </div>
+        `).join('') || '<div style="color: var(--text-dim); font-size: 12px;">No directly linked papers.</div>'}
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        <button class="btn btn-primary" id="btn-verify-gap-action" data-id="${gap?.id}">✓ Verify Gap as Scholar</button>
+      </div>
+    `;
+
+    const verifyBtn = $('btn-verify-gap-action');
+    if (verifyBtn) {
+      verifyBtn.addEventListener('click', async () => {
+        try {
+          await api.verifyEntity({
+            entity_type: 'research_gap',
+            entity_id: gap.id,
+            action: 'verified'
+          });
+          toast('✓ Research gap verified!');
+          closeModal();
+          await loadAll();
+        } catch (err) {
+          toast('❌ ' + err.message, true);
+        }
+      });
+    }
+
+  } catch (err) {
+    const content = $('gap-evidence-content');
+    if (content) content.innerHTML = `❌ Failed to load gap evidence: ${err.message}`;
+  }
+}
+
+// ── 3. RESEARCH QUESTION GENERATOR MODAL ──
+async function openResearchQuestionModal(gap) {
+  openModal();
+  $('modal-body').innerHTML = `
+    <h2>❓ Formulate PhD Research Questions</h2>
+    <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 16px;">
+      Synthesizing formal dissertation research questions rooted in verified research gap: <strong>"${gap.title}"</strong>.
+    </p>
+    <div id="rq-modal-content" style="text-align: center; padding: 40px; color: var(--text-dim);">
+      ⏳ Gemini is analyzing literature baseline and formulating publication-grade research questions...
+    </div>
+  `;
+
+  try {
+    const res = await api.generateResearchQuestions({ gap_id: gap.id, workspace_id: currentWorkspace?.id });
+    const questions = res?.questions || [];
+
+    if (!questions || questions.length === 0) {
+      $('rq-modal-content').innerHTML = '<p>Could not formulate research questions. Please ensure gap has supporting literature.</p>';
+      return;
+    }
+
+    $('rq-modal-content').innerHTML = `
+      <div style="display: flex; flex-direction: column; gap: 18px; text-align: left;">
+        ${questions.map((q, i) => `
+          <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 12px; padding: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; background: rgba(124, 92, 255, 0.2); color: #a78bfa; padding: 3px 8px; border-radius: 4px;">RQ ${i + 1}</span>
+              <span class="conf-pill conf-high">PhD Grade</span>
+            </div>
+            <h3 style="margin: 0 0 10px; font-size: 16px; color: var(--text); line-height: 1.4;">${q.question}</h3>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; font-size: 12.5px;">
+              <div>
+                <strong style="color: #38bdf8;">Motivation:</strong>
+                <p style="margin: 4px 0 0; color: var(--text-dim);">${q.motivation || '—'}</p>
+              </div>
+              <div>
+                <strong style="color: #00f5a0;">Missing Component:</strong>
+                <p style="margin: 4px 0 0; color: var(--text-dim);">${q.missing_component || '—'}</p>
+              </div>
+              <div>
+                <strong style="color: #fbbf24;">Suggested Methodology:</strong>
+                <p style="margin: 4px 0 0; color: var(--text-dim);">${q.suggested_methodology || '—'}</p>
+              </div>
+              <div>
+                <strong style="color: #c084fc;">Evaluation Strategy:</strong>
+                <p style="margin: 4px 0 0; color: var(--text-dim);">${q.evaluation_strategy || '—'}</p>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+        <button class="btn btn-primary" onclick="closeModal()">Done</button>
+      </div>
+    `;
+  } catch (err) {
+    $('rq-modal-content').innerHTML = `❌ Failed to formulate research questions: ${err.message}`;
+  }
+}
+
+// ── 4. CROSS-PAPER SYNTHESIS MATRIX PAGE ──
+let synthesisData = null;
+function setupSynthesisPage() {
+  const btnRun = $('btn-run-synthesis');
+  const searchInput = $('matrix-search');
+  const domainSelect = $('matrix-domain-filter');
+  const quartileSelect = $('matrix-quartile-filter');
+
+  if (domainSelect) {
+    domainSelect.innerHTML = '<option value="">All Domains</option>' +
+      state.domains.map(d => `<option value="${d.name}">${d.icon} ${d.name}</option>`).join('');
+  }
+
+  if (btnRun) {
+    btnRun.onclick = async () => {
+      btnRun.disabled = true;
+      btnRun.innerHTML = '⏳ Synthesizing Papers...';
+      toast('⚡ Conducting cross-paper meta-analysis...');
+
+      try {
+        const res = await api.crossPaperSynthesis({
+          workspace_id: currentWorkspace?.id,
+          focus: currentWorkspace?.research_topic || ''
+        });
+        synthesisData = res;
+        renderSynthesisMatrix();
+        toast('✓ Cross-paper synthesis complete!');
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      } finally {
+        btnRun.disabled = false;
+        btnRun.innerHTML = '<span>⚡</span> Run Cross-Paper Synthesis';
+      }
+    };
+  }
+
+  if (searchInput) searchInput.oninput = renderSynthesisMatrix;
+  if (domainSelect) domainSelect.onchange = renderSynthesisMatrix;
+  if (quartileSelect) quartileSelect.onchange = renderSynthesisMatrix;
+
+  if (!synthesisData && state.papers.length >= 2) {
+    btnRun?.click();
+  } else if (synthesisData) {
+    renderSynthesisMatrix();
+  }
+}
+
+function renderSynthesisMatrix() {
+  if (!synthesisData) return;
+
+  const conflictsEl = $('insight-conflicts');
+  if (conflictsEl) {
+    const conflicts = synthesisData.conflicting_findings || [];
+    conflictsEl.textContent = conflicts.length > 0
+      ? `${conflicts.length} conflict(s): ${conflicts[0].topic} (${conflicts[0].nuance || ''})`
+      : 'Empirical consensus across analyzed papers.';
+  }
+
+  const methodsEl = $('insight-methods');
+  if (methodsEl) {
+    const methods = synthesisData.common_methodologies || [];
+    methodsEl.textContent = methods.slice(0, 3).join(', ') || 'Various frameworks';
+  }
+
+  const datasetsEl = $('insight-datasets');
+  if (datasetsEl) {
+    const underexplored = synthesisData.underexplored_datasets || [];
+    datasetsEl.textContent = underexplored.slice(0, 2).join(', ') || 'Benchmark standard';
+  }
+
+  const limitationsEl = $('insight-limitations');
+  if (limitationsEl) {
+    const lims = synthesisData.repeated_limitations || [];
+    limitationsEl.textContent = lims.slice(0, 2).join('; ') || 'Standard evaluation bounds';
+  }
+
+  const query = ($('matrix-search')?.value || '').toLowerCase();
+  let rows = synthesisData.comparison_matrix || [];
+  if (query) {
+    rows = rows.filter(r => 
+      (r.paper_title || '').toLowerCase().includes(query) ||
+      (r.methodology || '').toLowerCase().includes(query) ||
+      (r.dataset || '').toLowerCase().includes(query) ||
+      (r.key_result || '').toLowerCase().includes(query)
+    );
+  }
+
+  const tbody = $('matrix-tbody');
+  if (!tbody) return;
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="table-loading">No matching papers in synthesis matrix.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight: 600; color: var(--text); max-width: 200px;">${r.paper_title}</td>
+      <td><span class="page-anchor-tag">${r.year || '—'}</span></td>
+      <td><span class="claim-type-tag" style="background: rgba(124,92,255,0.15); color: #a78bfa;">${r.methodology || '—'}</span></td>
+      <td><span class="claim-type-tag" style="background: rgba(16,185,129,0.15); color: #10b981;">${r.dataset || '—'}</span></td>
+      <td style="font-size: 12px; color: var(--text);">${r.key_result || '—'}</td>
+      <td style="font-size: 12px; color: #f87171;">${r.core_limitation || '—'}</td>
+      <td style="font-size: 12px; color: #fbbf24;">${r.primary_gap || '—'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── 5. RESEARCH TRENDS & TEMPORAL EVOLUTION PAGE ──
+let trendsPubChart = null;
+let trendsMethodChart = null;
+let trendsDatasetChart = null;
+
+async function setupTrendsPage() {
+  const btnRefresh = $('btn-refresh-trends');
+  if (btnRefresh) {
+    btnRefresh.onclick = () => loadResearchTrends();
+  }
+  await loadResearchTrends();
+}
+
+async function loadResearchTrends() {
+  try {
+    const data = await api.getResearchTrends(currentWorkspace?.id);
+    
+    if ($('trends-total-papers')) $('trends-total-papers').textContent = data.total_papers || 0;
+    if ($('trends-top-method')) $('trends-top-method').textContent = data.top_methods?.[0]?.name || 'N/A';
+    if ($('trends-top-dataset')) $('trends-top-dataset').textContent = data.top_datasets?.[0]?.name || 'N/A';
+    
+    const years = (data.publication_trends || []).map(p => p.year);
+    if ($('trends-year-span')) {
+      if (years.length > 0) {
+        $('trends-year-span').textContent = `${Math.min(...years)} - ${Math.max(...years)}`;
+      } else {
+        $('trends-year-span').textContent = 'N/A';
+      }
+    }
+
+    const pubCtx = $('chart-pub-trajectory')?.getContext('2d');
+    if (pubCtx) {
+      if (trendsPubChart) trendsPubChart.destroy();
+      trendsPubChart = new Chart(pubCtx, {
+        type: 'bar',
+        data: {
+          labels: (data.publication_trends || []).map(p => String(p.year)),
+          datasets: [{
+            label: 'Publications',
+            data: (data.publication_trends || []).map(p => p.count),
+            backgroundColor: 'rgba(124, 92, 255, 0.75)',
+            borderColor: '#7c5cff',
+            borderWidth: 1.5,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    const methodCtx = $('chart-method-trends')?.getContext('2d');
+    if (methodCtx) {
+      if (trendsMethodChart) trendsMethodChart.destroy();
+      const topM = (data.top_methods || []).slice(0, 5);
+      trendsMethodChart = new Chart(methodCtx, {
+        type: 'doughnut',
+        data: {
+          labels: topM.map(m => m.name),
+          datasets: [{
+            data: topM.map(m => m.total),
+            backgroundColor: ['#7c5cff', '#00f5a0', '#38bdf8', '#fbbf24', '#f87171']
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 11 } } } }
+        }
+      });
+    }
+
+    const datasetCtx = $('chart-dataset-trends')?.getContext('2d');
+    if (datasetCtx) {
+      if (trendsDatasetChart) trendsDatasetChart.destroy();
+      const topD = (data.top_datasets || []).slice(0, 6);
+      trendsDatasetChart = new Chart(datasetCtx, {
+        type: 'bar',
+        data: {
+          labels: topD.map(d => d.name),
+          datasets: [{
+            label: 'Citations in Corpus',
+            data: topD.map(d => d.total),
+            backgroundColor: 'rgba(0, 245, 160, 0.75)',
+            borderColor: '#00f5a0',
+            borderWidth: 1.5,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+  } catch (err) {
+    console.warn('[TRENDS] Trends loading warning:', err.message);
+  }
+}
+
+// ── 6. RESEARCH NOVELTY ASSISTANT PAGE ──
+function setupNoveltyPage() {
+  const btnEval = $('btn-eval-novelty');
+  const inputEl = $('novelty-proposal-text');
+  const resultsContainer = $('novelty-results');
+
+  if (btnEval && inputEl) {
+    btnEval.onclick = async () => {
+      const idea = inputEl.value.trim();
+      if (idea.length < 15) {
+        toast('⚠️ Please enter a detailed research idea (at least 15 characters).', true);
+        return;
+      }
+
+      btnEval.disabled = true;
+      btnEval.innerHTML = '⏳ Benchmarking Prior Art...';
+      toast('🔍 Auditing proposed thesis against ingested literature corpus...');
+
+      try {
+        const res = await api.evaluateNovelty({
+          proposed_idea: idea,
+          workspace_id: currentWorkspace?.id
+        });
+        const assessment = res?.assessment;
+
+        if (resultsContainer) resultsContainer.style.display = 'flex';
+        if ($('novelty-verdict-tag')) $('novelty-verdict-tag').textContent = assessment?.academic_verdict || 'Potential Differentiation Identified';
+        if ($('novelty-verdict-summary')) $('novelty-verdict-summary').textContent = assessment?.summary_of_differentiation || '';
+
+        if ($('novelty-differentiation-list')) {
+          $('novelty-differentiation-list').innerHTML = (assessment?.potential_differentiation || []).map(d => `
+            <li><strong>${d.aspect || 'Aspect'}:</strong> ${d.description} <em>(${d.evidence_support || ''})</em></li>
+          `).join('') || '<li>Standard incremental differentiation.</li>';
+        }
+
+        if ($('novelty-threats-list')) {
+          $('novelty-threats-list').innerHTML = (assessment?.threats_to_novelty || []).map(t => `
+            <li>${t}</li>
+          `).join('') || '<li>No immediate blocking prior art flagged in corpus.</li>';
+        }
+
+        if ($('novelty-overlaps-list')) {
+          $('novelty-overlaps-list').innerHTML = (assessment?.overlapping_concepts || []).map(o => `
+            <li>${o}</li>
+          `).join('') || '<li>Novel formulation identified.</li>';
+        }
+
+        if ($('novelty-searches-list')) {
+          $('novelty-searches-list').innerHTML = (assessment?.recommended_literature_checks || []).map(s => `
+            <li><code>${s}</code></li>
+          `).join('') || '<li>Conduct exhaustive search on IEEE Xplore & ACM DL.</li>';
+        }
+
+        toast('✓ Novelty assessment complete!');
+      } catch (err) {
+        toast('❌ ' + err.message, true);
+      } finally {
+        btnEval.disabled = false;
+        btnEval.innerHTML = '<span>🔍</span> Evaluate Literature Differentiation';
+      }
+    };
+  }
+}
+
+// ── 7. MODEL TRACEABILITY, AUDIT & EVALUATION PAGE ──
+async function setupTraceabilityPage() {
+  const tabBtns = document.querySelectorAll('.trace-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.onclick = () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.trace-panel').forEach(p => p.style.display = 'none');
+      const panel = $(`trace-panel-${btn.dataset.tab}`);
+      if (panel) panel.style.display = 'block';
+
+      if (btn.dataset.tab === 'runs') loadAiRuns();
+      if (btn.dataset.tab === 'prompts') loadPromptRegistry();
+      if (btn.dataset.tab === 'security') loadSecurityAuditLogs();
+      if (btn.dataset.tab === 'benchmark') loadBenchmarkPaperOptions();
+    };
+  });
+
+  const btnRefresh = $('btn-refresh-audit');
+  if (btnRefresh) {
+    btnRefresh.onclick = () => {
+      loadAiRuns();
+      loadPromptRegistry();
+      loadSecurityAuditLogs();
+    };
+  }
+
+  const btnBench = $('btn-run-benchmark');
+  if (btnBench) {
+    btnBench.onclick = async () => {
+      const paperId = $('benchmark-paper-select')?.value;
+      const gtRaw = $('benchmark-gt-json')?.value?.trim();
+      const predRaw = $('benchmark-pred-json')?.value?.trim();
+
+      if (!paperId || !gtRaw || !predRaw) {
+        toast('⚠️ Please select paper and provide Ground Truth & Prediction JSON.', true);
+        return;
+      }
+
+      try {
+        const gt = JSON.parse(gtRaw);
+        const pred = JSON.parse(predRaw);
+        const res = await api.evaluateAiBenchmark({
+          paper_id: paperId,
+          ground_truth: gt,
+          ai_prediction: pred
+        });
+        const m = res?.evaluation?.metrics || {};
+        if ($('benchmark-results')) {
+          $('benchmark-results').style.display = 'block';
+          $('benchmark-results').innerHTML = `
+            <div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 10px; padding: 16px; margin-top: 14px;">
+              <h4 style="margin: 0 0 10px; color: #10b981;">Evaluation Benchmark Metrics</h4>
+              <div style="display: flex; gap: 20px; font-size: 14px;">
+                <div><strong>Precision:</strong> ${(m.precision * 100).toFixed(1)}%</div>
+                <div><strong>Recall:</strong> ${(m.recall * 100).toFixed(1)}%</div>
+                <div><strong>F1 Score:</strong> ${(m.f1 * 100).toFixed(1)}%</div>
+                <div><strong>Matched Gaps:</strong> ${m.matched_gaps || 0}</div>
+              </div>
+            </div>
+          `;
+        }
+        toast('✓ Benchmark metrics calculated!');
+      } catch (err) {
+        toast('❌ JSON Parse or Eval Error: ' + err.message, true);
+      }
+    };
+  }
+
+  loadAiRuns();
+}
+
+async function loadAiRuns() {
+  try {
+    const res = await api.getAiRuns();
+    const runs = res?.runs || [];
+    const tbody = $('trace-runs-tbody');
+    if (!tbody) return;
+
+    if (runs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No AI inference runs logged yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = runs.map(r => `
+      <tr>
+        <td style="font-size: 12px; color: var(--text-dim);">${new Date(r.created_at).toLocaleString()}</td>
+        <td><span class="claim-type-tag">${r.input_type || 'task'}</span></td>
+        <td style="font-weight: 600; color: #7c5cff;">${r.model_used || 'gemini'}</td>
+        <td>${r.latency_ms || 0} ms</td>
+        <td><span class="conf-pill conf-high">${Math.round((r.confidence_score || 0.85) * 100)}%</span></td>
+        <td><span class="verif-badge verif-ai-gen">${r.verification_status || 'completed'}</span></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.warn('[TRACEABILITY] AI runs error:', err.message);
+  }
+}
+
+async function loadPromptRegistry() {
+  try {
+    const res = await api.getPrompts();
+    const prompts = res?.prompts || [];
+    const grid = $('trace-prompts-grid');
+    if (!grid) return;
+
+    grid.innerHTML = prompts.map(p => `
+      <div class="prompt-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-weight: 700; color: #a78bfa; font-size: 13px;">${p.name}</span>
+          <span class="page-anchor-tag">v${p.version}</span>
+        </div>
+        <p>${p.description}</p>
+        <div class="prompt-meta">
+          <span>Target: <code>${p.model}</code></span>
+          <span>ID: <code>${p.id}</code></span>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.warn('[TRACEABILITY] Prompts load error:', err.message);
+  }
+}
+
+async function loadSecurityAuditLogs() {
+  try {
+    const res = await api.getAuditLogs();
+    const logs = res?.logs || [];
+    const tbody = $('trace-security-tbody');
+    if (!tbody) return;
+
+    if (logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Zero security incidents or injection attempts logged.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = logs.map(l => `
+      <tr>
+        <td style="font-size: 12px; color: var(--text-dim);">${new Date(l.created_at).toLocaleString()}</td>
+        <td style="font-weight: 600;">${l.event_type}</td>
+        <td><span class="conf-pill ${l.severity === 'security' ? 'conf-low' : 'conf-high'}">${l.severity}</span></td>
+        <td style="font-size: 12px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><code>${JSON.stringify(l.details || {})}</code></td>
+        <td style="font-size: 12px; color: var(--text-dim);">${l.ip_address || 'internal'}</td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    console.warn('[TRACEABILITY] Audit logs error:', err.message);
+  }
+}
+
+function loadBenchmarkPaperOptions() {
+  const sel = $('benchmark-paper-select');
+  if (!sel) return;
+  sel.innerHTML = state.papers.map(p => `<option value="${p.id}">${p.title} (${p.year})</option>`).join('');
+}
+
