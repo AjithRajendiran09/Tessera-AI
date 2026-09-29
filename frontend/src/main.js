@@ -1009,7 +1009,7 @@ function openPaperDetail(p) {
         const idx = state.papers.findIndex(x => x.id === p.id);
         if (idx !== -1) state.papers[idx] = updatedPaper;
       }
-      openPaperModal(updatedPaper);
+      openPaperDetail(updatedPaper);
       loadAll();
     } catch (err) {
       console.error('Autofill error:', err);
