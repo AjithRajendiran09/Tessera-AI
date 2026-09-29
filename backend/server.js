@@ -667,10 +667,16 @@ app.get('/api/papers/:id/gaps', checkSupabase, authenticateUser, async (req, res
 });
 
 // --- AI PARSER ---
-// Verified active Gemini models for API key
-const MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-flash-lite-latest'];
+// Verified active Gemini models with robust fallback chain
+const MODELS_TO_TRY = [
+  'gemini-2.5-flash',
+  'gemini-flash-lite-latest',
+  'gemini-3.5-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-flash-latest'
+];
 
-async function callGeminiWithRetry(genAI, prompt, systemInstruction = null) {
+async function callGeminiWithRetry(genAI, prompt, systemInstruction = null, configOverride = {}) {
   // Prepend system instructions directly into the prompt to guarantee compatibility across all Gemini endpoints
   const effectivePrompt = systemInstruction
     ? `SYSTEM INSTRUCTIONS:\n${systemInstruction}\n\n========================================\n\nUSER REQUEST:\n${prompt}`
@@ -682,9 +688,14 @@ async function callGeminiWithRetry(genAI, prompt, systemInstruction = null) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         console.log(`[Gemini AI] Trying ${modelName} (attempt ${attempt})...`);
+        const generationConfig = {
+          temperature: 0.1,
+          topP: 0.8,
+          ...configOverride
+        };
         const model = genAI.getGenerativeModel({
           model: modelName,
-          generationConfig: { temperature: 0.1, topP: 0.8 }
+          generationConfig
         });
         const result = await model.generateContent(effectivePrompt);
         result._modelUsed = modelName;
@@ -693,9 +704,17 @@ async function callGeminiWithRetry(genAI, prompt, systemInstruction = null) {
       } catch (err) {
         lastError = err;
         const status = err.status || err.httpStatusCode || 0;
+        const msg = (err.message || '').toLowerCase();
         console.warn(`[Gemini AI] ${modelName} attempt ${attempt} failed (${status}): ${err.message?.substring(0, 120)}`);
+
+        // If quota is exhausted for this model, do not retry the same model; advance immediately
+        if (msg.includes('quota') || msg.includes('rate-limit') || msg.includes('exceeded your current quota')) {
+          console.warn(`[Gemini AI] Quota exhausted on ${modelName}, immediately advancing to fallback model.`);
+          break;
+        }
+
         if (status === 429 || status === 503) {
-          await new Promise(r => setTimeout(r, 1200));
+          await new Promise(r => setTimeout(r, 1000));
         } else {
           // Non-retryable error, advance to next model
           break;
@@ -2804,7 +2823,10 @@ ${sectionsJsonSchema}
   "acknowledgments": "Brief formal acknowledgment of funding, institutional facilities, and contributors."
 }`;
 
-    const result = await callGeminiWithRetry(genAI, prompt);
+    const result = await callGeminiWithRetry(genAI, prompt, null, {
+      responseMimeType: 'application/json',
+      maxOutputTokens: 8192
+    });
     let text = result.response.text();
 
     // Extract JSON
@@ -2823,7 +2845,14 @@ ${sectionsJsonSchema}
       const s = cleaned.indexOf('{');
       const e = cleaned.lastIndexOf('}');
       if (s !== -1 && e !== -1) {
-        draft = JSON.parse(cleaned.slice(s, e + 1));
+        try {
+          draft = JSON.parse(cleaned.slice(s, e + 1));
+        } catch (e2) {
+          // Remove non-printable control characters that break JSON.parse
+          const sanitized = cleaned.slice(s, e + 1)
+            .replace(/[\u0000-\u0009\u000B\u000C\u000E-\u001F]/g, '');
+          draft = JSON.parse(sanitized);
+        }
       } else {
         throw new Error('Failed to parse AI-generated draft into valid structure: ' + parseErr.message);
       }
@@ -2839,14 +2868,15 @@ ${sectionsJsonSchema}
       formatted: formatReference(ref, style, i)
     }));
 
-    // Build chart data objects from the datasets
+    // Build chart data objects from the datasets safely
     const chartData = [];
-    if (charts && charts.length > 0 && data && data.length > 0) {
+    if (charts && Array.isArray(charts) && charts.length > 0 && data && Array.isArray(data) && data.length > 0) {
       charts.forEach((chartConfig, idx) => {
+        if (!chartConfig) return;
         // Find the data sheet that contains the referenced columns
-        let sourceSheet = data[0]; // default to first data sheet
+        let sourceSheet = data[0] || { rows: [], columns: [] };
         for (const sheet of data) {
-          if (sheet.columns.includes(chartConfig.xColumn)) {
+          if (sheet && Array.isArray(sheet.columns) && sheet.columns.includes(chartConfig.xColumn)) {
             sourceSheet = sheet;
             break;
           }
@@ -2855,12 +2885,16 @@ ${sectionsJsonSchema}
         let labels = [];
         let datasets = [];
 
-        const isCount = chartConfig.yColumns.length === 1 && chartConfig.yColumns[0].toLowerCase() === 'count';
+        const yCols = Array.isArray(chartConfig.yColumns)
+          ? chartConfig.yColumns
+          : (chartConfig.yColumn ? [chartConfig.yColumn] : ['Count']);
+        const isCount = yCols.length === 1 && (yCols[0] || '').toLowerCase() === 'count';
+        const rows = Array.isArray(sourceSheet.rows) ? sourceSheet.rows : [];
 
         if (isCount) {
           // Frequency aggregation for categorical/chronological values
           const counts = {};
-          sourceSheet.rows.forEach(r => {
+          rows.forEach(r => {
             const val = (r[chartConfig.xColumn] ?? '').toString().trim();
             if (val) counts[val] = (counts[val] || 0) + 1;
           });
@@ -2877,13 +2911,13 @@ ${sectionsJsonSchema}
             borderWidth: 2,
           }];
         } else {
-          labels = sourceSheet.rows.map(r => r[chartConfig.xColumn] || '').filter(Boolean);
-          datasets = chartConfig.yColumns.map((yCol, dIdx) => {
+          labels = rows.map(r => r[chartConfig.xColumn] || '').filter(Boolean);
+          datasets = yCols.map((yCol, dIdx) => {
             const colors = ['rgba(124,92,255,0.7)', 'rgba(6,214,160,0.7)', 'rgba(255,107,107,0.7)', 'rgba(255,209,102,0.7)', 'rgba(17,138,178,0.7)'];
             const borderColors = ['rgba(124,92,255,1)', 'rgba(6,214,160,1)', 'rgba(255,107,107,1)', 'rgba(255,209,102,1)', 'rgba(17,138,178,1)'];
             return {
               label: yCol,
-              data: sourceSheet.rows.map(r => parseFloat(r[yCol]) || 0),
+              data: rows.map(r => parseFloat(r[yCol]) || 0),
               backgroundColor: colors[dIdx % colors.length],
               borderColor: borderColors[dIdx % borderColors.length],
               borderWidth: 2,
@@ -2901,11 +2935,11 @@ ${sectionsJsonSchema}
             responsive: true,
             plugins: {
               title: { display: true, text: chartConfig.chartTitle || `Figure ${idx + 1}` },
-              legend: { display: chartConfig.yColumns.length > 1 },
+              legend: { display: yCols.length > 1 },
             },
             scales: chartConfig.type !== 'pie' ? {
-              y: { beginAtZero: true, title: { display: true, text: chartConfig.yColumns.join(' / ') } },
-              x: { title: { display: true, text: chartConfig.xColumn } }
+              y: { beginAtZero: true, title: { display: true, text: yCols.join(' / ') } },
+              x: { title: { display: true, text: chartConfig.xColumn || 'Category' } }
             } : undefined
           }
         });
