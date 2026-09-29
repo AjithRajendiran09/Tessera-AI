@@ -877,6 +877,9 @@ function openPaperDetail(p) {
   if (p.research_domain && p.research_domain !== 'Research Domain') topics.push(p.research_domain);
   (em.topics || []).forEach(t => { if (typeof t === 'string' && !topics.includes(t)) topics.push(t); });
 
+  const s2 = em.s2_metadata || {};
+  const citationsCount = s2.citationCount ?? em.citation_count ?? em.citations ?? null;
+
   const relScore = p.relevance_score ?? 0;
   const relColor = relScore >= 75 ? 'var(--green)' : relScore >= 40 ? 'var(--orange)' : '#ef476f';
   const relTier = relScore >= 75 ? 'DIRECT RELEVANCE' : relScore >= 40 ? 'MODERATE OVERLAP' : 'LOW / UNRELATED DOMAIN';
@@ -892,12 +895,27 @@ function openPaperDetail(p) {
       ${p.doi ? `<span class="meta-tag">🔗 ${p.doi}</span>` : ''}
       ${p.quartile ? `<span class="meta-tag">🏅 ${p.quartile}</span>` : ''}
       ${p.scopus_indexed ? `<span class="meta-tag" style="background:rgba(76,218,140,.12);color:var(--green)">✓ Scopus</span>` : ''}
+      ${citationsCount !== null && citationsCount !== undefined ? `<span class="meta-tag" style="background:rgba(16,185,129,0.12);color:#10b981" title="Semantic Scholar Verified Citations">📈 ${Number(citationsCount).toLocaleString()} Citations</span>` : ''}
+      ${s2.openAccessPdf ? `<a href="${s2.openAccessPdf}" target="_blank" class="meta-tag" style="background:rgba(59,130,246,0.15);color:#60a5fa;text-decoration:none;" title="Download Open Access PDF">📥 Open Access PDF ↗</a>` : ''}
       ${p.category ? `<span class="meta-tag" style="background:var(--surface2)">📑 ${p.category}</span>` : ''}
       <span class="meta-tag read-badge ${p.is_read ? 'read' : 'unread'}">${p.is_read ? '✓ Read' : '📌 Unread'}</span>
       <span class="verif-badge ${p.verification_status === 'human_verified' ? 'verif-human-verified' : 'verif-ai-gen'}">${p.verification_status === 'human_verified' ? '✓ Human Verified' : '🤖 AI Generated'}</span>
       ${p.confidence_tier ? `<span class="conf-pill conf-${p.confidence_tier.toLowerCase().includes('high') ? 'high' : p.confidence_tier.toLowerCase().includes('med') ? 'med' : 'low'}">⚡ Conf: ${p.confidence_tier} (${Math.round((p.confidence_score || 0.85) * 100)}%)</span>` : ''}
     </div>
     ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link">📄 Read Paper →</a>` : ''}
+
+    ${s2.tldr ? `
+      <div class="s2-tldr-card" style="background: linear-gradient(135deg, rgba(124, 92, 255, 0.12), rgba(67, 97, 238, 0.08)); border: 1px solid rgba(124, 92, 255, 0.35); border-radius: 10px; padding: 12px 16px; margin: 12px 0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; flex-wrap:wrap; gap:6px;">
+          <span style="font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); display: flex; align-items: center; gap: 6px;">
+            <span>🎓</span> Semantic Scholar AI TL;DR
+          </span>
+          ${citationsCount !== null ? `<span style="font-size: 11px; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 12px;">Cited by <strong>${Number(citationsCount).toLocaleString()}</strong> papers (${s2.influentialCitationCount || 0} influential)</span>` : ''}
+        </div>
+        <div style="font-size: 13px; line-height: 1.5; color: var(--text);">
+          "${s2.tldr}"
+        </div>
+      </div>` : ''}
 
     <div class="evidence-trace-banner" style="background: rgba(124, 92, 255, 0.1); border: 1px solid rgba(124, 92, 255, 0.3); border-radius: 10px; padding: 12px 16px; margin: 14px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
       <div>
@@ -927,6 +945,10 @@ function openPaperDetail(p) {
         ${field('Research Domain', p.research_domain)}
         ${field('Category', p.category)}
       `, true)}
+
+      ${em.abstract ? section('📖', 'Abstract (Verified Ground Truth)', `
+        <div style="font-size: 13px; line-height: 1.6; color: var(--text-dim); white-space: pre-wrap; max-height: 250px; overflow-y: auto;">${em.abstract}</div>
+      `, false) : ''}
 
       ${topics.length > 0 ? section('🏷️', 'Research Topics & Classifications', `
         <div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">
@@ -968,6 +990,7 @@ function openPaperDetail(p) {
     <div class="modal-actions">
       <button class="btn btn-primary btn-sm" id="md-rescore-rel" title="Recalculate relevance using strict AI academic calibration">🎯 Re-evaluate Relevance</button>
       <button class="btn btn-sm btn-autofill-magic" id="md-autofill">✨ Auto-Fill with AI</button>
+      <button class="btn btn-ghost btn-sm" id="md-fetch-s2" title="Fetch or refresh verified metadata from Semantic Scholar">🎓 Semantic Scholar</button>
       <button class="btn btn-ghost btn-sm" id="md-toggle-read">${p.is_read ? '📌 Mark Unread' : '✅ Mark Read'}</button>
       <button class="btn btn-ghost btn-sm" id="md-edit">✏️ Edit</button>
       <button class="btn btn-danger btn-sm" id="md-delete">🗑 Delete</button>
@@ -996,15 +1019,40 @@ function openPaperDetail(p) {
     };
   }
 
+  const btnFetchS2 = $('md-fetch-s2');
+  if (btnFetchS2) {
+    btnFetchS2.onclick = async () => {
+      const origText = btnFetchS2.innerHTML;
+      btnFetchS2.disabled = true;
+      btnFetchS2.innerHTML = '⏳ Querying S2...';
+      toast('🎓 Fetching verified academic ground truth from Semantic Scholar...');
+      try {
+        const res = await api.getSemanticScholarData(p.id);
+        toast('✅ Semantic Scholar metadata retrieved and verified!');
+        if (res.paper) {
+          const idx = state.papers.findIndex(x => x.id === p.id);
+          if (idx !== -1) state.papers[idx] = res.paper;
+          openPaperDetail(res.paper);
+          renderPapers();
+        }
+      } catch (err) {
+        console.error('S2 fetch error:', err);
+        toast('❌ ' + (err.message || 'Semantic Scholar lookup failed'), true);
+        btnFetchS2.disabled = false;
+        btnFetchS2.innerHTML = origText;
+      }
+    };
+  }
+
   const handleAutoFill = async (btn) => {
     if (!btn) return;
     const origText = btn.innerHTML;
     btn.innerHTML = '⏳ Analyzing with AI...';
     btn.disabled = true;
-    toast('Generating paper assessment, limitations & research gaps with Gemini AI...');
+    toast('🎓 Grounding with Semantic Scholar & analyzing with Gemini AI...');
     try {
       const updatedPaper = await api.autofillPaper(p.id);
-      toast('✨ All details automatically filled!');
+      toast('✨ Ground-truth synthesis complete! All details automatically filled.');
       if (state.papers) {
         const idx = state.papers.findIndex(x => x.id === p.id);
         if (idx !== -1) state.papers[idx] = updatedPaper;

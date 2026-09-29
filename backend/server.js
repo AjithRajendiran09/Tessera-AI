@@ -25,6 +25,7 @@ const {
   SCORING_CRITERIA,
   calculateGapEvidenceScore
 } = require('./services/gapScorer');
+const { fetchSemanticScholarMetadata } = require('./services/semanticScholar');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
@@ -705,10 +706,24 @@ async function callGeminiWithRetry(genAI, prompt, systemInstruction = null) {
   throw new Error(`All Gemini models are currently busy or unavailable (${lastError?.message || 'Please retry in a moment.'}).`);
 }
 
-// ── AI PAPER METADATA SYNTHESIS HELPER ──
-async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi, abstract, quartile, scopus_indexed, researchTopic, domainNames = [], customSchema = [] }) {
+// ── AI PAPER METADATA SYNTHESIS HELPER (GROUNDED WITH SEMANTIC SCHOLAR) ──
+async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi, abstract, quartile, scopus_indexed, researchTopic, domainNames = [], customSchema = [], s2Metadata = null }) {
   if (!process.env.GEMINI_API_KEY) return null;
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+  // Pre-flight enrichment: If no s2Metadata passed, attempt to fetch verified ground truth
+  if (!s2Metadata && (doi || title)) {
+    try {
+      s2Metadata = await fetchSemanticScholarMetadata({ doi, title });
+    } catch (s2Err) {
+      console.warn('[AI Analysis] Semantic Scholar pre-flight warning:', s2Err.message);
+    }
+  }
+
+  // If abstract is missing or trivial, use verified abstract from Semantic Scholar/OpenAlex
+  if ((!abstract || abstract.trim().length < 30) && s2Metadata?.abstract) {
+    abstract = s2Metadata.abstract;
+  }
 
   let customFieldsSchemaStr = "{}";
   let customFieldsInstructions = "";
@@ -721,16 +736,22 @@ async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi
     customFieldsSchemaStr = JSON.stringify(dynamicFieldsJSON, null, 2);
   }
 
+  const s2TldrPrompt = s2Metadata?.tldr ? `\n  Semantic Scholar Verified TLDR: "${s2Metadata.tldr}"` : '';
+  const s2FieldsPrompt = s2Metadata?.fieldsOfStudy?.length ? `\n  Verified Academic Disciplines/Fields: [${s2Metadata.fieldsOfStudy.join(', ')}]` : '';
+  const s2CitationsPrompt = (s2Metadata?.citationCount !== null && s2Metadata?.citationCount !== undefined)
+    ? `\n  Academic Citations: ${s2Metadata.citationCount} (${s2Metadata.influentialCitationCount || 0} influential citations)`
+    : '';
+
   const prompt = `
   You are an expert academic research assistant specializing in systematic literature reviews and computer science/engineering literature.
-  Analyze this academic paper based on its bibliographic metadata and abstract:
+  Analyze this academic paper based on its bibliographic metadata, authentic abstract, and verified Semantic Scholar insights:
   Title: ${title || 'Unknown'}
   Authors: ${authors || 'Unknown'}
   Venue: ${venue || 'Unknown'}
   Year: ${year || 'Unknown'}
   DOI: ${doi || 'N/A'}
   Quartile: ${quartile || 'N/A'}
-  Scopus Indexed: ${scopus_indexed ? 'Yes' : 'No'}
+  Scopus Indexed: ${scopus_indexed ? 'Yes' : 'No'}${s2TldrPrompt}${s2FieldsPrompt}${s2CitationsPrompt}
   Abstract / Summary: ${abstract || 'No abstract text available. Infer technical details, framework architecture, and methodology directly from the title, venue, and domain.'}
 
   User's Workspace Research Topic: "${researchTopic || 'General Computer Science, Systems & AI'}"
@@ -785,7 +806,9 @@ async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi
     if (jsonStart !== -1 && jsonEnd !== -1) {
       text = text.slice(jsonStart, jsonEnd + 1);
     }
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    parsed._s2Metadata = s2Metadata;
+    return parsed;
   } catch (err) {
     console.error('[AI Analysis] Gemini synthesis error:', err.message);
     return null;
@@ -827,7 +850,20 @@ app.post('/api/papers/:id/autofill', checkSupabase, authenticateUser, async (req
     const domainNames = (domains || []).map(d => d.name);
 
     const em = paper.extended_metadata || {};
-    const abstract = em.abstract || paper.notes || null;
+    let abstract = em.abstract || paper.notes || null;
+    let s2Data = em.s2_metadata || null;
+
+    // Fetch verified academic ground truth from Semantic Scholar / OpenAlex
+    try {
+      if (!s2Data || !abstract) {
+        s2Data = await fetchSemanticScholarMetadata({ doi: paper.doi, title: paper.title });
+        if (s2Data && !abstract && s2Data.abstract) {
+          abstract = s2Data.abstract;
+        }
+      }
+    } catch (s2Err) {
+      console.warn('[Autofill API] Semantic Scholar lookup warning:', s2Err.message);
+    }
 
     const aiSynthesis = await analyzePaperMetadataWithGemini({
       title: paper.title,
@@ -840,21 +876,30 @@ app.post('/api/papers/:id/autofill', checkSupabase, authenticateUser, async (req
       scopus_indexed: paper.scopus_indexed,
       researchTopic,
       domainNames,
-      customSchema
+      customSchema,
+      s2Metadata: s2Data
     });
 
     if (!aiSynthesis) {
       return res.status(500).json({ error: 'AI analysis failed to generate details.' });
     }
 
+    const finalS2 = s2Data || aiSynthesis._s2Metadata || null;
+
     const updatedExtended = {
       ...em,
+      abstract: abstract || em.abstract || null,
+      s2_metadata: finalS2 || em.s2_metadata || null,
       custom_fields: { ...(em.custom_fields || {}), ...(aiSynthesis.custom_fields || {}) },
       personal: {
         ...(em.personal || {}),
         ...(aiSynthesis.personal || {})
       }
     };
+
+    if (finalS2?.citationCount !== null && finalS2?.citationCount !== undefined && em.citation_count === undefined) {
+      updatedExtended.citation_count = finalS2.citationCount;
+    }
 
     const updates = {
       contribution: aiSynthesis.contribution || paper.contribution,
@@ -867,6 +912,10 @@ app.post('/api/papers/:id/autofill', checkSupabase, authenticateUser, async (req
       extended_metadata: updatedExtended,
       updated_at: new Date().toISOString()
     };
+
+    if (!paper.url && finalS2?.openAccessPdf) {
+      updates.url = finalS2.openAccessPdf;
+    }
 
     // If suggested domain matches an existing domain and paper has no domain
     if (!paper.domain_id && aiSynthesis.suggested_domain && domains) {
@@ -909,6 +958,55 @@ app.post('/api/papers/:id/autofill', checkSupabase, authenticateUser, async (req
   }
 });
 
+// ── GET /api/papers/:id/semantic-scholar — On-demand Semantic Scholar ground truth ──
+app.get('/api/papers/:id/semantic-scholar', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: paper, error } = await req.supabaseUser
+      .from('papers')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !paper) return res.status(404).json({ error: 'Paper not found.' });
+
+    const s2Data = await fetchSemanticScholarMetadata({ doi: paper.doi, title: paper.title });
+    if (!s2Data) {
+      return res.status(404).json({ error: 'Semantic Scholar metadata could not be found for this paper.' });
+    }
+
+    const em = paper.extended_metadata || {};
+    const updatedEm = {
+      ...em,
+      s2_metadata: s2Data,
+      abstract: em.abstract || s2Data.abstract || null,
+      citation_count: s2Data.citationCount ?? em.citation_count ?? null
+    };
+
+    const updates = {
+      extended_metadata: updatedEm,
+      updated_at: new Date().toISOString()
+    };
+    if (!paper.url && s2Data.openAccessPdf) {
+      updates.url = s2Data.openAccessPdf;
+    }
+
+    const { data: updatedPaper, error: uErr } = await req.supabaseUser
+      .from('papers')
+      .update(updates)
+      .eq('id', id)
+      .select('*, domains(name, color, icon)')
+      .single();
+
+    if (uErr) return res.status(400).json({ error: uErr.message });
+
+    res.json({ success: true, s2_metadata: s2Data, paper: updatedPaper });
+  } catch (err) {
+    console.error('[Semantic Scholar Route Error]:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch Semantic Scholar data.' });
+  }
+});
+
 // ── POST /api/papers/autofill-preview — Preview AI auto-filled details before saving ──
 app.post('/api/papers/autofill-preview', checkSupabase, authenticateUser, async (req, res) => {
   try {
@@ -934,9 +1032,18 @@ app.post('/api/papers/autofill-preview', checkSupabase, authenticateUser, async 
     const { data: domains } = await domQuery;
     const domainNames = (domains || []).map(d => d.name);
 
+    let s2Data = null;
+    let enrichedAbstract = abstract;
+    if (!enrichedAbstract && (doi || title)) {
+      try {
+        s2Data = await fetchSemanticScholarMetadata({ doi, title });
+        if (s2Data?.abstract) enrichedAbstract = s2Data.abstract;
+      } catch (e) {}
+    }
+
     const aiSynthesis = await analyzePaperMetadataWithGemini({
-      title, authors, venue, year, doi, abstract,
-      researchTopic, domainNames, customSchema
+      title, authors, venue, year, doi, abstract: enrichedAbstract,
+      researchTopic, domainNames, customSchema, s2Metadata: s2Data
     });
 
     if (!aiSynthesis) {
@@ -988,7 +1095,20 @@ app.post('/api/papers/:id/recalculate-relevance', checkSupabase, authenticateUse
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     const topicsList = (paper.extended_metadata?.topics || []).join(', ');
-    const abstractText = paper.extended_metadata?.abstract || paper.notes || paper.contribution || 'No abstract text available.';
+    let abstractText = paper.extended_metadata?.abstract || paper.notes || paper.contribution || null;
+
+    let s2Data = paper.extended_metadata?.s2_metadata || null;
+    if (!s2Data || !abstractText) {
+      try {
+        s2Data = await fetchSemanticScholarMetadata({ doi: paper.doi, title: paper.title });
+        if (s2Data?.abstract && !abstractText) {
+          abstractText = s2Data.abstract;
+        }
+      } catch (s2Err) {}
+    }
+
+    const s2TldrPart = s2Data?.tldr ? `\nSEMANTIC SCHOLAR VERIFIED TLDR: "${s2Data.tldr}"` : '';
+    const s2FosPart = s2Data?.fieldsOfStudy?.length ? `\nVERIFIED ACADEMIC FIELDS / DISCIPLINES: [${s2Data.fieldsOfStudy.join(', ')}]` : '';
 
     const prompt = `You are an objective senior academic evaluator for PhD scholars.
 Evaluate the direct relevance of this paper to the researcher's topic with strict scientific calibration.
@@ -997,9 +1117,9 @@ RESEARCHER TOPIC: "${researchTopic}"
 
 PAPER TITLE: "${paper.title}"
 VENUE: "${paper.venue || 'N/A'}" (${paper.year || ''})
-RESEARCH DOMAIN: "${paper.research_domain || ''}"
+RESEARCH DOMAIN: "${paper.research_domain || ''}"${s2TldrPart}${s2FosPart}
 EXTRACTED TOPICS: ${topicsList || 'None listed'}
-ABSTRACT / SUMMARY: ${abstractText}
+ABSTRACT / SUMMARY: ${abstractText || 'No abstract text available.'}
 
 CRITICAL SCORING RUBRIC (Zero tolerance for confirmation bias or artificial inflation):
 - 0 to 15 (IRRELEVANT): Different discipline, domain, or application space (e.g. biology, pathogen genomics, medicine, civil engineering when research topic is computer science, LLM compliance, or formal methods). Superficial word matches like 'data', 'security', or 'policy' do NOT qualify.
@@ -1031,6 +1151,8 @@ Return ONLY a valid JSON object (no markdown, no code fences):
     ext.personal.relevance_score = newScore;
     ext.personal.relevance_to_my_research = newExplanation;
     ext.personal.relevance_tier = evalResult.relevance_tier || (newScore >= 75 ? 'DIRECT' : newScore >= 40 ? 'MODERATE' : 'IRRELEVANT');
+    if (s2Data && !ext.s2_metadata) ext.s2_metadata = s2Data;
+    if (s2Data?.abstract && !ext.abstract) ext.abstract = s2Data.abstract;
 
     const { data: updatedPaper, error: uErr } = await req.supabaseUser
       .from('papers')
@@ -2013,6 +2135,20 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
 
     // Auto-synthesize full paper details (contribution, limitations, personal assessment, research gaps)
     let aiSynthesis = null;
+    let s2Data = null;
+    let paperAbstract = paper.abstract;
+
+    if (paper.doi || paper.title) {
+      try {
+        s2Data = await fetchSemanticScholarMetadata({ doi: paper.doi, title: paper.title });
+        if (s2Data && !paperAbstract && s2Data.abstract) {
+          paperAbstract = s2Data.abstract;
+        }
+      } catch (s2Err) {
+        console.warn('[Discover Import] S2 lookup warning:', s2Err.message);
+      }
+    }
+
     try {
       aiSynthesis = await analyzePaperMetadataWithGemini({
         title: paper.title,
@@ -2020,16 +2156,19 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
         venue: paper.venue,
         year: paper.year,
         doi: paper.doi,
-        abstract: paper.abstract,
+        abstract: paperAbstract,
         quartile,
         scopus_indexed: isScopus,
         researchTopic,
         domainNames,
-        customSchema
+        customSchema,
+        s2Metadata: s2Data
       });
     } catch (aiErr) {
       console.warn('[Discover Import] AI synthesis warning:', aiErr.message);
     }
+
+    const finalS2 = s2Data || aiSynthesis?._s2Metadata || null;
 
     // Build comprehensive paper record matching database schema with AI auto-filled details
     const paperRecord = {
@@ -2038,10 +2177,10 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
       year: parseInt(paper.year) || new Date().getFullYear(),
       venue: paper.venue || 'Academic Journal',
       doi: paper.doi || null,
-      url: paper.url || (paper.doi ? `https://doi.org/${paper.doi}` : null),
+      url: paper.url || finalS2?.openAccessPdf || (paper.doi ? `https://doi.org/${paper.doi}` : null),
       domain_id: domainId,
       category: aiSynthesis?.category || 'Foundation',
-      contribution: aiSynthesis?.contribution || (paper.abstract ? paper.abstract.substring(0, 500) : (paper.title || null)),
+      contribution: aiSynthesis?.contribution || (paperAbstract ? paperAbstract.substring(0, 500) : (paper.title || null)),
       limitations: aiSynthesis?.limitations || [],
       relevance: aiSynthesis?.personal?.relevance_to_my_research || null,
       relevance_score: (typeof aiSynthesis?.personal?.relevance_score === 'number') ? aiSynthesis.personal.relevance_score : 50,
@@ -2050,14 +2189,15 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
       scopus_indexed: isScopus,
       quartile: quartile,
       research_domain: aiSynthesis?.research_domain || researchDomain,
-      notes: aiSynthesis?.personal?.personal_notes || paper.abstract || null,
+      notes: aiSynthesis?.personal?.personal_notes || paperAbstract || null,
       extended_metadata: {
-        abstract: paper.abstract || null,
-        citations: paper.cited_by_count || 0,
-        is_open_access: paper.is_open_access || false,
+        abstract: paperAbstract || null,
+        citations: finalS2?.citationCount ?? paper.cited_by_count ?? 0,
+        is_open_access: paper.is_open_access || Boolean(finalS2?.openAccessPdf),
         openalex_id: paper.openalex_id || null,
         scopus_status: paper.scopus_status || null,
-        topics: paper.topics || [],
+        s2_metadata: finalS2 || null,
+        topics: paper.topics || (finalS2?.fieldsOfStudy || []),
         source: paper.source || 'discover',
         custom_fields: aiSynthesis?.custom_fields || {},
         personal: aiSynthesis?.personal || {}

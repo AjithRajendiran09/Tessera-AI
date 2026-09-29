@@ -231,6 +231,10 @@ export async function autofillPaper(id) {
   });
 }
 
+export async function getSemanticScholarData(id) {
+  return fetchAPI(`/papers/${id}/semantic-scholar`);
+}
+
 export async function previewAutofill(payload) {
   return fetchAPI('/papers/autofill-preview', {
     method: 'POST',
