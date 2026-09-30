@@ -3667,9 +3667,9 @@ window.closeModal = closeModal;
         const methodInput = $('draft-methodology');
         const methodMap = {
           implementation: 'System Design & Experimental Evaluation',
-          review: 'Narrative Literature Review',
+          review: 'Narrative Literature Review & Thematic Synthesis',
           slr: 'Systematic Literature Review (PRISMA)',
-          survey: 'Survey & Taxonomic Analysis',
+          survey: 'Comprehensive Survey & Taxonomic Analysis',
           comparative: 'Empirical Comparative Benchmarking',
           experimental: 'Controlled Experiment & Hypothesis Testing',
           methodology: 'Theoretical Framework Design',
@@ -3679,8 +3679,18 @@ window.closeModal = closeModal;
           dataset: 'Dataset Construction & Annotation',
           tool: 'Software Engineering & System Evaluation'
         };
-        if (methodInput && !methodInput.value.trim() && methodMap[type]) {
-          methodInput.value = methodMap[type];
+        if (methodMap[type]) {
+          if (methodInput) {
+            const allDefaults = Object.values(methodMap);
+            if (!methodInput.value.trim() || allDefaults.includes(methodInput.value.trim()) || methodInput.value.includes('Systematic Literature Review')) {
+              methodInput.value = methodMap[type];
+            }
+          }
+          if (parsedExcel?.metadata) {
+            parsedExcel.metadata.methodology = methodMap[type];
+            const s2Method = $('draft-step2-method');
+            if (s2Method) s2Method.value = methodMap[type];
+          }
         }
       });
     });
@@ -3761,13 +3771,19 @@ window.closeModal = closeModal;
     nextBtn.textContent = 'Parsing...';
 
     try {
-      parsedExcel = await api.parseExcelForDraft(draftFile, currentWorkspace?.id);
+      parsedExcel = await api.parseExcelForDraft(draftFile, currentWorkspace?.id, paperType);
 
       // Pre-populate Step 1 fields from detected Excel metadata
       if (parsedExcel.metadata) {
         const meta = parsedExcel.metadata;
         const titleInput = $('draft-title');
-        if (titleInput && !titleInput.value.trim() && meta.title) titleInput.value = meta.title;
+        let initialTitle = (meta.title || '').trim();
+        if (/Systematic Literature Review and Bibliometric Analysis of \d+ Key Studies/i.test(initialTitle) ||
+            /Academic Research Paper Draft/i.test(initialTitle) ||
+            /Empirical Investigation and Data Analysis of/i.test(initialTitle)) {
+          initialTitle = '';
+        }
+        if (titleInput && !titleInput.value.trim() && initialTitle) titleInput.value = initialTitle;
         else if (titleInput?.value.trim()) meta.title = titleInput.value.trim();
 
         const areaInput = $('draft-research-area');
@@ -3800,11 +3816,18 @@ window.closeModal = closeModal;
     // Metadata
     const metaContainer = $('draft-meta-preview');
     const meta = parsedExcel.metadata || {};
+    let previewTitle = (meta.title || '').trim();
+    if (/Systematic Literature Review and Bibliometric Analysis of \d+ Key Studies/i.test(previewTitle) ||
+        /Academic Research Paper Draft/i.test(previewTitle) ||
+        /Empirical Investigation and Data Analysis of/i.test(previewTitle)) {
+      previewTitle = '';
+    }
+
     metaContainer.innerHTML = `
       <div class="draft-meta-edit-grid">
         <div class="draft-meta-edit-field">
           <label>Paper Title</label>
-          <input type="text" id="draft-step2-title" class="draft-meta-input" value="${escapeHtml(meta.title || '')}" placeholder="AI will generate title if left blank" />
+          <input type="text" id="draft-step2-title" class="draft-meta-input" value="${escapeHtml(previewTitle)}" placeholder="AI will synthesize a publication-grade academic title (or enter your own)" />
         </div>
         <div class="draft-meta-edit-field">
           <label>Research Area / Topic</label>
@@ -3864,16 +3887,23 @@ window.closeModal = closeModal;
     const charts = parsedExcel.charts || [];
     const chartsContainer = $('draft-charts-config');
     if (charts.length === 0) {
-      chartsContainer.innerHTML = '<p class="draft-no-data">No chart configuration found. Add a "Charts" sheet to auto-generate visualizations.</p>';
+      chartsContainer.innerHTML = '<p class="draft-no-data">No chart configuration found. Visualizations will be auto-generated.</p>';
     } else {
-      chartsContainer.innerHTML = charts.map(c => `
+      chartsContainer.innerHTML = charts.map((c, i) => {
+        const badgeLabel = c.type === 'architecture' ? '🔬 System Architecture' : (c.type === 'prisma' ? '📋 PRISMA Protocol' : (c.type || 'chart').toUpperCase());
+        const badgeClass = c.type === 'architecture' || c.type === 'prisma' ? 'diagram' : (c.type || 'bar');
+        const axesDesc = c.type === 'architecture' || c.type === 'prisma'
+          ? 'Modular flow diagram with high-resolution academic vector rendering'
+          : `X: ${escapeHtml(c.xColumn || 'Category')} → Y: ${escapeHtml(Array.isArray(c.yColumns) ? c.yColumns.join(', ') : (c.yColumns || 'Metric'))}`;
+        return `
         <div class="draft-chart-config-item">
-          <span class="draft-chart-type-badge ${escapeHtml(c.type)}">${escapeHtml(c.type)}</span>
-          <h4>${escapeHtml(c.chartTitle || 'Unnamed Chart')}</h4>
-          <p>X: ${escapeHtml(c.xColumn)} → Y: ${escapeHtml(Array.isArray(c.yColumns) ? c.yColumns.join(', ') : c.yColumns)}</p>
-          ${c.description ? `<p style="margin-top:4px;font-style:italic">${escapeHtml(c.description)}</p>` : ''}
+          <span class="draft-chart-type-badge ${badgeClass}">${badgeLabel}</span>
+          <h4>Fig. ${c.figureNumber || (i + 1)}: ${escapeHtml(c.chartTitle || 'Figure ' + (i + 1))}</h4>
+          <p>${axesDesc}</p>
+          ${c.description ? `<p style="margin-top:4px;font-style:italic;color:var(--text-dim);font-size:12px;">${escapeHtml(c.description)}</p>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
   }
 
@@ -4268,6 +4298,287 @@ window.closeModal = closeModal;
     setTimeout(() => renderPreviewCharts(chartData), 150);
   }
 
+  // ── CANVAS ACADEMIC DIAGRAM RENDERING ENGINE ──
+  function drawRoundedRect(ctx, x, y, width, height, radius, fillStyle, strokeStyle, lineWidth = 1, topOnly = false) {
+    ctx.save();
+    ctx.beginPath();
+    if (topOnly) {
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height);
+      ctx.lineTo(x, y + height);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+    } else {
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+    }
+    ctx.closePath();
+    if (fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(); }
+    if (strokeStyle) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineWidth; ctx.stroke(); }
+    ctx.restore();
+  }
+
+  function drawDownArrow(ctx, x1, y1, x2, y2) {
+    ctx.save();
+    ctx.strokeStyle = '#64748b';
+    ctx.fillStyle = '#64748b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2 - 5, y2 - 7);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 + 5, y2 - 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawRightArrow(ctx, x1, y1, x2, y2) {
+    ctx.save();
+    ctx.strokeStyle = '#64748b';
+    ctx.fillStyle = '#64748b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2 - 7, y2 - 5);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 - 7, y2 + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawArchitectureDiagram(canvas, chart) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    // Title banner
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 13px "Times New Roman", serif';
+    ctx.textAlign = 'center';
+    const titleText = chart.title || 'System Architecture and Processing Pipeline';
+    ctx.fillText(titleText.toUpperCase(), w / 2, 24);
+
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(25, 32);
+    ctx.lineTo(w - 25, 32);
+    ctx.stroke();
+
+    const dData = chart.diagramData || {};
+    const stages = dData.stages || [
+      { label: 'STAGE 1', title: 'Data Ingestion & Extraction', desc: 'Dataset normalization, tokenization, and schema validation' },
+      { label: 'STAGE 2', title: 'Feature Representation', desc: 'Domain embedding extraction, latent projection, and vectorization' },
+      { label: 'STAGE 3', title: 'Core Algorithmic Engine', desc: 'Optimization solver, loss gradient descent, and modular inference' },
+      { label: 'STAGE 4', title: 'Verification & Benchmark', desc: 'Baseline evaluation, ablation auditing, and statistical validation' }
+    ];
+
+    const n = stages.length;
+    const padX = 25;
+    const arrowW = 24;
+    const boxW = (w - padX * 2 - (n - 1) * arrowW) / n;
+    const boxH = h - 90;
+    const startY = 46;
+
+    const palettes = [
+      { border: '#3b82f6', bg: '#eff6ff', headerBg: '#2563eb' },
+      { border: '#8b5cf6', bg: '#f5f3ff', headerBg: '#7c3aed' },
+      { border: '#10b981', bg: '#ecfdf5', headerBg: '#059669' },
+      { border: '#f59e0b', bg: '#fffbeb', headerBg: '#d97706' }
+    ];
+
+    stages.forEach((stg, i) => {
+      const x = padX + i * (boxW + arrowW);
+      const pal = palettes[i % palettes.length];
+
+      drawRoundedRect(ctx, x, startY, boxW, boxH, 8, pal.bg, pal.border, 1.5);
+      drawRoundedRect(ctx, x, startY, boxW, 34, 8, pal.headerBg, pal.headerBg, 1, true);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9.5px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(stg.label, x + boxW / 2, startY + 14);
+
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(stg.title, x + boxW / 2, startY + 28);
+
+      ctx.fillStyle = '#334155';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'left';
+
+      const words = (stg.desc || '').split(' ');
+      let curLine = '';
+      let curY = startY + 50;
+      const maxW = boxW - 14;
+
+      for (const wd of words) {
+        const test = curLine + (curLine ? ' ' : '') + wd;
+        if (ctx.measureText(test).width > maxW) {
+          ctx.fillText(curLine, x + 8, curY);
+          curLine = wd;
+          curY += 13;
+        } else {
+          curLine = test;
+        }
+      }
+      if (curLine) ctx.fillText(curLine, x + 8, curY);
+
+      // Submodules
+      const subLabels = i === 0 ? ['• Ingestion Parser', '• Schema Cleaner']
+        : i === 1 ? ['• Latent Vectors', '• Feature Embedder']
+        : i === 2 ? ['• Pipeline Engine', '• Parameter Tuner']
+        : ['• Metric Benchmark', '• Error Auditor'];
+
+      const subStartY = curY + 16;
+      const subH = 22;
+      subLabels.forEach((lab, sIdx) => {
+        const sy = subStartY + sIdx * (subH + 6);
+        if (sy + subH < startY + boxH - 6) {
+          drawRoundedRect(ctx, x + 6, sy, boxW - 12, subH, 4, '#ffffff', '#cbd5e1', 1);
+          ctx.fillStyle = '#1e293b';
+          ctx.font = 'bold 8.5px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(lab, x + boxW / 2, sy + subH / 2 + 3);
+        }
+      });
+
+      if (i < n - 1) {
+        const ax = x + boxW + 2;
+        const ay = startY + boxH / 2;
+        drawRightArrow(ctx, ax, ay, ax + arrowW - 4, ay);
+      }
+    });
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'italic 9px "Times New Roman", serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Execution Pipeline: Feedforward modular execution with integrated checkpoint verification.', w / 2, h - 10);
+  }
+
+  function drawPrismaDiagram(canvas, chart) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 12.5px "Times New Roman", serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PRISMA 2020 FLOW DIAGRAM FOR SYSTEMATIC REVIEWS', w / 2, 22);
+
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(25, 28);
+    ctx.lineTo(w - 25, 28);
+    ctx.stroke();
+
+    const d = chart.diagramData || {};
+    const nId = d.identified || 184;
+    const nDedup = d.deduplicated || Math.round(nId * 0.75);
+    const nScreen = d.screened || Math.round(nId * 0.75);
+    const nExclScreen = d.excludedScreening || (nScreen - Math.round(nScreen * 0.38));
+    const nElig = d.eligible || Math.round(nScreen * 0.38);
+    const nExclElig = d.excludedEligibility || (nElig - (d.included || 21));
+    const nInc = d.included || 21;
+
+    const leftX = 40;
+    const centerW = Math.round(w * 0.44);
+    const rightX = leftX + centerW + 45;
+    const sideW = w - rightX - 40;
+    const boxH = 46;
+    const stepY = 74;
+    const startY = 38;
+
+    // 1. Identification
+    const y1 = startY;
+    drawRoundedRect(ctx, leftX, y1, centerW, boxH, 6, '#eff6ff', '#3b82f6', 1.5);
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('IDENTIFICATION', leftX + centerW / 2, y1 + 15);
+    ctx.fillStyle = '#334155';
+    ctx.font = '8.5px sans-serif';
+    ctx.fillText(`Records identified from databases (n = ${nId})`, leftX + centerW / 2, y1 + 28);
+    ctx.fillText(`Duplicates removed prior to screening (n = ${nId - nDedup})`, leftX + centerW / 2, y1 + 40);
+
+    drawDownArrow(ctx, leftX + centerW / 2, y1 + boxH, leftX + centerW / 2, y1 + stepY);
+
+    // 2. Screening
+    const y2 = y1 + stepY;
+    drawRoundedRect(ctx, leftX, y2, centerW, boxH, 6, '#f0fdf4', '#16a34a', 1.5);
+    ctx.fillStyle = '#14532d';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText('SCREENING', leftX + centerW / 2, y2 + 15);
+    ctx.fillStyle = '#334155';
+    ctx.font = '8.5px sans-serif';
+    ctx.fillText(`Records screened by title/abstract (n = ${nScreen})`, leftX + centerW / 2, y2 + 32);
+
+    drawRightArrow(ctx, leftX + centerW, y2 + boxH / 2, rightX, y2 + boxH / 2);
+    drawRoundedRect(ctx, rightX, y2, sideW, boxH, 6, '#fef2f2', '#ef4444', 1.5);
+    ctx.fillStyle = '#991b1b';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText('RECORDS EXCLUDED', rightX + sideW / 2, y2 + 15);
+    ctx.fillStyle = '#334155';
+    ctx.font = '8.5px sans-serif';
+    ctx.fillText(`Non-relevance to scope (n = ${nExclScreen})`, rightX + sideW / 2, y2 + 32);
+
+    drawDownArrow(ctx, leftX + centerW / 2, y2 + boxH, leftX + centerW / 2, y2 + stepY);
+
+    // 3. Eligibility
+    const y3 = y2 + stepY;
+    drawRoundedRect(ctx, leftX, y3, centerW, boxH, 6, '#fefce8', '#ca8a04', 1.5);
+    ctx.fillStyle = '#713f12';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText('ELIGIBILITY', leftX + centerW / 2, y3 + 15);
+    ctx.fillStyle = '#334155';
+    ctx.font = '8.5px sans-serif';
+    ctx.fillText(`Full-text reports assessed for eligibility (n = ${nElig})`, leftX + centerW / 2, y3 + 32);
+
+    drawRightArrow(ctx, leftX + centerW, y3 + boxH / 2, rightX, y3 + boxH / 2);
+    drawRoundedRect(ctx, rightX, y3, sideW, boxH, 6, '#fef2f2', '#ef4444', 1.5);
+    ctx.fillStyle = '#991b1b';
+    ctx.font = 'bold 9.5px sans-serif';
+    ctx.fillText('REPORTS EXCLUDED', rightX + sideW / 2, y3 + 15);
+    ctx.fillStyle = '#334155';
+    ctx.font = '8.5px sans-serif';
+    ctx.fillText(`Insufficient empirical evidence (n = ${nExclElig})`, rightX + sideW / 2, y3 + 32);
+
+    drawDownArrow(ctx, leftX + centerW / 2, y3 + boxH, leftX + centerW / 2, y3 + stepY);
+
+    // 4. Included
+    const y4 = y3 + stepY;
+    drawRoundedRect(ctx, leftX, y4, centerW, boxH, 6, '#faf5ff', '#9333ea', 1.8);
+    ctx.fillStyle = '#581c87';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.fillText('INCLUDED STUDIES', leftX + centerW / 2, y4 + 16);
+    ctx.fillStyle = '#1e1b4b';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText(`Studies included in quantitative review (n = ${nInc})`, leftX + centerW / 2, y4 + 33);
+  }
+
   function renderPreviewCharts(chartData) {
     chartInstances.forEach(c => { try { c.destroy(); } catch(e){} });
     chartInstances = [];
@@ -4275,6 +4586,16 @@ window.closeModal = closeModal;
     chartData.forEach((chart, idx) => {
       const canvas = document.getElementById(`draft-chart-preview-canvas-${idx}`);
       if (!canvas) return;
+
+      if (chart.type === 'architecture') {
+        drawArchitectureDiagram(canvas, chart);
+        return;
+      }
+      if (chart.type === 'prisma') {
+        drawPrismaDiagram(canvas, chart);
+        return;
+      }
+
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -4620,6 +4941,7 @@ window.closeModal = closeModal;
 
       // Sections
       const isIEEE = citationStyle === 'IEEE';
+      const renderedChartIdsDocx = new Set();
       (draft.sections || []).forEach((sec, idx) => {
         // Section Heading
         const headingText = isIEEE
@@ -4707,39 +5029,50 @@ window.closeModal = closeModal;
           });
         }
 
-        // Check if a chart matches this section
+        // Check if charts match this section
         if (chartData && chartData.length > 0) {
-          const matchedChart = chartData.find(c =>
+          const isLastSecDocx = idx === (draft.sections || []).length - 1;
+          const isEvalSecDocx = sec.title.toLowerCase().includes('result') ||
+                                sec.title.toLowerCase().includes('evaluation') ||
+                                sec.title.toLowerCase().includes('experiment');
+
+          const matchedChartsDocx = chartData.filter(c =>
             (c.sectionIndex !== undefined && c.sectionIndex === idx) ||
-            (c.sectionTitle && sec.title.toLowerCase().includes(c.sectionTitle.toLowerCase()))
+            (c.sectionTitle && sec.title.toLowerCase().includes(c.sectionTitle.toLowerCase()) && !renderedChartIdsDocx.has(c.figureNumber)) ||
+            (c.sectionIndex === undefined && isEvalSecDocx && !renderedChartIdsDocx.has(c.figureNumber)) ||
+            (isLastSecDocx && !renderedChartIdsDocx.has(c.figureNumber))
           );
-          if (matchedChart && chartImages[matchedChart.figureNumber]) {
-            bodyChildren.push(
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 140, after: 60 },
-                children: [
-                  new ImageRun({
-                    data: chartImages[matchedChart.figureNumber],
-                    transformation: { width: isTwoCol ? 290 : 480, height: isTwoCol ? 150 : 240 }
-                  })
-                ]
-              })
-            );
-            bodyChildren.push(
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                spacing: { before: 0, after: 140 },
-                children: [
-                  new TextRun({
-                    text: `Fig. ${matchedChart.figureNumber}. ${matchedChart.title}`,
-                    italics: true,
-                    font: fFamily,
-                    size: captionSize
-                  })
-                ]
-              })
-            );
+
+          for (const matchedChart of matchedChartsDocx) {
+            renderedChartIdsDocx.add(matchedChart.figureNumber);
+            if (chartImages[matchedChart.figureNumber]) {
+              bodyChildren.push(
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 140, after: 60 },
+                  children: [
+                    new ImageRun({
+                      data: chartImages[matchedChart.figureNumber],
+                      transformation: { width: isTwoCol ? 290 : 480, height: isTwoCol ? 150 : 240 }
+                    })
+                  ]
+                })
+              );
+              bodyChildren.push(
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 0, after: 140 },
+                  children: [
+                    new TextRun({
+                      text: isIEEE ? `Fig. ${matchedChart.figureNumber}. ${matchedChart.title}` : `Figure ${matchedChart.figureNumber}: ${matchedChart.title}`,
+                      italics: true,
+                      font: fFamily,
+                      size: captionSize
+                    })
+                  ]
+                })
+              );
+            }
           }
         }
 
@@ -5139,6 +5472,8 @@ window.closeModal = closeModal;
         curCol = 1;
 
         // ── BODY SECTIONS (TWO COLUMNS) ──
+        let tablesPlacedIeee = false;
+        const renderedChartIdsIeee = new Set();
         for (let sIdx = 0; sIdx < (draft.sections || []).length; sIdx++) {
           const section = draft.sections[sIdx];
           const headingText = /^[IVXLCDM]+\.\s+/i.test(section.heading)
@@ -5163,31 +5498,43 @@ window.closeModal = closeModal;
             colY += 2;
           }
 
-          // Results charts & tables in IEEE format
-          if (section.heading.toLowerCase().includes('result')) {
-            // Charts
-            for (const chart of chartData) {
-              try {
-                const chartImg = await renderChartToImage(chart);
-                if (chartImg) {
-                  const imgH = colW * 0.52;
-                  checkCol(imgH + 12);
-                  const cX = curCol === 1 ? col1X : col2X;
-                  doc.addImage(chartImg, 'PNG', cX, colY, colW, imgH);
-                  colY += imgH + 3.5;
+          // Section-specific charts (Architecture, PRISMA, Benchmarks)
+          const isLastSecIeee = sIdx === (draft.sections || []).length - 1;
+          const isEvalSecIeee = section.heading.toLowerCase().includes('result') ||
+                                section.heading.toLowerCase().includes('evaluation') ||
+                                section.heading.toLowerCase().includes('experiment');
 
-                  doc.setFont(fontName, 'italic');
-                  doc.setFontSize(8);
-                  const cap = `Fig. ${chart.figureNumber}. ${chart.title}`;
-                  doc.text(cap, cX + colW / 2, colY, { align: 'center' });
-                  colY += 6;
-                }
-              } catch (e) {
-                console.warn('IEEE chart render error:', e);
+          const matchedChartsIeee = chartData.filter(c =>
+            c.sectionIndex === sIdx ||
+            (c.sectionIndex === undefined && isEvalSecIeee && !renderedChartIdsIeee.has(c.figureNumber)) ||
+            (isLastSecIeee && !renderedChartIdsIeee.has(c.figureNumber))
+          );
+
+          for (const chart of matchedChartsIeee) {
+            renderedChartIdsIeee.add(chart.figureNumber);
+            try {
+              const chartImg = await renderChartToImage(chart);
+              if (chartImg) {
+                const imgH = colW * 0.52;
+                checkCol(imgH + 12);
+                const cX = curCol === 1 ? col1X : col2X;
+                doc.addImage(chartImg, 'PNG', cX, colY, colW, imgH);
+                colY += imgH + 3.5;
+
+                doc.setFont(fontName, 'italic');
+                doc.setFontSize(8);
+                const cap = `Fig. ${chart.figureNumber}. ${chart.title}`;
+                doc.text(cap, cX + colW / 2, colY, { align: 'center' });
+                colY += 6;
               }
+            } catch (e) {
+              console.warn('IEEE chart render error:', e);
             }
+          }
 
-            // Tables
+          // Tables in IEEE format
+          if (isEvalSecIeee && !tablesPlacedIeee && dataTables.length > 0) {
+            tablesPlacedIeee = true;
             for (let tIdx = 0; tIdx < dataTables.length; tIdx++) {
               const table = dataTables[tIdx];
               const keyCols = selectKeyColumns(table).slice(0, 4);
@@ -5528,6 +5875,8 @@ window.closeModal = closeModal;
       // ════════════════════════════════════════
       // BODY SECTIONS
       // ════════════════════════════════════════
+      let tablesPlacedSingle = false;
+      const renderedChartIdsSingle = new Set();
       for (const section of (draft.sections || [])) {
         y += 8;
         y = checkPage(y, 24);
@@ -5551,37 +5900,49 @@ window.closeModal = closeModal;
           y += 2; // inter-paragraph spacing
         }
 
-        // Insert charts + tables after the Results section
-        if (section.heading.toLowerCase().includes('result')) {
-          // ── Charts ──
-          for (const chart of chartData) {
-            y += 6;
-            y = checkPage(y, 85);
+        // Section-specific Charts (Architecture, PRISMA, Benchmarks)
+        const isLastSecSingle = sIdx === (draft.sections || []).length - 1;
+        const isEvalSecSingle = section.heading.toLowerCase().includes('result') ||
+                                section.heading.toLowerCase().includes('evaluation') ||
+                                section.heading.toLowerCase().includes('experiment');
 
-            try {
-              const chartImg = await renderChartToImage(chart);
-              if (chartImg) {
-                const imgWidth = contentWidth * 0.82;
-                const imgHeight = imgWidth * 0.5;
-                y = checkPage(y, imgHeight + 18);
-                const xOffset = marginL + (contentWidth - imgWidth) / 2;
-                doc.addImage(chartImg, 'PNG', xOffset, y, imgWidth, imgHeight);
-                y += imgHeight + 4;
+        const matchedChartsSingle = chartData.filter(c =>
+          c.sectionIndex === sIdx ||
+          (c.sectionIndex === undefined && isEvalSecSingle && !renderedChartIdsSingle.has(c.figureNumber)) ||
+          (isLastSecSingle && !renderedChartIdsSingle.has(c.figureNumber))
+        );
 
-                // Figure caption
-                doc.setFontSize(9);
-                doc.setFont('helvetica', 'italic');
-                const caption = `Figure ${chart.figureNumber}: ${chart.title}`;
-                doc.text(caption, pageWidth / 2, y, { align: 'center' });
-                doc.setFont('helvetica', 'normal');
-                y += 10;
-              }
-            } catch (chartErr) {
-              console.warn('Chart render error:', chartErr);
+        for (const chart of matchedChartsSingle) {
+          renderedChartIdsSingle.add(chart.figureNumber);
+          y += 6;
+          y = checkPage(y, 85);
+
+          try {
+            const chartImg = await renderChartToImage(chart);
+            if (chartImg) {
+              const imgWidth = contentWidth * 0.82;
+              const imgHeight = imgWidth * 0.5;
+              y = checkPage(y, imgHeight + 18);
+              const xOffset = marginL + (contentWidth - imgWidth) / 2;
+              doc.addImage(chartImg, 'PNG', xOffset, y, imgWidth, imgHeight);
+              y += imgHeight + 4;
+
+              // Figure caption
+              doc.setFontSize(9);
+              doc.setFont('helvetica', 'italic');
+              const caption = `Figure ${chart.figureNumber}: ${chart.title}`;
+              doc.text(caption, pageWidth / 2, y, { align: 'center' });
+              doc.setFont('helvetica', 'normal');
+              y += 10;
             }
+          } catch (chartErr) {
+            console.warn('Chart render error:', chartErr);
           }
+        }
 
-          // ── Data Tables (intelligently formatted) ──
+        // ── Data Tables (intelligently formatted) ──
+        if (isEvalSecSingle && !tablesPlacedSingle && dataTables.length > 0) {
+          tablesPlacedSingle = true;
           for (const table of dataTables) {
             y += 6;
             y = checkPage(y, 35);
@@ -5734,6 +6095,27 @@ window.closeModal = closeModal;
 
   function renderChartToImage(chart) {
     return new Promise((resolve) => {
+      if (!chart) return resolve(null);
+
+      // Handle custom academic vector diagrams (architecture flowcharts & PRISMA flow diagrams)
+      if (chart.type === 'architecture' || chart.type === 'prisma') {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 800;
+          canvas.height = chart.type === 'prisma' ? 440 : 400;
+          if (chart.type === 'architecture') {
+            drawArchitectureDiagram(canvas, chart);
+          } else {
+            drawPrismaDiagram(canvas, chart);
+          }
+          const dataUrl = canvas.toDataURL('image/png');
+          return resolve(dataUrl);
+        } catch (e) {
+          console.warn('Failed to render diagram to image:', e);
+          return resolve(null);
+        }
+      }
+
       // Create a fresh isolated canvas for each chart to avoid shared canvas race conditions
       let canvas;
       let needsRemove = false;

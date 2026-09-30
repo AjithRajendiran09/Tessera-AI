@@ -3030,6 +3030,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 .draft-chart-type-badge.bar { background: rgba(124,92,255,0.15); color: #a78bfa; }
 .draft-chart-type-badge.line { background: rgba(6,214,160,0.15); color: #06d6a0; }
 .draft-chart-type-badge.pie { background: rgba(255,107,107,0.15); color: #ff6b6b; }
+.draft-chart-type-badge.architecture, .draft-chart-type-badge.diagram { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.draft-chart-type-badge.prisma { background: rgba(16,185,129,0.15); color: #34d399; }
 
 /* Generating Spinner */
 .draft-generating {

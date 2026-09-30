@@ -319,11 +319,12 @@ export async function importDiscoveredPaper(paper, workspaceId) {
 }
 
 // ── PAPER DRAFT GENERATOR ──
-export async function parseExcelForDraft(file, workspaceId) {
+export async function parseExcelForDraft(file, workspaceId, paperType) {
   const token = await getAuthToken();
   const formData = new FormData();
   formData.append('excel', file);
   if (workspaceId) formData.append('workspace_id', workspaceId);
+  if (paperType) formData.append('paper_type', paperType);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120000);
