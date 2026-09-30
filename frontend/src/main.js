@@ -801,7 +801,12 @@ function renderPapers() {
           <div class="rel-track"><div class="rel-fill" style="width:${relScore}%;background:${relColor}"></div></div>
           <span style="font-weight:700;color:${relColor}">${relScore}%</span>
         </div>
-        ${p.url ? `<a href="${p.url}" target="_blank" class="paper-link" onclick="event.stopPropagation()">🔗 Paper</a>` : ''}
+        <div style="display:flex;gap:6px;align-items:center">
+          ${p.url ? `<a href="${p.url}" target="_blank" class="paper-link" onclick="event.stopPropagation()">🔗 View</a>` : ''}
+          <button class="paper-link paper-pdf-btn" title="Find &amp; Download PDF" data-paper-id="${p.id}" onclick="event.stopPropagation();window.resolvePaperPdf('${p.id}', this)" style="border:none;cursor:pointer;background:rgba(59,130,246,0.15);color:#60a5fa;">
+            📥 PDF
+          </button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -902,7 +907,13 @@ function openPaperDetail(p) {
       <span class="verif-badge ${p.verification_status === 'human_verified' ? 'verif-human-verified' : 'verif-ai-gen'}">${p.verification_status === 'human_verified' ? '✓ Human Verified' : '🤖 AI Generated'}</span>
       ${p.confidence_tier ? `<span class="conf-pill conf-${p.confidence_tier.toLowerCase().includes('high') ? 'high' : p.confidence_tier.toLowerCase().includes('med') ? 'med' : 'low'}">⚡ Conf: ${p.confidence_tier} (${Math.round((p.confidence_score || 0.85) * 100)}%)</span>` : ''}
     </div>
-    ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link">📄 Read Paper →</a>` : ''}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;align-items:center">
+      ${p.url ? `<a href="${p.url}" target="_blank" class="modal-paper-link" style="margin:0">📄 Read Paper →</a>` : ''}
+      <button id="btn-resolve-pdf-modal" data-paper-id="${p.id}" class="btn btn-sm" style="background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.35);border-radius:8px;padding:7px 14px;font-size:13px;cursor:pointer;font-weight:600;" onclick="window.resolvePaperPdf('${p.id}', this)">
+        📥 Find &amp; Download PDF
+      </button>
+      ${p.doi ? `<a href="https://doi.org/${p.doi.replace(/^https?:\/\/doi\.org\//i,'')}" target="_blank" class="btn btn-sm" style="background:rgba(124,92,255,0.12);color:var(--accent);border:1px solid rgba(124,92,255,0.25);border-radius:8px;padding:7px 14px;font-size:13px;text-decoration:none;font-weight:600;">🔗 DOI Page</a>` : ''}
+    </div>
 
     ${s2.tldr ? `
       <div class="s2-tldr-card" style="background: linear-gradient(135deg, rgba(124, 92, 255, 0.12), rgba(67, 97, 238, 0.08)); border: 1px solid rgba(124, 92, 255, 0.35); border-radius: 10px; padding: 12px 16px; margin: 12px 0;">
@@ -1724,6 +1735,86 @@ function openLitReviewModal(domainName, markdownText) {
   `;
   openModal();
 }
+
+// ── Global: Smart PDF Resolver ──
+window.resolvePaperPdf = async function(paperId, btn) {
+  const originalText = btn ? btn.innerHTML : '';
+  try {
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Finding PDF...'; }
+    const result = await api.resolvePaperPdf(paperId);
+
+    if (!result || !result.all_sources || result.all_sources.length === 0) {
+      toast('No full-text link found for this paper. Try searching on Google Scholar.', true);
+      if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+      return;
+    }
+
+    // Open the best source immediately
+    if (result.best_url) {
+      window.open(result.best_url, '_blank');
+    }
+
+    // If multiple sources found, show a picker panel near the button
+    if (result.all_sources.length > 1 && btn) {
+      // Remove any existing picker
+      const existing = document.getElementById('pdf-source-picker');
+      if (existing) existing.remove();
+
+      const picker = document.createElement('div');
+      picker.id = 'pdf-source-picker';
+      picker.style.cssText = `
+        position: absolute; z-index: 9999; background: var(--surface2, #1e1e2e);
+        border: 1px solid rgba(124,92,255,0.4); border-radius: 12px; padding: 12px;
+        min-width: 280px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        font-size: 13px; margin-top: 6px;
+      `;
+      const typeIcon = t => t === 'pdf' ? '📄' : t === 'doi' ? '🔗' : '🌐';
+      picker.innerHTML = `
+        <div style="font-weight:700;color:var(--accent,#7c5cff);margin-bottom:8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;">
+          📥 ${result.all_sources.length} Sources Found
+        </div>
+        ${result.all_sources.map(s => `
+          <a href="${s.url}" target="_blank" rel="noopener"
+            style="display:block;padding:7px 10px;border-radius:8px;margin-bottom:4px;
+                   background:rgba(255,255,255,0.04);color:var(--text,#e2e2e2);
+                   text-decoration:none;border:1px solid rgba(255,255,255,0.07);
+                   transition:background .15s;" 
+            onmouseover="this.style.background='rgba(124,92,255,0.12)'"
+            onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+            ${typeIcon(s.type)} <strong style="color:${s.type==='pdf'?'#60a5fa':s.type==='doi'?'var(--accent)':'#a3e635'}">${s.type.toUpperCase()}</strong>
+            &nbsp;${s.label}
+          </a>`).join('')}
+        <button onclick="document.getElementById('pdf-source-picker').remove()"
+          style="margin-top:6px;width:100%;padding:5px;border:none;border-radius:6px;
+                 background:rgba(255,255,255,0.06);color:var(--text-dim,#888);cursor:pointer;font-size:12px;">
+          ✕ Close
+        </button>
+      `;
+
+      // Position relative to button
+      btn.style.position = 'relative';
+      btn.parentElement.style.position = 'relative';
+      btn.parentElement.appendChild(picker);
+      // Auto-close on outside click
+      setTimeout(() => {
+        document.addEventListener('click', function closePicker(e) {
+          if (!picker.contains(e.target) && e.target !== btn) {
+            picker.remove();
+            document.removeEventListener('click', closePicker);
+          }
+        });
+      }, 100);
+    } else if (result.all_sources.length === 1 && !result.best_url) {
+      toast('No open-access PDF found. Opening publisher page instead.', false);
+    }
+
+    if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  } catch (err) {
+    console.error('[resolvePaperPdf]', err);
+    toast('Could not resolve PDF: ' + (err.message || 'Unknown error'), true);
+    if (btn) { btn.disabled = false; btn.innerHTML = originalText; }
+  }
+};
 
 window.downloadLitReviewWord = function(domainName) {
   const content = document.getElementById('lit-review-content').innerHTML;

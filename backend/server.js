@@ -1074,6 +1074,96 @@ app.get('/api/papers/:id/semantic-scholar', checkSupabase, authenticateUser, asy
   }
 });
 
+// ── GET /api/papers/:id/resolve-pdf — Resolve best available PDF/full-text URL for a paper ──
+app.get('/api/papers/:id/resolve-pdf', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: paper, error } = await req.supabaseUser
+      .from('papers')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !paper) return res.status(404).json({ error: 'Paper not found.' });
+
+    const em = paper.extended_metadata || {};
+    const s2 = em.s2_metadata || {};
+    const sources = [];
+
+    // 1) Already stored URL on the paper record
+    if (paper.url) sources.push({ label: 'Stored URL', url: paper.url, type: 'url' });
+
+    // 2) Semantic Scholar open access PDF (already fetched/stored)
+    if (s2.openAccessPdf) sources.push({ label: 'Open Access PDF (S2)', url: s2.openAccessPdf, type: 'pdf' });
+
+    // 3) Try Unpaywall (free, no key needed) — requires DOI
+    if (paper.doi) {
+      try {
+        const unpayEmail = process.env.UNPAYWALL_EMAIL || 'tessera-ai@research.org';
+        const cleanDoi = paper.doi.replace(/^https?:\/\/doi\.org\//i, '');
+        const upResp = await fetch(`https://api.unpaywall.org/v2/${encodeURIComponent(cleanDoi)}?email=${unpayEmail}`, {
+          headers: { 'User-Agent': 'Tessera-AI/2.0 (academic research tool)' }
+        });
+        if (upResp.ok) {
+          const upData = await upResp.json();
+          const bestOa = upData.best_oa_location;
+          if (bestOa?.url_for_pdf) {
+            sources.push({ label: `Open Access PDF (Unpaywall - ${upData.oa_status || 'oa'})`, url: bestOa.url_for_pdf, type: 'pdf' });
+          } else if (bestOa?.url) {
+            sources.push({ label: `Full Text (Unpaywall - ${upData.oa_status || 'oa'})`, url: bestOa.url, type: 'url' });
+          }
+          // Collect all OA locations
+          if (upData.oa_locations?.length) {
+            upData.oa_locations.forEach(loc => {
+              if (loc.url_for_pdf && !sources.find(s => s.url === loc.url_for_pdf)) {
+                sources.push({ label: `PDF (${loc.host_type || 'oa'})`, url: loc.url_for_pdf, type: 'pdf' });
+              }
+            });
+          }
+        }
+      } catch (upErr) {
+        console.warn('[PDF Resolve] Unpaywall lookup failed:', upErr.message);
+      }
+
+      // 4) Try live Semantic Scholar fetch if no PDF found yet
+      if (!sources.find(s => s.type === 'pdf')) {
+        try {
+          const freshS2 = await fetchSemanticScholarMetadata({ doi: paper.doi, title: paper.title });
+          if (freshS2?.openAccessPdf) {
+            sources.push({ label: 'Open Access PDF (Semantic Scholar)', url: freshS2.openAccessPdf, type: 'pdf' });
+            // Persist it so future calls are instant
+            if (!s2.openAccessPdf) {
+              const updatedEm = { ...em, s2_metadata: { ...s2, openAccessPdf: freshS2.openAccessPdf } };
+              await req.supabaseUser.from('papers').update({ extended_metadata: updatedEm }).eq('id', id);
+            }
+          }
+        } catch (s2Err) {
+          console.warn('[PDF Resolve] S2 fetch failed:', s2Err.message);
+        }
+      }
+
+      // 5) DOI.org link as last resort (redirects to publisher page)
+      const cleanDoi2 = paper.doi.replace(/^https?:\/\/doi\.org\//i, '');
+      sources.push({ label: 'Publisher Page (DOI)', url: `https://doi.org/${cleanDoi2}`, type: 'doi' });
+    }
+
+    // Determine best single URL (prefer pdf > url > doi)
+    const best = sources.find(s => s.type === 'pdf') || sources.find(s => s.type === 'url') || sources[0] || null;
+
+    res.json({
+      paper_id: id,
+      title: paper.title,
+      doi: paper.doi,
+      best_url: best?.url || null,
+      best_type: best?.type || null,
+      all_sources: sources
+    });
+  } catch (err) {
+    console.error('[PDF Resolve] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to resolve PDF URL.' });
+  }
+});
+
 // ── POST /api/papers/autofill-preview — Preview AI auto-filled details before saving ──
 app.post('/api/papers/autofill-preview', checkSupabase, authenticateUser, async (req, res) => {
   try {

@@ -478,3 +478,8 @@ export async function rescoreWorkspacePapers(workspaceId, researchTopic = '') {
     body: JSON.stringify({ research_topic: researchTopic })
   });
 }
+
+// ── PDF Resolution ──
+export async function resolvePaperPdf(paperId) {
+  return fetchAPI(`/papers/${paperId}/resolve-pdf`);
+}
