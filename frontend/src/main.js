@@ -3654,6 +3654,37 @@ window.closeModal = closeModal;
       });
     });
 
+    // Paper type card grid picker
+    document.getElementById('draft-type-grid')?.querySelectorAll('.draft-type-card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.getElementById('draft-type-grid').querySelectorAll('.draft-type-card').forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        const type = card.dataset.type;
+        paperType = type;
+        const sel = $('draft-paper-type');
+        if (sel) sel.value = type;
+        // Auto-suggest methodology label when type changes
+        const methodInput = $('draft-methodology');
+        const methodMap = {
+          implementation: 'System Design & Experimental Evaluation',
+          review: 'Narrative Literature Review',
+          slr: 'Systematic Literature Review (PRISMA)',
+          survey: 'Survey & Taxonomic Analysis',
+          comparative: 'Empirical Comparative Benchmarking',
+          experimental: 'Controlled Experiment & Hypothesis Testing',
+          methodology: 'Theoretical Framework Design',
+          casestudy: 'Qualitative Case Study Analysis',
+          shortcomm: 'Concise Empirical Reporting',
+          position: 'Argumentative & Conceptual Analysis',
+          dataset: 'Dataset Construction & Annotation',
+          tool: 'Software Engineering & System Evaluation'
+        };
+        if (methodInput && !methodInput.value.trim() && methodMap[type]) {
+          methodInput.value = methodMap[type];
+        }
+      });
+    });
+
     // Add author
     $('draft-add-author')?.addEventListener('click', () => {
       const list = $('draft-authors-list');
@@ -5817,6 +5848,10 @@ window.closeModal = closeModal;
     $('draft-output-pills')?.querySelector('[data-format="docx"]')?.classList.add('active');
     $('draft-pagenumber-pills')?.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
     $('draft-pagenumber-pills')?.querySelector('[data-format="arabic"]')?.classList.add('active');
+
+    // Reset paper type card grid
+    document.getElementById('draft-type-grid')?.querySelectorAll('.draft-type-card').forEach(c => c.classList.remove('active'));
+    document.getElementById('draft-type-grid')?.querySelector('[data-type="implementation"]')?.classList.add('active');
 
     // Reset authors
     const authorsList = $('draft-authors-list');

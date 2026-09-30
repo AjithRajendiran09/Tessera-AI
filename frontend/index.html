@@ -647,16 +647,83 @@
               </div>
 
               <div class="draft-field">
-                <label for="draft-paper-type">Paper Type</label>
-                <select id="draft-paper-type" class="draft-select">
-                  <option value="implementation" selected>🔬 Implementation / Research Paper (System architecture, implementation & experiments)</option>
-                  <option value="review">📚 Systematic Literature Review (PRISMA methodology, comprehensive synthesis)</option>
-                  <option value="survey">🗺️ Survey & Taxonomy Paper (Taxonomic classification, comparative landscape)</option>
-                  <option value="comparative">📊 Comparative Analysis Paper (Empirical benchmarking, metrics & statistical study)</option>
-                  <option value="methodology">📐 Methodology / Framework Paper (Theoretical formulation & novel model design)</option>
-                  <option value="casestudy">💼 Case Study / Application Paper (Real-world domain implementation & findings)</option>
-                </select>
-              </div>
+                <label>Paper Type <span class="draft-label-hint">(click to select)</span></label>
+                <div class="draft-type-grid" id="draft-type-grid">
+                  <div class="draft-type-card active" data-type="implementation">
+                    <span class="draft-type-icon">🔬</span>
+                    <span class="draft-type-name">Original Research / Implementation</span>
+                    <span class="draft-type-desc">New experiments, system architecture &amp; findings</span>
+                  </div>
+                  <div class="draft-type-card" data-type="review">
+                    <span class="draft-type-icon">📚</span>
+                    <span class="draft-type-name">Review Paper</span>
+                    <span class="draft-type-desc">Summarizes &amp; analyzes existing research</span>
+                  </div>
+                  <div class="draft-type-card" data-type="slr">
+                    <span class="draft-type-icon">🔍</span>
+                    <span class="draft-type-name">Systematic Literature Review (SLR)</span>
+                    <span class="draft-type-desc">PRISMA-structured identification &amp; synthesis</span>
+                  </div>
+                  <div class="draft-type-card" data-type="survey">
+                    <span class="draft-type-icon">🗺️</span>
+                    <span class="draft-type-name">Survey Paper</span>
+                    <span class="draft-type-desc">Collects &amp; analyzes data from many studies</span>
+                  </div>
+                  <div class="draft-type-card" data-type="comparative">
+                    <span class="draft-type-icon">📊</span>
+                    <span class="draft-type-name">Comparative Study</span>
+                    <span class="draft-type-desc">Benchmarks methods, models or algorithms</span>
+                  </div>
+                  <div class="draft-type-card" data-type="experimental">
+                    <span class="draft-type-icon">🧪</span>
+                    <span class="draft-type-name">Experimental Paper</span>
+                    <span class="draft-type-desc">Tests a hypothesis through controlled experiments</span>
+                  </div>
+                  <div class="draft-type-card" data-type="methodology">
+                    <span class="draft-type-icon">📐</span>
+                    <span class="draft-type-name">Methodology / Framework</span>
+                    <span class="draft-type-desc">Proposes a new method, architecture or framework</span>
+                  </div>
+                  <div class="draft-type-card" data-type="casestudy">
+                    <span class="draft-type-icon">💼</span>
+                    <span class="draft-type-name">Case Study Paper</span>
+                    <span class="draft-type-desc">Deep-dive into one real-world case or system</span>
+                  </div>
+                  <div class="draft-type-card" data-type="shortcomm">
+                    <span class="draft-type-icon">✉️</span>
+                    <span class="draft-type-name">Short / Brief Communication</span>
+                    <span class="draft-type-desc">Concise 4-page significant finding</span>
+                  </div>
+                  <div class="draft-type-card" data-type="position">
+                    <span class="draft-type-icon">💡</span>
+                    <span class="draft-type-name">Position / Conceptual Paper</span>
+                    <span class="draft-type-desc">Argues a research direction or concept</span>
+                  </div>
+                  <div class="draft-type-card" data-type="dataset">
+                    <span class="draft-type-icon">🗄️</span>
+                    <span class="draft-type-name">Dataset Paper</span>
+                    <span class="draft-type-desc">Introduces a new dataset with creation &amp; uses</span>
+                  </div>
+                  <div class="draft-type-card" data-type="tool">
+                    <span class="draft-type-icon">🛠️</span>
+                    <span class="draft-type-name">Tool / System Paper</span>
+                    <span class="draft-type-desc">Presents a software tool or research system</span>
+                  </div>
+                </div>
+                <select id="draft-paper-type" style="display:none">
+                  <option value="implementation" selected>Original Research / Implementation</option>
+                  <option value="review">Review Paper</option>
+                  <option value="slr">Systematic Literature Review (SLR)</option>
+                  <option value="survey">Survey Paper</option>
+                  <option value="comparative">Comparative Study</option>
+                  <option value="experimental">Experimental Paper</option>
+                  <option value="methodology">Methodology / Framework</option>
+                  <option value="casestudy">Case Study</option>
+                  <option value="shortcomm">Short Communication</option>
+                  <option value="position">Position / Conceptual Paper</option>
+                  <option value="dataset">Dataset Paper</option>
+                  <option value="tool">Tool / System Paper</option>
+                </select>              </div>
 
               <div class="draft-field-row">
                 <div class="draft-field">

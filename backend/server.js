@@ -2786,73 +2786,173 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
     // Determine section structure based on paperType
     let sectionTemplates = [];
     switch (resolvedPaperType) {
+
+      // ── 1. Original Research / Implementation Paper ──────────────────────
+      case 'implementation':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Research problem, technical gap, core contributions, and paper organization.' },
+          { heading: isIEEE ? 'II. Related Work' : '2. Related Work', desc: 'State-of-the-art review positioning this work against existing approaches with citations.' },
+          { heading: isIEEE ? 'III. System Architecture and Methodology' : '3. System Architecture and Methodology', desc: 'Modular architecture, pipeline components, algorithmic formulations.' },
+          { heading: isIEEE ? 'IV. Implementation Details' : '4. Implementation Details', desc: 'Technical stack, configurations, execution parameters, operational mechanisms.' },
+          { heading: isIEEE ? 'V. Experimental Evaluation and Results' : '5. Experimental Evaluation and Results', desc: 'Benchmark datasets, baseline comparison, metrics, and detailed analysis referencing figures and tables.' },
+          { heading: isIEEE ? 'VI. Discussion and Threats to Validity' : '6. Discussion and Threats to Validity', desc: 'Ablation insights, computational overhead, internal/external validity.' },
+          { heading: isIEEE ? 'VII. Conclusion and Future Work' : '7. Conclusion and Future Work', desc: 'Summary of contributions, empirical validation summary, and future extensions.' }
+        ];
+        break;
+
+      // ── 2. Review Paper ──────────────────────────────────────────────────
       case 'review':
         sectionTemplates = [
           { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Background, problem significance, review scope, and central research questions.' },
-          { heading: isIEEE ? 'II. Review Protocol and Methodology' : '2. Review Methodology', desc: 'Search criteria (PRISMA guidelines), database queries, inclusion/exclusion standards, quality appraisal.' },
-          { heading: isIEEE ? 'III. Thematic Synthesis and Classification' : '3. Thematic Synthesis and Classification', desc: 'Taxonomy of analyzed literature, categorization of paradigms, chronological progression.' },
-          { heading: isIEEE ? 'IV. Cross-Study Evaluation and Findings' : '4. Cross-Study Evaluation and Findings', desc: 'Critical comparative assessment, empirical evidence synthesis, datasets and benchmark trends.' },
-          { heading: isIEEE ? 'V. Open Research Gaps and Challenges' : '5. Open Research Gaps and Challenges', desc: 'Unresolved technical hurdles, empirical contradictions, methodological limitations.' },
-          { heading: isIEEE ? 'VI. Future Research Agenda' : '6. Future Research Agenda', desc: 'High-impact prospective pathways, emerging paradigms, architectural recommendations.' },
+          { heading: isIEEE ? 'II. Review Methodology' : '2. Review Methodology', desc: 'Search strategy, databases queried, inclusion/exclusion criteria, quality assessment.' },
+          { heading: isIEEE ? 'III. Thematic Synthesis' : '3. Thematic Synthesis', desc: 'Taxonomy of analyzed literature, categorization of paradigms, and chronological progression.' },
+          { heading: isIEEE ? 'IV. Cross-Study Evaluation and Findings' : '4. Cross-Study Evaluation and Findings', desc: 'Critical comparative assessment, empirical evidence synthesis, dataset and benchmark trends.' },
+          { heading: isIEEE ? 'V. Research Gaps and Challenges' : '5. Research Gaps and Challenges', desc: 'Unresolved technical hurdles, empirical contradictions, and methodological limitations.' },
+          { heading: isIEEE ? 'VI. Future Research Agenda' : '6. Future Research Agenda', desc: 'High-impact prospective pathways, emerging paradigms, and architectural recommendations.' },
           { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Synthesis of key takeaways, overarching contributions, and closing remarks.' }
         ];
         break;
-      case 'survey':
+
+      // ── 3. Systematic Literature Review (SLR / PRISMA) ──────────────────
+      case 'slr':
         sectionTemplates = [
-          { heading: isIEEE ? 'I. Introduction and Scope' : '1. Introduction and Scope', desc: 'Motivation, definition of domain, boundaries of survey, primary contributions.' },
-          { heading: isIEEE ? 'II. Background and Conceptual Foundations' : '2. Background and Foundations', desc: 'Core principles, fundamental architectures, terminology, and problem space.' },
-          { heading: isIEEE ? 'III. Taxonomy and Classification of Paradigms' : '3. Taxonomy of Approaches', desc: 'Comprehensive hierarchical taxonomy grouping existing methodologies.' },
-          { heading: isIEEE ? 'IV. Comparative Analysis of State-of-the-Art' : '4. Comparative Analysis', desc: 'Feature matrix comparison, trade-offs, strengths and limitations across paradigms.' },
-          { heading: isIEEE ? 'V. Open Issues and Industry Adoption Barriers' : '5. Open Issues and Challenges', desc: 'Theoretical bottlenecks, deployment barriers, scalability challenges.' },
-          { heading: isIEEE ? 'VI. Future Directions' : '6. Future Directions', desc: 'Roadmap for future investigations and emerging trends.' },
-          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of survey findings and perspective.' }
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Rationale for the SLR, research questions (RQ1–RQn), expected contributions, and paper structure.' },
+          { heading: isIEEE ? 'II. Review Protocol' : '2. Review Protocol', desc: 'PRISMA-compliant protocol: databases (Scopus, WoS, IEEE Xplore, ACM DL), search strings, date range, and registration.' },
+          { heading: isIEEE ? 'III. Study Selection and Quality Appraisal' : '3. Study Selection and Quality Appraisal', desc: 'PRISMA flow diagram description: records identified, screened, eligible, included. Inclusion/exclusion criteria, quality checklist, inter-rater reliability (Cohen\'s κ).' },
+          { heading: isIEEE ? 'IV. Data Extraction and Synthesis' : '4. Data Extraction and Synthesis', desc: 'Extraction form fields, coding scheme, narrative and quantitative synthesis (where applicable), publication bias.' },
+          { heading: isIEEE ? 'V. Results' : '5. Results', desc: 'Answers to each RQ with evidence tables, year-distribution chart, domain distribution, method taxonomy, and key findings from included studies.' },
+          { heading: isIEEE ? 'VI. Discussion' : '6. Discussion', desc: 'Interpretation of findings, comparison with prior reviews, threats to validity (selection, reporting, publication bias).' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of SLR answers, implications for research and practice, limitations, and future work.' }
         ];
         break;
+
+      // ── 4. Survey Paper ──────────────────────────────────────────────────
+      case 'survey':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction and Scope' : '1. Introduction and Scope', desc: 'Motivation, definition of domain, survey boundaries, and primary contributions.' },
+          { heading: isIEEE ? 'II. Background and Conceptual Foundations' : '2. Background and Foundations', desc: 'Core principles, fundamental architectures, terminology, and problem space.' },
+          { heading: isIEEE ? 'III. Taxonomy and Classification' : '3. Taxonomy and Classification', desc: 'Comprehensive hierarchical taxonomy grouping existing methodologies and paradigms.' },
+          { heading: isIEEE ? 'IV. Comparative Analysis of State-of-the-Art' : '4. Comparative Analysis', desc: 'Feature matrix comparison, trade-offs, strengths and limitations across paradigms.' },
+          { heading: isIEEE ? 'V. Open Issues and Adoption Barriers' : '5. Open Issues and Challenges', desc: 'Theoretical bottlenecks, deployment barriers, scalability and reproducibility challenges.' },
+          { heading: isIEEE ? 'VI. Future Directions' : '6. Future Directions', desc: 'Roadmap for future investigations and emerging trends.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of survey findings and overarching perspective.' }
+        ];
+        break;
+
+      // ── 5. Comparative Study ─────────────────────────────────────────────
       case 'comparative':
         sectionTemplates = [
-          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Motivation for comparative evaluation, research questions, summary of findings.' },
-          { heading: isIEEE ? 'II. Baseline Methods and Theoretical Background' : '2. Baseline Methods and Background', desc: 'Detailed description of compared algorithms/models, underlying assumptions.' },
-          { heading: isIEEE ? 'III. Experimental Setup and Benchmark Protocols' : '3. Benchmark Protocols and Datasets', desc: 'Datasets, preprocessing, hardware environment, evaluation metrics.' },
-          { heading: isIEEE ? 'IV. Empirical Results and Performance Benchmarks' : '4. Empirical Results and Benchmarks', desc: 'Comparative quantitative results referencing Table I and Fig. 1.' },
-          { heading: isIEEE ? 'V. Statistical Significance and Critical Discussion' : '5. Discussion and Significance', desc: 'Statistical testing, trade-offs, computational overhead, sensitivity analysis.' },
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Motivation for comparative evaluation, research questions, and summary of findings.' },
+          { heading: isIEEE ? 'II. Baseline Methods and Background' : '2. Baseline Methods and Background', desc: 'Detailed description of compared algorithms/models, underlying assumptions, and prior benchmarks.' },
+          { heading: isIEEE ? 'III. Benchmark Protocols and Datasets' : '3. Benchmark Protocols and Datasets', desc: 'Datasets, preprocessing, hardware environment, and evaluation metrics.' },
+          { heading: isIEEE ? 'IV. Empirical Results and Benchmarks' : '4. Empirical Results and Benchmarks', desc: 'Comparative quantitative results referencing tables and figures with exact metric values.' },
+          { heading: isIEEE ? 'V. Discussion and Statistical Significance' : '5. Discussion and Significance', desc: 'Statistical testing (Wilcoxon/t-test), trade-offs, computational overhead, and sensitivity analysis.' },
           { heading: isIEEE ? 'VI. Threats to Validity' : '6. Threats to Validity', desc: 'Internal, external, construct, and conclusion validity considerations.' },
           { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of empirical outcomes and recommendations for practitioners.' }
         ];
         break;
+
+      // ── 6. Experimental Paper ────────────────────────────────────────────
+      case 'experimental':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Research hypotheses (H1–Hn), motivation, experimental objectives, and paper organization.' },
+          { heading: isIEEE ? 'II. Background and Hypotheses' : '2. Background and Hypotheses', desc: 'Theoretical background supporting the hypotheses, prior experimental evidence, and gaps being addressed.' },
+          { heading: isIEEE ? 'III. Experimental Design' : '3. Experimental Design', desc: 'Controlled variables, treatments, subjects/datasets, hardware/software setup, and measurement instruments.' },
+          { heading: isIEEE ? 'IV. Results' : '4. Results', desc: 'Quantitative results for each hypothesis, statistical significance (p-values, confidence intervals), and figures.' },
+          { heading: isIEEE ? 'V. Analysis and Discussion' : '5. Analysis and Discussion', desc: 'Interpretation of results, hypothesis confirmation/rejection, unexpected observations, effect size.' },
+          { heading: isIEEE ? 'VI. Threats to Validity and Limitations' : '6. Threats to Validity', desc: 'Confounding variables, generalizability limits, measurement error, and replication notes.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Empirical contributions, hypothesis summary, and future experimental directions.' }
+        ];
+        break;
+
+      // ── 7. Methodology / Framework Paper ─────────────────────────────────
       case 'methodology':
         sectionTemplates = [
-          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Problem definition, limitations of existing methodologies, proposed contribution.' },
-          { heading: isIEEE ? 'II. Theoretical Formulation' : '2. Theoretical Formulation', desc: 'Mathematical modeling, formal problem statement, conceptual foundation.' },
-          { heading: isIEEE ? 'III. Proposed Framework and Algorithmic Design' : '3. Proposed Framework', desc: 'Step-by-step algorithmic pipeline, architecture, mathematical formulations.' },
-          { heading: isIEEE ? 'IV. Analytical Validation and Complexity Analysis' : '4. Analytical Validation', desc: 'Computational complexity (Big-O), convergence guarantees, theoretical soundness.' },
-          { heading: isIEEE ? 'V. Empirical Proof of Concept' : '5. Empirical Proof of Concept', desc: 'Prototype validation, preliminary benchmark results referencing figures and tables.' },
-          { heading: isIEEE ? 'VI. Discussion' : '6. Discussion', desc: 'Applicability boundaries, comparison with existing paradigms, assumptions.' },
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Problem definition, limitations of existing methodologies, and proposed contribution.' },
+          { heading: isIEEE ? 'II. Theoretical Formulation' : '2. Theoretical Formulation', desc: 'Mathematical modeling, formal problem statement, and conceptual foundation.' },
+          { heading: isIEEE ? 'III. Proposed Framework and Algorithmic Design' : '3. Proposed Framework', desc: 'Step-by-step algorithmic pipeline, architecture, and mathematical formulations.' },
+          { heading: isIEEE ? 'IV. Analytical Validation and Complexity Analysis' : '4. Analytical Validation', desc: 'Computational complexity (Big-O), convergence guarantees, and theoretical soundness.' },
+          { heading: isIEEE ? 'V. Empirical Proof of Concept' : '5. Empirical Proof of Concept', desc: 'Prototype validation and preliminary benchmark results referencing figures and tables.' },
+          { heading: isIEEE ? 'VI. Discussion' : '6. Discussion', desc: 'Applicability boundaries, comparison with existing paradigms, and assumptions.' },
           { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Contributions, framework implications, and next steps.' }
         ];
         break;
+
+      // ── 8. Case Study Paper ──────────────────────────────────────────────
       case 'casestudy':
         sectionTemplates = [
-          { heading: isIEEE ? 'I. Introduction and Domain Context' : '1. Introduction and Domain Context', desc: 'Real-world problem context, operational setting, research objectives.' },
-          { heading: isIEEE ? 'II. Case Environment and Background' : '2. Case Environment and Background', desc: 'Domain architecture, operational constraints, organizational or system landscape.' },
-          { heading: isIEEE ? 'III. System Implementation and Deployment' : '3. System Implementation', desc: 'Deployment pipeline, integration, data collection, workflow execution.' },
-          { heading: isIEEE ? 'IV. Empirical Observations and Outcomes' : '4. Observations and Outcomes', desc: 'Operational metrics, efficiency gains, quantitative outcomes with tables and figures.' },
-          { heading: isIEEE ? 'V. Practical Lessons Learned and Guidelines' : '5. Lessons Learned', desc: 'Actionable guidelines, unexpected edge cases, engineering recommendations.' },
-          { heading: isIEEE ? 'VI. Limitations and Challenges' : '6. Limitations', desc: 'Generalizability boundaries, domain-specific dependencies.' },
+          { heading: isIEEE ? 'I. Introduction and Domain Context' : '1. Introduction and Domain Context', desc: 'Real-world problem context, operational setting, and research objectives.' },
+          { heading: isIEEE ? 'II. Case Environment and Background' : '2. Case Environment and Background', desc: 'Domain architecture, operational constraints, and organizational or system landscape.' },
+          { heading: isIEEE ? 'III. System Implementation and Deployment' : '3. System Implementation', desc: 'Deployment pipeline, integration, data collection, and workflow execution.' },
+          { heading: isIEEE ? 'IV. Empirical Observations and Outcomes' : '4. Observations and Outcomes', desc: 'Operational metrics, efficiency gains, and quantitative outcomes with tables and figures.' },
+          { heading: isIEEE ? 'V. Practical Lessons Learned' : '5. Lessons Learned', desc: 'Actionable guidelines, unexpected edge cases, and engineering recommendations.' },
+          { heading: isIEEE ? 'VI. Limitations and Challenges' : '6. Limitations', desc: 'Generalizability boundaries and domain-specific dependencies.' },
           { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Key takeaways and broader industry/academic impact.' }
         ];
         break;
-      default: // 'implementation'
+
+      // ── 9. Short Communication / Brief Report ────────────────────────────
+      case 'shortcomm':
         sectionTemplates = [
-          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Research problem, technical gap, core contributions, paper organization.' },
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Concise statement of the problem, significance of the finding, and contribution in 2–3 paragraphs.' },
+          { heading: isIEEE ? 'II. Background' : '2. Background', desc: 'Minimal but necessary prior work to contextualize the contribution; only directly relevant citations.' },
+          { heading: isIEEE ? 'III. Method' : '3. Method', desc: 'Precise description of the technique, experiment, or approach — sufficient for replication.' },
+          { heading: isIEEE ? 'IV. Results and Discussion' : '4. Results and Discussion', desc: 'Key quantitative findings, figures, and immediate interpretation — combined section for brevity.' },
+          { heading: isIEEE ? 'V. Conclusion' : '5. Conclusion', desc: 'One-paragraph conclusion summarizing the finding and its implications.' }
+        ];
+        break;
+
+      // ── 10. Position / Conceptual Paper ─────────────────────────────────
+      case 'position':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Statement of the position/argument, why it matters now, and outline of the paper.' },
+          { heading: isIEEE ? 'II. Motivation and Problem Statement' : '2. Motivation and Problem', desc: 'Evidence and observations motivating the position; current limitations and missed opportunities.' },
+          { heading: isIEEE ? 'III. The Proposed Position' : '3. The Proposed Position', desc: 'Core argument articulated clearly with supporting rationale, analogies, and conceptual models.' },
+          { heading: isIEEE ? 'IV. Comparison with Opposing Views' : '4. Comparison with Opposing Views', desc: 'Fair consideration of counter-arguments; why the proposed position is stronger or more generalizable.' },
+          { heading: isIEEE ? 'V. Implications and Research Agenda' : '5. Implications and Research Agenda', desc: 'Concrete actionable implications for researchers, practitioners, and policy-makers; open problems.' },
+          { heading: isIEEE ? 'VI. Conclusion' : '6. Conclusion', desc: 'Restatement of the position, its significance, and a call to action for the community.' }
+        ];
+        break;
+
+      // ── 11. Dataset Paper ────────────────────────────────────────────────
+      case 'dataset':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Motivation for the dataset, existing gaps in available data, and high-level dataset contributions.' },
+          { heading: isIEEE ? 'II. Related Datasets and Benchmarks' : '2. Related Datasets', desc: 'Survey of existing datasets in the domain; feature comparison table showing why a new dataset is needed.' },
+          { heading: isIEEE ? 'III. Dataset Construction' : '3. Dataset Construction', desc: 'Data collection methodology, source selection, annotation pipeline, annotator instructions, inter-annotator agreement (Fleiss\' κ or Cohen\'s κ).' },
+          { heading: isIEEE ? 'IV. Dataset Statistics and Analysis' : '4. Dataset Statistics', desc: 'Size, splits (train/val/test), class distribution, vocabulary, label distribution; figures and tables showing key statistics.' },
+          { heading: isIEEE ? 'V. Baseline Experiments' : '5. Baseline Experiments', desc: 'Standard baseline models trained and evaluated on the dataset to establish performance benchmarks.' },
+          { heading: isIEEE ? 'VI. Use Cases and Limitations' : '6. Use Cases and Limitations', desc: 'Intended use cases, potential misuse concerns, limitations, and ethical considerations.' },
+          { heading: isIEEE ? 'VII. Conclusion' : '7. Conclusion', desc: 'Summary of dataset contributions, availability, licensing, and future expansion plans.' }
+        ];
+        break;
+
+      // ── 12. Tool / System Paper ──────────────────────────────────────────
+      case 'tool':
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'The problem the tool addresses, target users, and key capabilities.' },
+          { heading: isIEEE ? 'II. Background and Motivation' : '2. Background and Motivation', desc: 'Existing tools and their limitations; why a new tool is necessary.' },
+          { heading: isIEEE ? 'III. System Design and Architecture' : '3. System Design', desc: 'Overall system architecture, component interactions, design decisions, and technical stack.' },
+          { heading: isIEEE ? 'IV. Implementation' : '4. Implementation', desc: 'Key implementation details, algorithms, APIs, data formats, and integration points.' },
+          { heading: isIEEE ? 'V. Evaluation' : '5. Evaluation', desc: 'Usability study, performance benchmarks, comparison with existing tools; quantitative metrics and user feedback.' },
+          { heading: isIEEE ? 'VI. Use Cases and Demonstration' : '6. Use Cases', desc: 'Concrete walkthroughs showing the tool in action on representative scenarios; screenshots and example outputs.' },
+          { heading: isIEEE ? 'VII. Conclusion and Availability' : '7. Conclusion', desc: 'Summary of contributions, tool availability (GitHub/DOI/URL), license, and roadmap.' }
+        ];
+        break;
+
+      default: // fallback to implementation
+        sectionTemplates = [
+          { heading: isIEEE ? 'I. Introduction' : '1. Introduction', desc: 'Research problem, technical gap, core contributions, and paper organization.' },
           { heading: isIEEE ? 'II. Related Work' : '2. Related Work', desc: 'State-of-the-art review positioning this work against existing approaches with citations.' },
-          { heading: isIEEE ? 'III. System Architecture and Methodology' : '3. System Architecture and Methodology', desc: 'Modular architecture, pipeline components, algorithmic formulations.' },
-          { heading: isIEEE ? 'IV. Implementation Details' : '4. Implementation Details', desc: 'Technical stack, configurations, execution parameters, operational mechanisms.' },
-          { heading: isIEEE ? 'V. Experimental Evaluation and Results' : '5. Experimental Evaluation and Results', desc: 'Benchmark datasets, baseline comparison, metrics, detailed analysis referencing Fig. 1 and Table I.' },
-          { heading: isIEEE ? 'VI. Discussion and Threats to Validity' : '6. Discussion and Threats to Validity', desc: 'Ablation insights, computational overhead, internal/external validity.' },
-          { heading: isIEEE ? 'VII. Conclusion and Future Work' : '7. Conclusion and Future Work', desc: 'Summary of contributions, empirical validation summary, future extensions.' }
+          { heading: isIEEE ? 'III. System Architecture and Methodology' : '3. System Architecture and Methodology', desc: 'Modular architecture, pipeline components, and algorithmic formulations.' },
+          { heading: isIEEE ? 'IV. Implementation Details' : '4. Implementation Details', desc: 'Technical stack, configurations, execution parameters, and operational mechanisms.' },
+          { heading: isIEEE ? 'V. Experimental Evaluation and Results' : '5. Experimental Evaluation and Results', desc: 'Benchmark datasets, baseline comparison, metrics, and detailed analysis referencing figures and tables.' },
+          { heading: isIEEE ? 'VI. Discussion and Threats to Validity' : '6. Discussion and Threats to Validity', desc: 'Ablation insights, computational overhead, and internal/external validity.' },
+          { heading: isIEEE ? 'VII. Conclusion and Future Work' : '7. Conclusion and Future Work', desc: 'Summary of contributions, empirical validation summary, and future extensions.' }
         ];
         break;
     }
+
 
     // Build data context for AI
     let dataContext = '';
