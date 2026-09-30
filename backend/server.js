@@ -790,8 +790,8 @@ async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi
     "personal": {
       "research_gap": "Specific open challenge, theoretical gap, or empirical gap this work leaves open for future research (1-2 sentences).",
       "missing_component": "A critical technical component, verification mechanism, or benchmark missing from this work (1 sentence).",
-      "relevance_to_my_research": "Critical, objective 2-sentence assessment of whether this paper genuinely relates to '${researchTopic || 'the target research field'}'. If from a different discipline (e.g. biology, medicine, genomics vs computer science formal methods), state clearly that it is NOT directly relevant.",
-      "relevance_score": 0,
+      "relevance_to_my_research": "PLACEHOLDER - will be overwritten by dedicated scorer",
+      "relevance_score": -1,
       "personal_notes": "Critical analytical takeaway, method summary, or review note on this paper's core premise."
     },
     "research_gaps": [
@@ -827,6 +827,54 @@ async function analyzePaperMetadataWithGemini({ title, authors, venue, year, doi
     }
     const parsed = JSON.parse(text);
     parsed._s2Metadata = s2Metadata;
+
+    // ── Dedicated strict relevance scoring pass (same rubric as recalculate-relevance) ──
+    // Run this as a SEPARATE focused call so the score is not diluted by multi-field generation.
+    try {
+      const s2TldrPart = s2Metadata?.tldr ? `\nSEMANTIC SCHOLAR VERIFIED TLDR: "${s2Metadata.tldr}"` : '';
+      const s2FosPart = s2Metadata?.fieldsOfStudy?.length ? `\nVERIFIED ACADEMIC FIELDS: [${s2Metadata.fieldsOfStudy.join(', ')}]` : '';
+      const relevancePrompt = `You are an objective senior academic evaluator for PhD scholars.
+Evaluate the direct relevance of this paper to the researcher's topic with strict scientific calibration.
+
+RESEARCHER TOPIC: "${researchTopic || 'General Computer Science, Systems & AI'}"
+
+PAPER TITLE: "${title || 'Unknown'}"
+VENUE: "${venue || 'N/A'}" (${year || ''})
+AUTHORS: ${authors || 'Unknown'}${s2TldrPart}${s2FosPart}
+ABSTRACT / SUMMARY: ${abstract || 'No abstract available.'}
+
+CRITICAL SCORING RUBRIC (Zero tolerance for confirmation bias or artificial inflation):
+- 0 to 15 (IRRELEVANT): Different discipline, domain, or application space. Superficial word matches like 'data', 'security', or 'policy' do NOT qualify.
+- 16 to 40 (TANGENTIAL): Distantly related context or generic cross-cutting theme, but core techniques and research questions do not overlap.
+- 41 to 70 (MODERATE): Meaningful methodological, theoretical, or application overlap that can serve as background or adjacent context.
+- 71 to 100 (DIRECT): Directly investigates the core research questions, models, datasets, or formal frameworks of the topic.
+
+Return ONLY a valid JSON object (no markdown, no code fences):
+{
+  "relevance_score": <INTEGER between 0 and 100>,
+  "relevance_tier": "IRRELEVANT" | "TANGENTIAL" | "MODERATE" | "DIRECT",
+  "relevance_to_my_research": "Objective 2-3 sentence assessment of why this paper is or is not relevant. If completely unrelated, explicitly state the domain mismatch."
+}`;
+      const relResult = await callGeminiWithRetry(genAI, relevancePrompt);
+      let relText = relResult.response.text();
+      const rStart = relText.indexOf('{');
+      const rEnd = relText.lastIndexOf('}');
+      if (rStart !== -1 && rEnd !== -1) relText = relText.slice(rStart, rEnd + 1);
+      const relParsed = JSON.parse(relText);
+      const strictScore = Math.max(0, Math.min(100, parseInt(relParsed.relevance_score) || 0));
+      if (!parsed.personal) parsed.personal = {};
+      parsed.personal.relevance_score = strictScore;
+      parsed.personal.relevance_to_my_research = relParsed.relevance_to_my_research || parsed.personal.relevance_to_my_research || '';
+      parsed.personal.relevance_tier = relParsed.relevance_tier || (strictScore >= 71 ? 'DIRECT' : strictScore >= 41 ? 'MODERATE' : strictScore >= 16 ? 'TANGENTIAL' : 'IRRELEVANT');
+      console.log(`[AI Analysis] Strict relevance score for "${title}": ${strictScore} (${parsed.personal.relevance_tier})`);
+    } catch (relErr) {
+      console.warn('[AI Analysis] Dedicated relevance scorer failed, using synthesis estimate:', relErr.message);
+      // Keep whatever the first pass returned, or default to null so it can be recalculated later
+      if (parsed.personal && (parsed.personal.relevance_score === -1 || parsed.personal.relevance_score === undefined)) {
+        parsed.personal.relevance_score = null;
+      }
+    }
+
     return parsed;
   } catch (err) {
     console.error('[AI Analysis] Gemini synthesis error:', err.message);
@@ -2202,7 +2250,7 @@ app.post('/api/discover/import', checkSupabase, authenticateUser, async (req, re
       contribution: aiSynthesis?.contribution || (paperAbstract ? paperAbstract.substring(0, 500) : (paper.title || null)),
       limitations: aiSynthesis?.limitations || [],
       relevance: aiSynthesis?.personal?.relevance_to_my_research || null,
-      relevance_score: (typeof aiSynthesis?.personal?.relevance_score === 'number') ? aiSynthesis.personal.relevance_score : 50,
+      relevance_score: (typeof aiSynthesis?.personal?.relevance_score === 'number' && aiSynthesis.personal.relevance_score !== null) ? aiSynthesis.personal.relevance_score : null,
       is_read: false,
       publisher: paper.publisher || null,
       scopus_indexed: isScopus,
