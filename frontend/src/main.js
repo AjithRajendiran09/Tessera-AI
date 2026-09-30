@@ -4067,13 +4067,19 @@ window.closeModal = closeModal;
                           section.heading.toLowerCase().includes('experiment') ||
                           sIdx === Math.min(2, (draft.sections || []).length - 1);
 
-        if (isEvalSec && !chartsPlaced && chartData.length > 0) {
+        // Place charts assigned to this section (by sectionIndex) OR fallback to first eval section
+        const sectionCharts = chartData.filter(c =>
+          c.sectionIndex === sIdx ||
+          (c.sectionIndex === undefined && isEvalSec && !chartsPlaced)
+        );
+        if (sectionCharts.length > 0) {
           chartsPlaced = true;
-          chartData.forEach((chart, cIdx) => {
+          sectionCharts.forEach((chart, cIdx) => {
+            const globalCIdx = chartData.indexOf(chart);
             html += `
-              <figure class="draft-ieee-figure" id="draft-chart-preview-${cIdx}">
+              <figure class="draft-ieee-figure" id="draft-chart-preview-${globalCIdx}">
                 <div class="draft-ieee-canvas-wrap">
-                  <canvas id="draft-chart-preview-canvas-${cIdx}" width="650" height="360"></canvas>
+                  <canvas id="draft-chart-preview-canvas-${globalCIdx}" width="650" height="360"></canvas>
                 </div>
                 <figcaption class="draft-ieee-fig-caption"><em>Fig. ${chart.figureNumber}.</em> ${chart.title}</figcaption>
               </figure>
@@ -4170,11 +4176,18 @@ window.closeModal = closeModal;
           </div>
         `;
 
-        if (section.heading.toLowerCase().includes('result') || section.heading.toLowerCase().includes('evaluation')) {
-          chartData.forEach((chart, cIdx) => {
+        // Place charts for this section by sectionIndex, fallback to result/eval sections
+        const isEvalSec2 = section.heading.toLowerCase().includes('result') || section.heading.toLowerCase().includes('evaluation');
+        const sectionCharts2 = chartData.filter(c =>
+          c.sectionIndex === sIdx ||
+          (c.sectionIndex === undefined && isEvalSec2)
+        );
+        if (sectionCharts2.length > 0) {
+          sectionCharts2.forEach((chart, cIdx) => {
+            const globalCIdx = chartData.indexOf(chart);
             html += `
-              <div class="draft-chart-container" id="draft-chart-preview-${cIdx}">
-                <canvas id="draft-chart-preview-canvas-${cIdx}" width="700" height="350"></canvas>
+              <div class="draft-chart-container" id="draft-chart-preview-${globalCIdx}">
+                <canvas id="draft-chart-preview-canvas-${globalCIdx}" width="700" height="350"></canvas>
                 <p class="chart-caption">Figure ${chart.figureNumber}: ${chart.title}</p>
               </div>
             `;
@@ -5690,19 +5703,23 @@ window.closeModal = closeModal;
 
   function renderChartToImage(chart) {
     return new Promise((resolve) => {
-      const canvas = $('draft-chart-canvas');
-      if (!canvas) return resolve(null);
+      // Create a fresh isolated canvas for each chart to avoid shared canvas race conditions
+      let canvas;
+      let needsRemove = false;
+      try {
+        // OffscreenCanvas is available in most modern browsers and doesn't touch the DOM
+        canvas = new OffscreenCanvas(800, 400);
+      } catch (e) {
+        // Fallback: create a detached canvas element
+        canvas = document.createElement('canvas');
+        canvas.width = 800;
+        canvas.height = 400;
+        needsRemove = false; // detached, no need to add to DOM
+      }
 
-      // Ensure clean canvas
-      canvas.width = 800;
-      canvas.height = 400;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, 800, 400);
-
-      // Destroy any previous chart on this canvas
-      const existingChart = Chart.getChart(canvas);
-      if (existingChart) existingChart.destroy();
 
       const chartInstance = new Chart(ctx, {
         type: chart.type === 'pie' ? 'pie' : chart.type === 'line' ? 'line' : 'bar',
@@ -5727,16 +5744,26 @@ window.closeModal = closeModal;
       });
 
       // Wait for chart to render then export
-      setTimeout(() => {
+      setTimeout(async () => {
         try {
-          const dataUrl = canvas.toDataURL('image/png');
+          let dataUrl;
+          if (canvas instanceof OffscreenCanvas) {
+            const blob = await canvas.convertToBlob({ type: 'image/png' });
+            dataUrl = await new Promise((res) => {
+              const reader = new FileReader();
+              reader.onloadend = () => res(reader.result);
+              reader.readAsDataURL(blob);
+            });
+          } else {
+            dataUrl = canvas.toDataURL('image/png');
+          }
           chartInstance.destroy();
           resolve(dataUrl);
         } catch (e) {
           chartInstance.destroy();
           resolve(null);
         }
-      }, 300);
+      }, 350);
     });
   }
 

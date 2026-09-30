@@ -3084,13 +3084,34 @@ ${sectionsJsonSchema}
       });
     }
 
-    // Fallback: If no explicit charts configured, auto-synthesize from data
+    // Fallback: If no explicit charts configured, auto-synthesize multiple meaningful charts from data
     if (chartData.length === 0 && data && data.length > 0) {
+      const PALETTE = [
+        ['rgba(59,130,246,0.75)', 'rgba(37,99,235,1)'],
+        ['rgba(16,185,129,0.75)', 'rgba(5,150,105,1)'],
+        ['rgba(239,68,68,0.75)', 'rgba(185,28,28,1)'],
+        ['rgba(245,158,11,0.75)', 'rgba(180,83,9,1)'],
+        ['rgba(139,92,246,0.75)', 'rgba(109,40,217,1)'],
+        ['rgba(20,184,166,0.75)', 'rgba(13,148,136,1)']
+      ];
+      let figNum = 1;
+      // Map section headings to indices for placement hints
+      const evalSectionIdx = sectionTemplates.findIndex(s =>
+        /result|evaluation|experiment|empirical|comparative|benchmark/i.test(s.heading)
+      );
+      const introIdx = 0;
+      const methodIdx = sectionTemplates.findIndex(s => /method|approach|framework|system/i.test(s.heading));
+
       for (const sheet of data) {
         if (!sheet.rows || sheet.rows.length === 0) continue;
         const yearCol = sheet.columns.find(c => /year|pub.*year|date/i.test(c));
-        const catCol = sheet.columns.find(c => /domain|category|topic|venue|journal|type/i.test(c));
+        const catCol = sheet.columns.find(c => /domain|category|topic|venue|journal|type|method|approach/i.test(c));
+        const numCols = sheet.columns.filter(c =>
+          !/(year|date|title|name|author|url|link|doi|id|ref)/i.test(c) &&
+          sheet.rows.slice(0, 10).some(r => !isNaN(parseFloat(r[c])) && parseFloat(r[c]) > 0)
+        ).slice(0, 3);
 
+        // Chart 1: Publications by Year (bar)
         if (yearCol) {
           const counts = {};
           sheet.rows.forEach(r => {
@@ -3100,74 +3121,120 @@ ${sectionsJsonSchema}
           const labels = Object.keys(counts).sort((a, b) => Number(a) - Number(b));
           if (labels.length > 1) {
             chartData.push({
-              figureNumber: 1,
+              figureNumber: figNum,
+              sectionIndex: introIdx,
               title: 'Distribution of Selected Publications by Year',
               description: 'Chronological progression of publications analyzed in the study.',
               type: 'bar',
               data: {
                 labels,
-                datasets: [{
-                  label: 'Publication Count',
-                  data: labels.map(l => counts[l]),
-                  backgroundColor: 'rgba(59, 130, 246, 0.75)',
-                  borderColor: 'rgba(37, 99, 235, 1)',
-                  borderWidth: 1.5
-                }]
+                datasets: [{ label: 'Publication Count', data: labels.map(l => counts[l]), backgroundColor: PALETTE[0][0], borderColor: PALETTE[0][1], borderWidth: 1.5 }]
               },
               options: {
                 responsive: true,
-                plugins: {
-                  title: { display: true, text: 'Distribution of Publications by Year', color: '#111111' },
-                  legend: { display: false }
-                },
+                plugins: { title: { display: true, text: 'Publications by Year', color: '#111111' }, legend: { display: false } },
                 scales: {
                   y: { beginAtZero: true, ticks: { precision: 0, color: '#333333' }, title: { display: true, text: 'Number of Papers', color: '#333333' } },
                   x: { ticks: { color: '#333333' }, title: { display: true, text: 'Year', color: '#333333' } }
                 }
               }
             });
-            break;
+            figNum++;
           }
         }
 
-        if (chartData.length === 0 && catCol) {
+        // Chart 2: Distribution by Category/Venue (bar or pie if ≤6 categories)
+        if (catCol) {
           const counts = {};
-          sheet.rows.forEach(r => {
-            const val = String(r[catCol] ?? '').trim();
-            if (val) counts[val] = (counts[val] || 0) + 1;
-          });
-          const labels = Object.keys(counts).slice(0, 8);
+          sheet.rows.forEach(r => { const v = String(r[catCol] ?? '').trim(); if (v) counts[v] = (counts[v] || 0) + 1; });
+          const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 10);
           if (labels.length > 1) {
+            const isPie = labels.length <= 6;
             chartData.push({
-              figureNumber: 1,
-              title: `Distribution of Corpus by ${catCol}`,
-              description: `Classification of corpus based on ${catCol}.`,
-              type: 'bar',
+              figureNumber: figNum,
+              sectionIndex: evalSectionIdx >= 0 ? evalSectionIdx : introIdx,
+              title: `Distribution of Studies by ${catCol}`,
+              description: `Categorical breakdown of corpus by ${catCol}.`,
+              type: isPie ? 'pie' : 'bar',
               data: {
                 labels,
                 datasets: [{
                   label: 'Count',
                   data: labels.map(l => counts[l]),
-                  backgroundColor: 'rgba(16, 185, 129, 0.75)',
-                  borderColor: 'rgba(5, 150, 105, 1)',
+                  backgroundColor: isPie
+                    ? PALETTE.map(p => p[0]).slice(0, labels.length)
+                    : PALETTE[1][0],
+                  borderColor: isPie
+                    ? PALETTE.map(p => p[1]).slice(0, labels.length)
+                    : PALETTE[1][1],
                   borderWidth: 1.5
                 }]
               },
               options: {
                 responsive: true,
-                plugins: {
-                  title: { display: true, text: `Distribution by ${catCol}`, color: '#111111' },
-                  legend: { display: false }
-                },
-                scales: {
+                plugins: { title: { display: true, text: `Distribution by ${catCol}`, color: '#111111' }, legend: { display: isPie } },
+                scales: isPie ? undefined : {
                   y: { beginAtZero: true, ticks: { precision: 0, color: '#333333' }, title: { display: true, text: 'Count', color: '#333333' } },
-                  x: { ticks: { color: '#333333' } }
+                  x: { ticks: { color: '#333333', maxRotation: 30 } }
                 }
               }
             });
-            break;
+            figNum++;
           }
         }
+
+        // Chart 3+: Numeric metric distributions (one chart per numeric column, up to 3)
+        for (let nIdx = 0; nIdx < numCols.length; nIdx++) {
+          const nCol = numCols[nIdx];
+          const vals = sheet.rows.map(r => parseFloat(r[nCol])).filter(v => !isNaN(v));
+          if (vals.length < 3) continue;
+
+          // Group by year if yearCol exists, else just show top-N values
+          let labels, dataVals;
+          if (yearCol) {
+            const grouped = {};
+            sheet.rows.forEach(r => {
+              const y = String(r[yearCol] ?? '').trim();
+              const v = parseFloat(r[nCol]);
+              if (y && /^\d{4}$/.test(y) && !isNaN(v)) {
+                if (!grouped[y]) grouped[y] = { sum: 0, cnt: 0 };
+                grouped[y].sum += v; grouped[y].cnt++;
+              }
+            });
+            labels = Object.keys(grouped).sort((a, b) => Number(a) - Number(b));
+            dataVals = labels.map(l => Math.round((grouped[l].sum / grouped[l].cnt) * 100) / 100);
+          } else {
+            const sorted = [...vals].sort((a, b) => b - a).slice(0, 12);
+            labels = sorted.map((_, i) => `Entry ${i + 1}`);
+            dataVals = sorted;
+          }
+
+          if (labels.length > 1) {
+            const pal = PALETTE[(nIdx + 2) % PALETTE.length];
+            chartData.push({
+              figureNumber: figNum,
+              sectionIndex: evalSectionIdx >= 0 ? evalSectionIdx : (methodIdx >= 0 ? methodIdx : introIdx),
+              title: `${nCol} ${yearCol ? 'by Year' : 'Distribution'}`,
+              description: `Analysis of ${nCol} across the study corpus.`,
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{ label: nCol, data: dataVals, backgroundColor: pal[0], borderColor: pal[1], borderWidth: 2, tension: 0.3, fill: true }]
+              },
+              options: {
+                responsive: true,
+                plugins: { title: { display: true, text: `${nCol} ${yearCol ? 'by Year' : 'Distribution'}`, color: '#111111' }, legend: { display: false } },
+                scales: {
+                  y: { beginAtZero: true, ticks: { color: '#333333' }, title: { display: true, text: nCol, color: '#333333' } },
+                  x: { ticks: { color: '#333333' }, title: { display: true, text: yearCol ? 'Year' : 'Entry', color: '#333333' } }
+                }
+              }
+            });
+            figNum++;
+          }
+        }
+
+        break; // Use first non-empty sheet
       }
     }
 
