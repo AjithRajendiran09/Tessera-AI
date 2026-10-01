@@ -4084,7 +4084,7 @@ window.closeModal = closeModal;
 
       (draft.sections || []).forEach((section, sIdx) => {
         const romanNum = toRoman(sIdx + 1).toUpperCase();
-        let headingText = section.heading.trim();
+        let headingText = (section.heading || section.title || `Section ${sIdx + 1}`).trim();
         if (!headingText.match(/^[IVXLCDM]+\./i)) {
           headingText = `${romanNum}. ${headingText.toUpperCase()}`;
         } else {
@@ -4728,8 +4728,14 @@ window.closeModal = closeModal;
     }
     const pdfBtn = $('draft-download-btn');
     const docxBtn = $('draft-download-docx-btn');
-    if (pdfBtn) pdfBtn.style.display = (outputFormat === 'pdf' || outputFormat === 'both') ? '' : 'none';
-    if (docxBtn) docxBtn.style.display = (outputFormat === 'docx' || outputFormat === 'both') ? '' : 'none';
+    if (pdfBtn) {
+      pdfBtn.style.display = '';
+      pdfBtn.className = (outputFormat === 'pdf' || outputFormat === 'both') ? 'btn btn-primary btn-lg' : 'btn btn-ghost btn-lg';
+    }
+    if (docxBtn) {
+      docxBtn.style.display = '';
+      docxBtn.className = (outputFormat === 'docx' || outputFormat === 'both') ? 'btn btn-primary btn-lg' : 'btn btn-ghost btn-lg';
+    }
   }
 
   async function generateAndDownloadDOCX() {
@@ -4943,10 +4949,13 @@ window.closeModal = closeModal;
       const isIEEE = citationStyle === 'IEEE';
       const renderedChartIdsDocx = new Set();
       (draft.sections || []).forEach((sec, idx) => {
-        // Section Heading
+        // Section Heading (safely handle both heading and title properties)
+        const rawHeading = (sec.heading || sec.title || `Section ${idx + 1}`).trim();
+        const cleanHeading = rawHeading.replace(/^(?:[IVXLCDM]+\.|\d+\.|\d+\.\d+)\s*/i, '').trim() || rawHeading;
         const headingText = isIEEE
-          ? `${toRoman(idx + 1)}. ${sec.title.toUpperCase()}`
-          : `${idx + 1}. ${sec.title}`;
+          ? `${toRoman(idx + 1)}. ${cleanHeading.toUpperCase()}`
+          : `${idx + 1}. ${cleanHeading}`;
+        const secTextLower = rawHeading.toLowerCase();
 
         bodyChildren.push(
           new Paragraph({
@@ -4989,7 +4998,8 @@ window.closeModal = closeModal;
         if (sec.subsections && Array.isArray(sec.subsections)) {
           sec.subsections.forEach((sub, subIdx) => {
             const letter = String.fromCharCode(65 + subIdx);
-            const subTitle = isIEEE ? `${letter}. ${sub.title}` : `${idx + 1}.${subIdx + 1} ${sub.title}`;
+            const subRaw = (sub.title || sub.heading || `Subsection ${subIdx + 1}`).trim();
+            const subTitle = isIEEE ? `${letter}. ${subRaw}` : `${idx + 1}.${subIdx + 1} ${subRaw}`;
             bodyChildren.push(
               new Paragraph({
                 alignment: AlignmentType.LEFT,
@@ -5032,13 +5042,13 @@ window.closeModal = closeModal;
         // Check if charts match this section
         if (chartData && chartData.length > 0) {
           const isLastSecDocx = idx === (draft.sections || []).length - 1;
-          const isEvalSecDocx = sec.title.toLowerCase().includes('result') ||
-                                sec.title.toLowerCase().includes('evaluation') ||
-                                sec.title.toLowerCase().includes('experiment');
+          const isEvalSecDocx = secTextLower.includes('result') ||
+                                secTextLower.includes('evaluation') ||
+                                secTextLower.includes('experiment');
 
           const matchedChartsDocx = chartData.filter(c =>
             (c.sectionIndex !== undefined && c.sectionIndex === idx) ||
-            (c.sectionTitle && sec.title.toLowerCase().includes(c.sectionTitle.toLowerCase()) && !renderedChartIdsDocx.has(c.figureNumber)) ||
+            (c.sectionTitle && secTextLower.includes(c.sectionTitle.toLowerCase()) && !renderedChartIdsDocx.has(c.figureNumber)) ||
             (c.sectionIndex === undefined && isEvalSecDocx && !renderedChartIdsDocx.has(c.figureNumber)) ||
             (isLastSecDocx && !renderedChartIdsDocx.has(c.figureNumber))
           );
@@ -5080,16 +5090,18 @@ window.closeModal = closeModal;
         if (dataTables && dataTables.length > 0) {
           const matchedTable = dataTables.find(t =>
             (t.sectionIndex !== undefined && t.sectionIndex === idx) ||
-            (t.sectionTitle && sec.title.toLowerCase().includes(t.sectionTitle.toLowerCase()))
+            (t.sectionTitle && secTextLower.includes(t.sectionTitle.toLowerCase())) ||
+            (t.sectionIndex === undefined && secTextLower.includes('result'))
           );
           if (matchedTable) {
+            const tableTitle = (matchedTable.title || 'Summary of Data').toUpperCase();
             bodyChildren.push(
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 spacing: { before: 140, after: 40 },
                 children: [
                   new TextRun({
-                    text: `TABLE ${toRoman(dataTables.indexOf(matchedTable) + 1).toUpperCase()}: ${matchedTable.title.toUpperCase()}`,
+                    text: `TABLE ${toRoman(dataTables.indexOf(matchedTable) + 1).toUpperCase()}: ${tableTitle}`,
                     bold: true,
                     font: fFamily,
                     size: captionSize
@@ -5476,9 +5488,10 @@ window.closeModal = closeModal;
         const renderedChartIdsIeee = new Set();
         for (let sIdx = 0; sIdx < (draft.sections || []).length; sIdx++) {
           const section = draft.sections[sIdx];
-          const headingText = /^[IVXLCDM]+\.\s+/i.test(section.heading)
-            ? section.heading.toUpperCase()
-            : `${toRoman(sIdx + 1).toUpperCase()}. ${section.heading.toUpperCase()}`;
+          const rawHeading = (section.heading || section.title || `Section ${sIdx + 1}`).trim();
+          const headingText = /^[IVXLCDM]+\.\s+/i.test(rawHeading)
+            ? rawHeading.toUpperCase()
+            : `${toRoman(sIdx + 1).toUpperCase()}. ${rawHeading.toUpperCase()}`;
 
           checkCol(12);
           doc.setFont(fontName, 'bold');
@@ -5884,7 +5897,8 @@ window.closeModal = closeModal;
         // Section heading
         doc.setFontSize(13);
         doc.setFont('helvetica', 'bold');
-        doc.text(section.heading, marginL, y);
+        const sHeading = (section.heading || section.title || 'Section').trim();
+        doc.text(sHeading, marginL, y);
         y += 8;
 
         // Section content
