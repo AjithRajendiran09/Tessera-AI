@@ -4680,7 +4680,7 @@ window.closeModal = closeModal;
 
   function toRoman(num) {
     const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
-    const syms = ['m','cm','d','cd','c','xc','l','xl','x','ix','v','iv','i'];
+    const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
     let result = '';
     for (let i = 0; i < vals.length; i++) {
       while (num >= vals[i]) { result += syms[i]; num -= vals[i]; }
@@ -5361,39 +5361,60 @@ window.closeModal = closeModal;
         }
 
         function writeIeeeColumnText(text, fontSize, isIndent) {
+          // Strip raw markdown syntax like *italic* or **bold** or `code`
+          const cleanText = text
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/~~(.*?)~~/g, '$1')
+            .trim();
+
+          if (!cleanText) return;
+
           doc.setFont(fontName, 'normal');
           const effSize = fontSize || fSize;
           doc.setFontSize(effSize);
-          const lHeight = Math.max(3.6, effSize * 0.3527 * 1.25 * lSpacing);
+          const lHeight = 3.8; // Compact standard IEEE 9.5pt line spacing (~11pt line pitch)
           const indentVal = isIndent ? 4 : 0;
-          const words = text.split(/\s+/).filter(Boolean);
+          const firstLineW = colW - indentVal;
+          const normalW = colW;
+
+          const words = cleanText.split(/\s+/).filter(Boolean);
           if (words.length === 0) return;
 
-          let currentLine = '';
+          const lines = [];
+          let curLine = '';
           let isFirst = true;
 
           for (const word of words) {
-            const testLine = currentLine ? currentLine + ' ' + word : word;
-            const maxW = isFirst ? colW - indentVal : colW;
-            if (doc.getTextWidth(testLine) > maxW && currentLine) {
-              checkCol(lHeight);
-              const curX = curCol === 1 ? col1X : col2X;
-              const xPos = isFirst ? curX + indentVal : curX;
-              doc.text(currentLine, xPos, colY);
-              colY += lHeight;
-              currentLine = word;
+            const testLine = curLine ? curLine + ' ' + word : word;
+            const maxW = isFirst ? firstLineW : normalW;
+            if (doc.getTextWidth(testLine) > maxW && curLine) {
+              lines.push(curLine);
+              curLine = word;
               isFirst = false;
             } else {
-              currentLine = testLine;
+              curLine = testLine;
             }
           }
-          if (currentLine) {
+          if (curLine) lines.push(curLine);
+
+          lines.forEach((line, idx) => {
             checkCol(lHeight);
+            const isFirstLine = idx === 0;
+            const isLastLine = idx === lines.length - 1;
             const curX = curCol === 1 ? col1X : col2X;
-            const xPos = isFirst ? curX + indentVal : curX;
-            doc.text(currentLine, xPos, colY);
+            const xPos = isFirstLine ? curX + indentVal : curX;
+            const targetW = isFirstLine ? firstLineW : normalW;
+
+            // Full sentence justification for academic IEEE formatting
+            if (!isLastLine && doc.getTextWidth(line) >= targetW * 0.65) {
+              doc.text([line], xPos, colY, { align: 'justify', maxWidth: targetW });
+            } else {
+              doc.text(line, xPos, colY);
+            }
             colY += lHeight;
-          }
+          });
         }
 
         // ── PAGE 1: TITLE & AUTHORS (Full Width Across Top) ──
@@ -5442,16 +5463,47 @@ window.closeModal = closeModal;
           doc.setFontSize(9);
           const absLead = 'Abstract— ';
           const absLeadW = doc.getTextWidth(absLead);
-          const absLines = doc.splitTextToSize(draft.abstract, fullW - 16);
+          const absClean = draft.abstract
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .trim();
+          const firstLineW = fullW - 16 - absLeadW;
+          const normalW = fullW - 16;
+
+          const words = absClean.split(/\s+/).filter(Boolean);
+          const absLines = [];
+          let curLine = '';
+          let isFirst = true;
+          for (const word of words) {
+            const testLine = curLine ? curLine + ' ' + word : word;
+            const maxW = isFirst ? firstLineW : normalW;
+            if (doc.getTextWidth(testLine) > maxW && curLine) {
+              absLines.push(curLine);
+              curLine = word;
+              isFirst = false;
+            } else {
+              curLine = testLine;
+            }
+          }
+          if (curLine) absLines.push(curLine);
 
           doc.text(absLead, mL + 8, topY);
           doc.setFont(fontName, 'normal');
           doc.setFontSize(9);
 
           absLines.forEach((l, idx) => {
-            const lx = idx === 0 ? mL + 8 + absLeadW : mL + 8;
-            doc.text(l, lx, topY);
-            topY += 4.2;
+            const isFirstLine = idx === 0;
+            const isLastLine = idx === absLines.length - 1;
+            const lx = isFirstLine ? mL + 8 + absLeadW : mL + 8;
+            const targetW = isFirstLine ? firstLineW : normalW;
+
+            if (!isLastLine && doc.getTextWidth(l) >= targetW * 0.65) {
+              doc.text([l], lx, topY, { align: 'justify', maxWidth: targetW });
+            } else {
+              doc.text(l, lx, topY);
+            }
+            topY += 3.8;
           });
           topY += 2;
         }
@@ -5723,46 +5775,76 @@ window.closeModal = closeModal;
 
       // ── Utility: write paragraph with first-line indent ──
       function writeParagraph(text, y, fontSize, indent) {
+        const cleanText = text
+          .replace(/\*\*(.*?)\*\*/g, '$1')
+          .replace(/\*(.*?)\*/g, '$1')
+          .replace(/`([^`]+)`/g, '$1')
+          .trim();
+        if (!cleanText) return y;
+
         doc.setFontSize(fontSize || 11);
         doc.setFont('helvetica', 'normal');
+        const effLineHeight = (fontSize || 11) * 0.3527 * 1.35;
         const firstLineWidth = contentWidth - (indent || paraIndent);
         const restWidth = contentWidth;
-        const words = text.split(/\s+/);
-        let currentLine = '';
+        const words = cleanText.split(/\s+/).filter(Boolean);
+        const lines = [];
+        let curLine = '';
         let isFirstLine = true;
 
         for (const word of words) {
-          const testLine = currentLine ? currentLine + ' ' + word : word;
+          const testLine = curLine ? curLine + ' ' + word : word;
           const maxW = isFirstLine ? firstLineWidth : restWidth;
-          if (doc.getTextWidth(testLine) > maxW && currentLine) {
-            y = checkPage(y, lineHeight);
-            const xPos = isFirstLine ? marginL + (indent || paraIndent) : marginL;
-            doc.text(currentLine, xPos, y);
-            y += lineHeight;
-            currentLine = word;
+          if (doc.getTextWidth(testLine) > maxW && curLine) {
+            lines.push(curLine);
+            curLine = word;
             isFirstLine = false;
           } else {
-            currentLine = testLine;
+            curLine = testLine;
           }
         }
-        if (currentLine) {
-          y = checkPage(y, lineHeight);
-          const xPos = isFirstLine ? marginL + (indent || paraIndent) : marginL;
-          doc.text(currentLine, xPos, y);
-          y += lineHeight;
-        }
+        if (curLine) lines.push(curLine);
+
+        lines.forEach((line, idx) => {
+          y = checkPage(y, effLineHeight);
+          const isFirst = idx === 0;
+          const isLast = idx === lines.length - 1;
+          const xPos = isFirst ? marginL + (indent || paraIndent) : marginL;
+          const targetW = isFirst ? firstLineWidth : restWidth;
+
+          if (!isLast && doc.getTextWidth(line) >= targetW * 0.65) {
+            doc.text([line], xPos, y, { align: 'justify', maxWidth: targetW });
+          } else {
+            doc.text(line, xPos, y);
+          }
+          y += effLineHeight;
+        });
+
         return y;
       }
 
       // ── Utility: write body text without indent ──
       function writeText(text, y, fontSize) {
+        const cleanText = text
+          .replace(/\*\*(.*?)\*\*/g, '$1')
+          .replace(/\*(.*?)\*/g, '$1')
+          .replace(/`([^`]+)`/g, '$1')
+          .trim();
+        if (!cleanText) return y;
+
         doc.setFontSize(fontSize || 11);
-        const lines = doc.splitTextToSize(text, contentWidth);
-        for (const line of lines) {
-          y = checkPage(y, lineHeight);
-          doc.text(line, marginL, y);
-          y += lineHeight;
-        }
+        const effLineHeight = (fontSize || 11) * 0.3527 * 1.35;
+        const lines = doc.splitTextToSize(cleanText, contentWidth);
+        lines.forEach((line, idx) => {
+          y = checkPage(y, effLineHeight);
+          const isLast = idx === lines.length - 1;
+          if (!isLast && doc.getTextWidth(line) >= contentWidth * 0.65) {
+            doc.text([line], marginL, y, { align: 'justify', maxWidth: contentWidth });
+          } else {
+            doc.text(line, marginL, y);
+          }
+          y += effLineHeight;
+        });
         return y;
       }
 
