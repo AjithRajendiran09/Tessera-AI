@@ -5364,10 +5364,11 @@ window.closeModal = closeModal;
           doc.setFont(fontName, 'normal');
           const effSize = fontSize || fSize;
           doc.setFontSize(effSize);
-          const curX = curCol === 1 ? col1X : col2X;
           const lHeight = Math.max(3.6, effSize * 0.3527 * 1.25 * lSpacing);
           const indentVal = isIndent ? 4 : 0;
-          const words = text.split(/\s+/);
+          const words = text.split(/\s+/).filter(Boolean);
+          if (words.length === 0) return;
+
           let currentLine = '';
           let isFirst = true;
 
@@ -5376,6 +5377,7 @@ window.closeModal = closeModal;
             const maxW = isFirst ? colW - indentVal : colW;
             if (doc.getTextWidth(testLine) > maxW && currentLine) {
               checkCol(lHeight);
+              const curX = curCol === 1 ? col1X : col2X;
               const xPos = isFirst ? curX + indentVal : curX;
               doc.text(currentLine, xPos, colY);
               colY += lHeight;
@@ -5387,6 +5389,7 @@ window.closeModal = closeModal;
           }
           if (currentLine) {
             checkCol(lHeight);
+            const curX = curCol === 1 ? col1X : col2X;
             const xPos = isFirst ? curX + indentVal : curX;
             doc.text(currentLine, xPos, colY);
             colY += lHeight;
@@ -5489,20 +5492,20 @@ window.closeModal = closeModal;
         for (let sIdx = 0; sIdx < (draft.sections || []).length; sIdx++) {
           const section = draft.sections[sIdx];
           const rawHeading = (section.heading || section.title || `Section ${sIdx + 1}`).trim();
-          const headingText = /^[IVXLCDM]+\.\s+/i.test(rawHeading)
-            ? rawHeading.toUpperCase()
-            : `${toRoman(sIdx + 1).toUpperCase()}. ${rawHeading.toUpperCase()}`;
+          const cleanHeading = rawHeading.replace(/^(?:[IVXLCDM]+\.|\d+\.|\d+\.\d+)\s*/i, '').trim() || rawHeading;
+          const headingText = `${toRoman(sIdx + 1)}. ${cleanHeading.toUpperCase()}`;
+          const secTextLower = rawHeading.toLowerCase();
 
-          checkCol(12);
+          checkCol(20);
           doc.setFont(fontName, 'bold');
           doc.setFontSize(10);
           const curX = curCol === 1 ? col1X : col2X;
           doc.text(headingText, curX + colW / 2, colY, { align: 'center' });
-          colY += 6;
+          colY += 5.5;
 
           const editedEl = document.getElementById(`draft-section-content-${sIdx}`);
           const content = editedEl ? (editedEl.tagName === 'TEXTAREA' ? editedEl.value : editedEl.textContent) : section.content;
-          const paragraphs = content.split(/\n\n+/);
+          const paragraphs = (content || '').split(/\n\n+/);
 
           for (const p of paragraphs) {
             const trimmed = p.trim();
@@ -5511,14 +5514,40 @@ window.closeModal = closeModal;
             colY += 2;
           }
 
+          // Subsections if any
+          if (section.subsections && Array.isArray(section.subsections)) {
+            section.subsections.forEach((sub, subIdx) => {
+              const letter = String.fromCharCode(65 + subIdx);
+              const subRaw = (sub.title || sub.heading || `Subsection ${subIdx + 1}`).trim();
+              const cleanSub = subRaw.replace(/^[A-Z]\.\s*/i, '').trim() || subRaw;
+              const subTitle = `${letter}. ${cleanSub}`;
+
+              checkCol(14);
+              doc.setFont(fontName, 'italic');
+              doc.setFontSize(9.5);
+              const subX = curCol === 1 ? col1X : col2X;
+              doc.text(subTitle, subX, colY);
+              colY += 5;
+
+              if (sub.content) {
+                const subParas = sub.content.split(/\n\n+/).filter(sp => sp.trim());
+                subParas.forEach(sp => {
+                  writeIeeeColumnText(sp.trim(), 9.5, true);
+                  colY += 2;
+                });
+              }
+            });
+          }
+
           // Section-specific charts (Architecture, PRISMA, Benchmarks)
           const isLastSecIeee = sIdx === (draft.sections || []).length - 1;
-          const isEvalSecIeee = section.heading.toLowerCase().includes('result') ||
-                                section.heading.toLowerCase().includes('evaluation') ||
-                                section.heading.toLowerCase().includes('experiment');
+          const isEvalSecIeee = secTextLower.includes('result') ||
+                                secTextLower.includes('evaluation') ||
+                                secTextLower.includes('experiment');
 
           const matchedChartsIeee = chartData.filter(c =>
             c.sectionIndex === sIdx ||
+            (c.sectionTitle && secTextLower.includes(c.sectionTitle.toLowerCase()) && !renderedChartIdsIeee.has(c.figureNumber)) ||
             (c.sectionIndex === undefined && isEvalSecIeee && !renderedChartIdsIeee.has(c.figureNumber)) ||
             (isLastSecIeee && !renderedChartIdsIeee.has(c.figureNumber))
           );
@@ -5529,7 +5558,7 @@ window.closeModal = closeModal;
               const chartImg = await renderChartToImage(chart);
               if (chartImg) {
                 const imgH = colW * 0.52;
-                checkCol(imgH + 12);
+                checkCol(imgH + 16);
                 const cX = curCol === 1 ? col1X : col2X;
                 doc.addImage(chartImg, 'PNG', cX, colY, colW, imgH);
                 colY += imgH + 3.5;
@@ -5537,8 +5566,9 @@ window.closeModal = closeModal;
                 doc.setFont(fontName, 'italic');
                 doc.setFontSize(8);
                 const cap = `Fig. ${chart.figureNumber}. ${chart.title}`;
-                doc.text(cap, cX + colW / 2, colY, { align: 'center' });
-                colY += 6;
+                const capLines = doc.splitTextToSize(cap, colW - 2);
+                doc.text(capLines, cX + colW / 2, colY, { align: 'center' });
+                colY += capLines.length * 3.4 + 4;
               }
             } catch (e) {
               console.warn('IEEE chart render error:', e);
@@ -5554,7 +5584,7 @@ window.closeModal = closeModal;
               const maxRows = Math.min(table.rows.length, 15);
               const rows = table.rows.slice(0, maxRows).map(r => keyCols.map(c => truncateCell(r[c], 18)));
 
-              checkCol(20);
+              checkCol(40);
               const cX = curCol === 1 ? col1X : col2X;
               doc.setFont(fontName, 'bold');
               doc.setFontSize(8);
@@ -5600,7 +5630,7 @@ window.closeModal = closeModal;
 
         // Acknowledgments
         if (draft.acknowledgments) {
-          checkCol(12);
+          checkCol(16);
           doc.setFont(fontName, 'bold');
           doc.setFontSize(10);
           const curX = curCol === 1 ? col1X : col2X;
@@ -5612,7 +5642,7 @@ window.closeModal = closeModal;
 
         // References
         if (refs.length > 0) {
-          checkCol(14);
+          checkCol(18);
           doc.setFont(fontName, 'bold');
           doc.setFontSize(10);
           const curX = curCol === 1 ? col1X : col2X;
@@ -5624,9 +5654,9 @@ window.closeModal = closeModal;
 
           refs.forEach(ref => {
             const clean = ref.formatted.replace(/\*/g, '');
-            const cX = curCol === 1 ? col1X : col2X;
             const rLines = doc.splitTextToSize(clean, colW - 5);
             checkCol(rLines.length * 3.6 + 2);
+            const cX = curCol === 1 ? col1X : col2X;
             rLines.forEach((l, lIdx) => {
               const lx = lIdx === 0 ? cX : cX + 4;
               doc.text(l, lx, colY);
