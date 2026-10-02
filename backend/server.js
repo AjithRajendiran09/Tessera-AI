@@ -3464,7 +3464,8 @@ CRITICAL SCHOLARLY WRITING GUIDELINES:
 1. ABSOLUTE BAN ON AI CLICHES: Never use delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, in conclusion, furthermore, moreover.
 2. SYNTACTIC BURSTINESS: Vary sentence lengths dynamically. Use active analytical verbs: demonstrates, exhibits, delineates, diverges, corroborates, attenuates.
 3. GROUNDING: Quote real numbers, percentages, and datasets from the provided rows.
-4. Write each of the following ${part1Templates.length} sections with 2-3 full, substantive paragraphs:
+4. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
+5. Write each of the following ${part1Templates.length} sections with 2-3 full, substantive paragraphs:
 ${part1Templates.map((s, idx) => `   ${idx + 1}. ${s.heading}: ${s.desc}`).join('\n')}
 
 Return ONLY a valid JSON object matching this schema:
@@ -3505,7 +3506,8 @@ CRITICAL SCHOLARLY WRITING & EMPIRICAL BENCHMARKING GUIDELINES:
    - Sections discussing methodology, architecture, or evaluation MUST explicitly reference: "${isIEEE ? 'Fig. 1' : 'Figure 1'}", "${isIEEE ? 'Fig. 2' : 'Figure 2'}", "${isIEEE ? 'Fig. 3' : 'Figure 3'}", and tables as "${isIEEE ? 'Table I' : 'Table 1'}".
 3. CONCRETE QUANTITATIVE DATA:
    - State exact metric values: percentages (e.g. 96.4%), latencies (e.g. 14.2ms), error margins, and baseline comparisons.
-4. Write each of the following ${part2Templates.length} remaining sections with 2-3 full paragraphs:
+4. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
+5. Write each of the following ${part2Templates.length} remaining sections with 2-3 full paragraphs:
 ${part2Templates.map((s, idx) => `   ${splitIdx + idx + 1}. ${s.heading}: ${s.desc}`).join('\n')}
 
 Return ONLY a valid JSON object matching this schema:

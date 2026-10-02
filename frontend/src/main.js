@@ -4092,7 +4092,8 @@ window.closeModal = closeModal;
         }
 
         const rawContent = section.content || '';
-        const paras = rawContent.split(/\n\n+/).filter(p => p.trim());
+        const processedContent = processMathAndEquations(rawContent);
+        const paras = processedContent.split(/\n\n+/).map(p => p.trim().replace(/^[,\s]+/, '')).filter(Boolean);
 
         html += `
           <div class="draft-ieee-section" id="draft-section-${sIdx}">
@@ -4101,7 +4102,12 @@ window.closeModal = closeModal;
               <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})" title="Edit section content">✏️</button>
             </div>
             <div class="draft-ieee-section-content" id="draft-section-content-${sIdx}">
-              ${paras.map(p => `<p class="draft-ieee-p">${p.trim()}</p>`).join('')}
+              ${paras.map(p => {
+                if (p.startsWith('$$') && p.endsWith('$$')) {
+                  return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0; font-family: 'Times New Roman', serif;">${p.slice(2, -2).trim()}</div>`;
+                }
+                return `<p class="draft-ieee-p">${p}</p>`;
+              }).join('')}
             </div>
           </div>
         `;
@@ -4111,12 +4117,18 @@ window.closeModal = closeModal;
           section.subsections.forEach((sub, subIdx) => {
             const letter = String.fromCharCode(65 + subIdx);
             const subTitle = `${letter}. ${sub.title}`;
-            const subParas = (sub.content || '').split(/\n\n+/).filter(p => p.trim());
+            const subProcessed = processMathAndEquations(sub.content || '');
+            const subParas = subProcessed.split(/\n\n+/).map(p => p.trim().replace(/^[,\s]+/, '')).filter(Boolean);
             html += `
               <div class="draft-ieee-subsection">
                 <h3 class="draft-ieee-subsection-heading">${subTitle}</h3>
                 <div class="draft-ieee-section-content">
-                  ${subParas.map(p => `<p class="draft-ieee-p">${p.trim()}</p>`).join('')}
+                  ${subParas.map(p => {
+                    if (p.startsWith('$$') && p.endsWith('$$')) {
+                      return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0; font-family: 'Times New Roman', serif;">${p.slice(2, -2).trim()}</div>`;
+                    }
+                    return `<p class="draft-ieee-p">${p}</p>`;
+                  }).join('')}
                 </div>
               </div>
             `;
@@ -4225,14 +4237,20 @@ window.closeModal = closeModal;
 
       (draft.sections || []).forEach((section, sIdx) => {
         const rawContent = section.content || '';
-        const paras = rawContent.split(/\n\n+/).filter(p => p.trim());
+        const processedContent = processMathAndEquations(rawContent);
+        const paras = processedContent.split(/\n\n+/).map(p => p.trim().replace(/^[,\s]+/, '')).filter(Boolean);
 
         html += `
           <div class="draft-section" id="draft-section-${sIdx}">
             <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})">✏️ Edit</button>
             <h2 class="draft-section-heading">${section.heading}</h2>
             <div class="draft-section-content" id="draft-section-content-${sIdx}">
-              ${paras.map(p => `<p class="draft-standard-p">${p.trim()}</p>`).join('')}
+              ${paras.map(p => {
+                if (p.startsWith('$$') && p.endsWith('$$')) {
+                  return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0;">${p.slice(2, -2).trim()}</div>`;
+                }
+                return `<p class="draft-standard-p">${p.trim()}</p>`;
+              }).join('')}
             </div>
           </div>
         `;
@@ -4753,6 +4771,62 @@ window.closeModal = closeModal;
     }
   }
 
+  function cleanAcademicMath(str) {
+    if (!str) return '';
+    return str
+      // LaTeX styling and text commands
+      .replace(/\\mathcal\{([A-Za-z])\}/g, '$1')
+      .replace(/\\mathbf\{([^}]+)\}/g, '$1')
+      .replace(/\\mathit\{([^}]+)\}/g, '$1')
+      .replace(/\\mathrm\{([^}]+)\}/g, '$1')
+      .replace(/\\text\{([^}]+)\}/g, '$1')
+      .replace(/\\operatorname\{([^}]+)\}/g, '$1')
+      // Logical & directional operators
+      .replace(/\\(?:to|rightarrow)\b/g, '->')
+      .replace(/\\leftarrow\b/g, '<-')
+      .replace(/\\(?:Rightarrow|implies)\b/g, '=>')
+      .replace(/\\in\b/g, 'in')
+      .replace(/\\notin\b/g, 'not in')
+      .replace(/\\(?:dots|cdots|ldots)\b/g, '...')
+      .replace(/\\(?:le|leq)\b/g, '<=')
+      .replace(/\\(?:ge|geq)\b/g, '>=')
+      .replace(/\\(?:ne|neq)\b/g, '!=')
+      .replace(/\\times\b/g, 'x')
+      .replace(/\\approx\b/g, '~=')
+      .replace(/\\pm\b/g, '+/-')
+      .replace(/\\forall\b/g, 'for all ')
+      .replace(/\\exists\b/g, 'exists ')
+      // Escaped brackets and braces
+      .replace(/\\\{/g, '{')
+      .replace(/\\\}/g, '}')
+      .replace(/\\\[/g, '[')
+      .replace(/\\\]/g, ']')
+      .replace(/\\([#&%_{}])/g, '$1');
+  }
+
+  function processMathAndEquations(text) {
+    if (!text) return '';
+    let cleaned = cleanAcademicMath(text);
+    // Explicit block math \[ ... \] or $$ ... $$
+    cleaned = cleaned.replace(/\\\[([\s\S]*?)\\\]/g, '\n\n$$$1$$\n\n');
+    cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, '\n\n$$$1$$\n\n');
+
+    // Extract formal mathematical relations wrapped in $ ... $
+    // (e.g. $P = (R, O, A, C)$, $r: (...) -> {...}$, $T = {e_1, e_2, ..., e_k}$)
+    cleaned = cleaned.replace(/\$([^\$]+)\$([,\.]?)/g, (match, inner, punct) => {
+      const trimmed = inner.trim();
+      const hasRelation = trimmed.includes('=') || trimmed.includes('->') || trimmed.includes('=>') || trimmed.includes('<=');
+      if (trimmed.length >= 10 && hasRelation && (trimmed.includes('(') || trimmed.includes('{') || trimmed.includes('='))) {
+        return '\n\n$$' + trimmed + (punct || '') + '$$\n\n';
+      }
+      return trimmed + (punct || '');
+    });
+
+    // Strip remaining inline $ markers
+    cleaned = cleaned.replace(/\$/g, '');
+    return cleaned;
+  }
+
   async function handleDownloadAction() {
     goToDraftStep(4);
     updateStep4DownloadCard();
@@ -5040,8 +5114,27 @@ window.closeModal = closeModal;
 
         // Section Content
         if (sec.content) {
-          const paras = sec.content.split('\n\n').filter(p => p.trim());
-          paras.forEach(p => {
+          const processed = processMathAndEquations(sec.content);
+          const blocks = processed.split(/\n\n+/).map(b => b.trim().replace(/^[,\s]+/, '')).filter(Boolean);
+          blocks.forEach(b => {
+            if (b.startsWith('$$') && b.endsWith('$$')) {
+              const eq = b.slice(2, -2).trim();
+              bodyChildren.push(
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 120, after: 120 },
+                  children: [
+                    new TextRun({
+                      text: eq,
+                      italics: true,
+                      font: fFamily,
+                      size: bodySize
+                    })
+                  ]
+                })
+              );
+              return;
+            }
             bodyChildren.push(
               new Paragraph({
                 alignment: AlignmentType.JUSTIFIED,
@@ -5049,7 +5142,7 @@ window.closeModal = closeModal;
                 indent: isIEEE ? { firstLine: 280 } : { firstLine: 400 },
                 children: [
                   new TextRun({
-                    text: p.trim(),
+                    text: b.trim(),
                     font: fFamily,
                     size: bodySize
                   })
@@ -5083,8 +5176,27 @@ window.closeModal = closeModal;
             );
 
             if (sub.content) {
-              const subParas = sub.content.split('\n\n').filter(p => p.trim());
-              subParas.forEach(p => {
+              const subProcessed = processMathAndEquations(sub.content);
+              const subBlocks = subProcessed.split(/\n\n+/).map(b => b.trim().replace(/^[,\s]+/, '')).filter(Boolean);
+              subBlocks.forEach(p => {
+                if (p.startsWith('$$') && p.endsWith('$$')) {
+                  const eq = p.slice(2, -2).trim();
+                  bodyChildren.push(
+                    new Paragraph({
+                      alignment: AlignmentType.CENTER,
+                      spacing: { before: 120, after: 120 },
+                      children: [
+                        new TextRun({
+                          text: eq,
+                          italics: true,
+                          font: fFamily,
+                          size: bodySize
+                        })
+                      ]
+                    })
+                  );
+                  return;
+                }
                 bodyChildren.push(
                   new Paragraph({
                     alignment: AlignmentType.JUSTIFIED,
@@ -5385,6 +5497,7 @@ window.closeModal = closeModal;
         let colTopY = mTop;
         let colY = mTop;
         let ieeePageNum = 0;
+        let ieeeEquationNum = 0;
 
         function addIeeeFooter() {
           ieeePageNum++;
@@ -5427,6 +5540,7 @@ window.closeModal = closeModal;
         }
 
         function writeIeeeColumnText(text, fontSize, isIndent) {
+          if (!text) return;
           // Strip raw markdown syntax like *italic* or **bold** or `code`
           const cleanText = text
             .replace(/\*\*(.*?)\*\*/g, '$1')
@@ -5437,47 +5551,79 @@ window.closeModal = closeModal;
 
           if (!cleanText) return;
 
-          doc.setFont(fontName, 'normal');
-          const effSize = fontSize || fSize;
-          doc.setFontSize(effSize);
-          const lHeight = 3.8; // Compact standard IEEE 9.5pt line spacing (~11pt line pitch)
-          const indentVal = isIndent ? 4 : 0;
-          const firstLineW = colW - indentVal;
-          const normalW = colW;
+          const processed = processMathAndEquations(cleanText);
+          const blocks = processed.split(/\n\n+/).map(b => b.trim().replace(/^[,\s]+/, '')).filter(Boolean);
 
-          const words = cleanText.split(/\s+/).filter(Boolean);
-          if (words.length === 0) return;
+          blocks.forEach((block, bIdx) => {
+            // Check if this block is a display equation
+            if (block.startsWith('$$') && block.endsWith('$$')) {
+              const eq = block.slice(2, -2).trim();
+              checkCol(7);
+              const curX = curCol === 1 ? col1X : col2X;
+              colY += 1.5;
+              doc.setFont(fontName, 'italic');
+              let eqFontSize = (fontSize || fSize) - 0.5;
+              doc.setFontSize(eqFontSize);
+              while (doc.getTextWidth(eq) > colW - 12 && eqFontSize > 7) {
+                eqFontSize -= 0.5;
+                doc.setFontSize(eqFontSize);
+              }
+              // Center-justified display equation
+              doc.text(eq, curX + colW / 2, colY, { align: 'center' });
 
-          const lines = [];
-          let curLine = '';
-          let isFirst = true;
-
-          for (const word of words) {
-            const testLine = curLine ? curLine + ' ' + word : word;
-            const maxW = isFirst ? firstLineW : normalW;
-            if (doc.getTextWidth(testLine) > maxW && curLine) {
-              lines.push(curLine);
-              curLine = word;
-              isFirst = false;
-            } else {
-              curLine = testLine;
+              doc.setFont(fontName, 'normal');
+              doc.setFontSize(8.5);
+              ieeeEquationNum++;
+              doc.text(`(${ieeeEquationNum})`, curX + colW - 1, colY, { align: 'right' });
+              colY += 4.8;
+              doc.setFont(fontName, 'normal');
+              return;
             }
-          }
-          if (curLine) lines.push(curLine);
 
-          lines.forEach((line, idx) => {
-            checkCol(lHeight);
+            // Normal justified paragraph block
             doc.setFont(fontName, 'normal');
+            const effSize = fontSize || fSize;
             doc.setFontSize(effSize);
-            const isFirstLine = idx === 0;
-            const isLastLine = idx === lines.length - 1;
-            const curX = curCol === 1 ? col1X : col2X;
-            const xPos = isFirstLine ? curX + indentVal : curX;
-            const targetW = isFirstLine ? firstLineW : normalW;
+            const lHeight = 3.8; // Compact standard IEEE 9.5pt line spacing (~11pt line pitch)
+            const shouldIndent = isIndent && bIdx === 0;
+            const indentVal = shouldIndent ? 4 : 0;
+            const firstLineW = colW - indentVal;
+            const normalW = colW;
 
-            // Full sentence justification for academic IEEE formatting
-            drawJustifiedLine(doc, line, xPos, colY, targetW, isLastLine);
-            colY += lHeight;
+            const words = block.split(/\s+/).filter(Boolean);
+            if (words.length === 0) return;
+
+            const lines = [];
+            let curLine = '';
+            let isFirst = true;
+
+            for (const word of words) {
+              const testLine = curLine ? curLine + ' ' + word : word;
+              const maxW = isFirst ? firstLineW : normalW;
+              if (doc.getTextWidth(testLine) > maxW && curLine) {
+                lines.push(curLine);
+                curLine = word;
+                isFirst = false;
+              } else {
+                curLine = testLine;
+              }
+            }
+            if (curLine) lines.push(curLine);
+
+            lines.forEach((line, idx) => {
+              checkCol(lHeight);
+              doc.setFont(fontName, 'normal');
+              doc.setFontSize(effSize);
+              const isFirstLine = idx === 0;
+              const isLastLine = idx === lines.length - 1;
+              const curX = curCol === 1 ? col1X : col2X;
+              const xPos = isFirstLine ? curX + indentVal : curX;
+              const targetW = isFirstLine ? firstLineW : normalW;
+
+              // Full sentence justification for academic IEEE formatting
+              drawJustifiedLine(doc, line, xPos, colY, targetW, isLastLine);
+              colY += lHeight;
+            });
           });
         }
 
@@ -5527,11 +5673,15 @@ window.closeModal = closeModal;
           doc.setFontSize(9);
           const absLead = 'Abstract— ';
           const absLeadW = doc.getTextWidth(absLead);
-          const absClean = draft.abstract
-            .replace(/\*\*(.*?)\*\*/g, '$1')
-            .replace(/\*(.*?)\*/g, '$1')
-            .replace(/`([^`]+)`/g, '$1')
-            .trim();
+          const absClean = cleanAcademicMath(
+            draft.abstract
+              .replace(/\*\*(.*?)\*\*/g, '$1')
+              .replace(/\*(.*?)\*/g, '$1')
+              .replace(/`([^`]+)`/g, '$1')
+              .replace(/\$([^\$]+)\$/g, '$1')
+              .replace(/\$/g, '')
+              .trim()
+          );
           const firstLineW = fullW - 16 - absLeadW;
           const normalW = fullW - 16;
 
@@ -5845,46 +5995,67 @@ window.closeModal = closeModal;
 
       // ── Utility: write paragraph with first-line indent ──
       function writeParagraph(text, y, fontSize, indent) {
+        if (!text) return y;
         const cleanText = text
           .replace(/\*\*(.*?)\*\*/g, '$1')
           .replace(/\*(.*?)\*/g, '$1')
           .replace(/`([^`]+)`/g, '$1')
+          .replace(/~~(.*?)~~/g, '$1')
           .trim();
         if (!cleanText) return y;
 
-        doc.setFontSize(fontSize || 11);
-        doc.setFont('helvetica', 'normal');
-        const effLineHeight = (fontSize || 11) * 0.3527 * 1.35;
-        const firstLineWidth = contentWidth - (indent || paraIndent);
-        const restWidth = contentWidth;
-        const words = cleanText.split(/\s+/).filter(Boolean);
-        const lines = [];
-        let curLine = '';
-        let isFirstLine = true;
+        const processed = processMathAndEquations(cleanText);
+        const blocks = processed.split(/\n\n+/).map(b => b.trim().replace(/^[,\s]+/, '')).filter(Boolean);
 
-        for (const word of words) {
-          const testLine = curLine ? curLine + ' ' + word : word;
-          const maxW = isFirstLine ? firstLineWidth : restWidth;
-          if (doc.getTextWidth(testLine) > maxW && curLine) {
-            lines.push(curLine);
-            curLine = word;
-            isFirstLine = false;
-          } else {
-            curLine = testLine;
+        blocks.forEach((block, bIdx) => {
+          if (block.startsWith('$$') && block.endsWith('$$')) {
+            const eq = block.slice(2, -2).trim();
+            y = checkPage(y, 12);
+            y += 2;
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(fontSize || 11);
+            doc.text(eq, pageWidth / 2, y, { align: 'center' });
+            doc.setFont('helvetica', 'normal');
+            y += 8;
+            return;
           }
-        }
-        if (curLine) lines.push(curLine);
 
-        lines.forEach((line, idx) => {
-          y = checkPage(y, effLineHeight);
+          doc.setFontSize(fontSize || 11);
           doc.setFont('helvetica', 'normal');
-          const isFirst = idx === 0;
-          const isLast = idx === lines.length - 1;
-          const xPos = isFirst ? marginL + (indent || paraIndent) : marginL;
-          const targetW = isFirst ? firstLineWidth : restWidth;
+          const effLineHeight = (fontSize || 11) * 0.3527 * 1.35;
+          const shouldIndent = bIdx === 0;
+          const firstLineWidth = contentWidth - (shouldIndent ? (indent || paraIndent) : 0);
+          const restWidth = contentWidth;
+          const words = block.split(/\s+/).filter(Boolean);
+          const lines = [];
+          let curLine = '';
+          let isFirstLine = true;
 
-          drawJustifiedLine(doc, line, xPos, y, targetW, isLast);
-          y += effLineHeight;
+          for (const word of words) {
+            const testLine = curLine ? curLine + ' ' + word : word;
+            const maxW = isFirstLine ? firstLineWidth : restWidth;
+            if (doc.getTextWidth(testLine) > maxW && curLine) {
+              lines.push(curLine);
+              curLine = word;
+              isFirstLine = false;
+            } else {
+              curLine = testLine;
+            }
+          }
+          if (curLine) lines.push(curLine);
+
+          lines.forEach((line, idx) => {
+            y = checkPage(y, effLineHeight);
+            doc.setFont('helvetica', 'normal');
+            const isFirst = idx === 0;
+            const isLast = idx === lines.length - 1;
+            const xPos = isFirst ? marginL + (shouldIndent ? (indent || paraIndent) : 0) : marginL;
+            const targetW = isFirst ? firstLineWidth : restWidth;
+
+            drawJustifiedLine(doc, line, xPos, y, targetW, isLast);
+            y += effLineHeight;
+          });
+          y += 2;
         });
 
         return y;
@@ -5892,11 +6063,17 @@ window.closeModal = closeModal;
 
       // ── Utility: write body text without indent ──
       function writeText(text, y, fontSize) {
-        const cleanText = text
-          .replace(/\*\*(.*?)\*\*/g, '$1')
-          .replace(/\*(.*?)\*/g, '$1')
-          .replace(/`([^`]+)`/g, '$1')
-          .trim();
+        if (!text) return y;
+        const cleanText = cleanAcademicMath(
+          text
+            .replace(/\*\*(.*?)\*\*/g, '$1')
+            .replace(/\*(.*?)\*/g, '$1')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/~~(.*?)~~/g, '$1')
+            .replace(/\$([^\$]+)\$/g, '$1')
+            .replace(/\$/g, '')
+            .trim()
+        );
         if (!cleanText) return y;
 
         doc.setFontSize(fontSize || 11);
