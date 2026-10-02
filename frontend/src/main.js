@@ -4104,7 +4104,8 @@ window.closeModal = closeModal;
             <div class="draft-ieee-section-content" id="draft-section-content-${sIdx}">
               ${paras.map(p => {
                 if (p.startsWith('$$') && p.endsWith('$$')) {
-                  return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0; font-family: 'Times New Roman', serif;">${p.slice(2, -2).trim()}</div>`;
+                  const eqContent = p.slice(2, -2).trim();
+                  return `<div class="draft-equation-block"><span class="draft-eq-content">${eqContent}</span></div>`;
                 }
                 return `<p class="draft-ieee-p">${p}</p>`;
               }).join('')}
@@ -4125,7 +4126,8 @@ window.closeModal = closeModal;
                 <div class="draft-ieee-section-content">
                   ${subParas.map(p => {
                     if (p.startsWith('$$') && p.endsWith('$$')) {
-                      return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0; font-family: 'Times New Roman', serif;">${p.slice(2, -2).trim()}</div>`;
+                      const eqContent = p.slice(2, -2).trim();
+                      return `<div class="draft-equation-block"><span class="draft-eq-content">${eqContent}</span></div>`;
                     }
                     return `<p class="draft-ieee-p">${p}</p>`;
                   }).join('')}
@@ -4247,7 +4249,8 @@ window.closeModal = closeModal;
             <div class="draft-section-content" id="draft-section-content-${sIdx}">
               ${paras.map(p => {
                 if (p.startsWith('$$') && p.endsWith('$$')) {
-                  return `<div class="draft-equation-block" style="text-align: center; font-style: italic; margin: 8px 0;">${p.slice(2, -2).trim()}</div>`;
+                  const eqContent = p.slice(2, -2).trim();
+                  return `<div class="draft-equation-block"><span class="draft-eq-content">${eqContent}</span></div>`;
                 }
                 return `<p class="draft-standard-p">${p.trim()}</p>`;
               }).join('')}
@@ -4774,57 +4777,190 @@ window.closeModal = closeModal;
   function cleanAcademicMath(str) {
     if (!str) return '';
     return str
-      // LaTeX styling and text commands
-      .replace(/\\mathcal\{([A-Za-z])\}/g, '$1')
-      .replace(/\\mathbf\{([^}]+)\}/g, '$1')
-      .replace(/\\mathit\{([^}]+)\}/g, '$1')
-      .replace(/\\mathrm\{([^}]+)\}/g, '$1')
-      .replace(/\\text\{([^}]+)\}/g, '$1')
-      .replace(/\\operatorname\{([^}]+)\}/g, '$1')
-      // Logical & directional operators
-      .replace(/\\(?:to|rightarrow)\b/g, '->')
-      .replace(/\\leftarrow\b/g, '<-')
-      .replace(/\\(?:Rightarrow|implies)\b/g, '=>')
-      .replace(/\\in\b/g, 'in')
-      .replace(/\\notin\b/g, 'not in')
-      .replace(/\\(?:dots|cdots|ldots)\b/g, '...')
-      .replace(/\\(?:le|leq)\b/g, '<=')
-      .replace(/\\(?:ge|geq)\b/g, '>=')
-      .replace(/\\(?:ne|neq)\b/g, '!=')
-      .replace(/\\times\b/g, 'x')
-      .replace(/\\approx\b/g, '~=')
-      .replace(/\\pm\b/g, '+/-')
-      .replace(/\\forall\b/g, 'for all ')
-      .replace(/\\exists\b/g, 'exists ')
-      // Escaped brackets and braces
-      .replace(/\\\{/g, '{')
-      .replace(/\\\}/g, '}')
-      .replace(/\\\[/g, '[')
-      .replace(/\\\]/g, ']')
-      .replace(/\\([#&%_{}])/g, '$1');
+      // ── Font/style wrappers ──
+      .replace(/\\mathcal\{([^}]*)\}/g, '$1')
+      .replace(/\\mathbf\{([^}]*)\}/g, '$1')
+      .replace(/\\mathit\{([^}]*)\}/g, '$1')
+      .replace(/\\mathrm\{([^}]*)\}/g, '$1')
+      .replace(/\\mathbb\{([^}]*)\}/g, '$1')
+      .replace(/\\mathsf\{([^}]*)\}/g, '$1')
+      .replace(/\\mathtt\{([^}]*)\}/g, '$1')
+      .replace(/\\boldsymbol\{([^}]*)\}/g, '$1')
+      .replace(/\\text\{([^}]*)\}/g, '$1')
+      .replace(/\\textbf\{([^}]*)\}/g, '$1')
+      .replace(/\\textit\{([^}]*)\}/g, '$1')
+      .replace(/\\textrm\{([^}]*)\}/g, '$1')
+      .replace(/\\operatorname\{([^}]*)\}/g, '$1')
+      .replace(/\\mbox\{([^}]*)\}/g, '$1')
+      // ── Fractions ──
+      .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+      .replace(/\\dfrac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+      .replace(/\\tfrac\{([^}]*)\}\{([^}]*)\}/g, '($1)/($2)')
+      // ── Square roots ──
+      .replace(/\\sqrt\{([^}]*)\}/g, 'sqrt($1)')
+      .replace(/\\sqrt\[([^\]]*)\]\{([^}]*)\}/g, '$1-rt($2)')
+      // ── Superscripts & subscripts ──
+      .replace(/\^\{([^}]*)\}/g, '^($1)')
+      .replace(/\_\{([^}]*)\}/g, '_($1)')
+      .replace(/\^([A-Za-z0-9])/g, '^$1')
+      .replace(/\_([A-Za-z0-9])/g, '_$1')
+      // ── Sums, products, limits, integrals ──
+      .replace(/\\sum_\{([^}]*)\}\^\{([^}]*)\}/g, 'sum($1 to $2)')
+      .replace(/\\sum_\{([^}]*)\}/g, 'sum($1)')
+      .replace(/\\sum/g, 'sum')
+      .replace(/\\prod_\{([^}]*)\}\^\{([^}]*)\}/g, 'prod($1 to $2)')
+      .replace(/\\prod/g, 'prod')
+      .replace(/\\int_\{([^}]*)\}\^\{([^}]*)\}/g, 'integral($1 to $2)')
+      .replace(/\\int/g, 'integral')
+      .replace(/\\lim_\{([^}]*)\}/g, 'lim($1)')
+      .replace(/\\lim/g, 'lim')
+      .replace(/\\max_\{([^}]*)\}/g, 'max($1)')
+      .replace(/\\min_\{([^}]*)\}/g, 'min($1)')
+      .replace(/\\max/g, 'max')
+      .replace(/\\min/g, 'min')
+      .replace(/\\arg\s*max/g, 'argmax')
+      .replace(/\\arg\s*min/g, 'argmin')
+      // ── Greek letters (lowercase) ──
+      .replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β')
+      .replace(/\\gamma/g, 'γ').replace(/\\delta/g, 'δ')
+      .replace(/\\epsilon/g, 'ε').replace(/\\varepsilon/g, 'ε')
+      .replace(/\\zeta/g, 'ζ').replace(/\\eta/g, 'η')
+      .replace(/\\theta/g, 'θ').replace(/\\vartheta/g, 'θ')
+      .replace(/\\iota/g, 'ι').replace(/\\kappa/g, 'κ')
+      .replace(/\\lambda/g, 'λ').replace(/\\mu/g, 'μ')
+      .replace(/\\nu/g, 'ν').replace(/\\xi/g, 'ξ')
+      .replace(/\\pi/g, 'π').replace(/\\varpi/g, 'π')
+      .replace(/\\rho/g, 'ρ').replace(/\\varrho/g, 'ρ')
+      .replace(/\\sigma/g, 'σ').replace(/\\varsigma/g, 'ς')
+      .replace(/\\tau/g, 'τ').replace(/\\upsilon/g, 'υ')
+      .replace(/\\phi/g, 'φ').replace(/\\varphi/g, 'φ')
+      .replace(/\\chi/g, 'χ').replace(/\\psi/g, 'ψ')
+      .replace(/\\omega/g, 'ω')
+      // ── Greek letters (uppercase) ──
+      .replace(/\\Gamma/g, 'Γ').replace(/\\Delta/g, 'Δ')
+      .replace(/\\Theta/g, 'Θ').replace(/\\Lambda/g, 'Λ')
+      .replace(/\\Xi/g, 'Ξ').replace(/\\Pi/g, 'Π')
+      .replace(/\\Sigma/g, 'Σ').replace(/\\Upsilon/g, 'Υ')
+      .replace(/\\Phi/g, 'Φ').replace(/\\Psi/g, 'Ψ')
+      .replace(/\\Omega/g, 'Ω')
+      // ── Accents & decorators ──
+      .replace(/\\hat\{([^}]*)\}/g, '$1-hat')
+      .replace(/\\tilde\{([^}]*)\}/g, '$1-tilde')
+      .replace(/\\bar\{([^}]*)\}/g, '$1-bar')
+      .replace(/\\vec\{([^}]*)\}/g, '$1-vec')
+      .replace(/\\dot\{([^}]*)\}/g, '$1-dot')
+      .replace(/\\ddot\{([^}]*)\}/g, '$1-ddot')
+      .replace(/\\widehat\{([^}]*)\}/g, '$1-hat')
+      .replace(/\\overline\{([^}]*)\}/g, '$1-bar')
+      .replace(/\\underline\{([^}]*)\}/g, '$1')
+      .replace(/\\overrightarrow\{([^}]*)\}/g, '$1-vec')
+      // ── Arrows & logic ──
+      .replace(/\\Leftrightarrow/g, '<=>').replace(/\\leftrightarrow/g, '<->')
+      .replace(/\\(?:Rightarrow|implies)/g, '=>')
+      .replace(/\\Leftarrow/g, '<=')
+      .replace(/\\(?:to|rightarrow)/g, '->')
+      .replace(/\\leftarrow/g, '<-')
+      .replace(/\\uparrow/g, '^').replace(/\\downarrow/g, 'v')
+      // ── Set & logic ──
+      .replace(/\\in\b/g, ' in ')
+      .replace(/\\notin\b/g, ' not in ')
+      .replace(/\\subset/g, ' ⊂ ').replace(/\\supset/g, ' ⊃ ')
+      .replace(/\\subseteq/g, ' ⊆ ').replace(/\\supseteq/g, ' ⊇ ')
+      .replace(/\\cup/g, ' ∪ ').replace(/\\cap/g, ' ∩ ')
+      .replace(/\\emptyset/g, 'Ø').replace(/\\varnothing/g, 'Ø')
+      .replace(/\\setminus/g, '\\')
+      .replace(/\\forall/g, 'for all ')
+      .replace(/\\exists/g, 'exists ')
+      .replace(/\\nexists/g, 'does not exist ')
+      .replace(/\\land\b/g, ' AND ').replace(/\\lor\b/g, ' OR ')
+      .replace(/\\lnot\b/g, 'NOT ').replace(/\\neg\b/g, 'NOT ')
+      // ── Comparison operators ──
+      .replace(/\\(?:le|leq)/g, '<=')
+      .replace(/\\(?:ge|geq)/g, '>=')
+      .replace(/\\(?:ne|neq)/g, '!=')
+      .replace(/\\ll/g, '<<').replace(/\\gg/g, '>>')
+      .replace(/\\sim\b/g, '~').replace(/\\approx/g, '≈')
+      .replace(/\\equiv/g, '≡').replace(/\\cong/g, '≅')
+      .replace(/\\propto/g, '∝').replace(/\\asymp/g, '≈')
+      // ── Arithmetic ──
+      .replace(/\\times/g, '×').replace(/\\cdot/g, '·')
+      .replace(/\\div/g, '÷').replace(/\\pm/g, '±')
+      .replace(/\\mp/g, '∓').replace(/\\ast/g, '*')
+      .replace(/\\star/g, '*').replace(/\\circ/g, '∘')
+      // ── Dots & misc ──
+      .replace(/\\(?:cdots|ldots|dots)/g, '...')
+      .replace(/\\vdots/g, '...')
+      .replace(/\\ddots/g, '...')
+      .replace(/\\infty/g, '∞')
+      .replace(/\\partial/g, '∂')
+      .replace(/\\nabla/g, '∇')
+      .replace(/\\ell/g, 'l')
+      .replace(/\\hbar/g, 'ℏ')
+      .replace(/\\Re/g, 'Re').replace(/\\Im/g, 'Im')
+      .replace(/\\top/g, 'T').replace(/\\bot/g, '⊥')
+      .replace(/\\mid\b/g, '|')
+      .replace(/\\vert/g, '|').replace(/\\Vert/g, '||')
+      .replace(/\\lvert/g, '|').replace(/\\rvert/g, '|')
+      .replace(/\\langle/g, '<').replace(/\\rangle/g, '>')
+      .replace(/\\left\s*[\(\[\{|]/g, '(')
+      .replace(/\\right\s*[\)\]\}|]/g, ')')
+      .replace(/\\left\./g, '').replace(/\\right\./g, '')
+      // ── Bracket commands ──
+      .replace(/\\[Bb]ig[gl]?\s*[\(\[\{|\\|]/g, '(')
+      .replace(/\\[Bb]ig[gr]?\s*[\)\]\}|\\|]/g, ')')
+      // ── Matrices ──
+      .replace(/\\begin\{[a-z]*matrix\}([\s\S]*?)\\end\{[a-z]*matrix\}/g, (m, inner) => {
+        return '[' + inner.replace(/\\\\/g, '; ').replace(/&/g, ', ').trim() + ']';
+      })
+      .replace(/\\begin\{[a-z]+\}/g, '').replace(/\\end\{[a-z]+\}/g, '')
+      // ── Escaped punctuation ──
+      .replace(/\\\{/g, '{').replace(/\\\}/g, '}')
+      .replace(/\\\[/g, '[').replace(/\\\]/g, ']')
+      .replace(/\\([#&%_{}])/g, '$1')
+      // ── Strip any remaining unknown backslash commands ──
+      .replace(/\\[A-Za-z]+/g, '')
+      // ── Cleanup: extra spaces, stray braces ──
+      .replace(/[{}]/g, '')
+      .replace(/  +/g, ' ')
+      .trim();
   }
 
   function processMathAndEquations(text) {
     if (!text) return '';
+    // First clean all LaTeX
     let cleaned = cleanAcademicMath(text);
-    // Explicit block math \[ ... \] or $$ ... $$
-    cleaned = cleaned.replace(/\\\[([\s\S]*?)\\\]/g, '\n\n$$$1$$\n\n');
-    cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, '\n\n$$$1$$\n\n');
 
-    // Extract formal mathematical relations wrapped in $ ... $
-    // (e.g. $P = (R, O, A, C)$, $r: (...) -> {...}$, $T = {e_1, e_2, ..., e_k}$)
-    cleaned = cleaned.replace(/\$([^\$]+)\$([,\.]?)/g, (match, inner, punct) => {
-      const trimmed = inner.trim();
-      const hasRelation = trimmed.includes('=') || trimmed.includes('->') || trimmed.includes('=>') || trimmed.includes('<=');
-      if (trimmed.length >= 10 && hasRelation && (trimmed.includes('(') || trimmed.includes('{') || trimmed.includes('='))) {
-        return '\n\n$$' + trimmed + (punct || '') + '$$\n\n';
+    // Explicit block math \[ ... \] → $$ ... $$ (already cleaned of backslashes, but handle original form first)
+    // Note: we work on the original text for block detection, then clean
+    let raw = text;
+    // Replace \[ ... \] block math
+    raw = raw.replace(/\\\[([\s\S]*?)\\\]/g, (m, inner) => {
+      return '\n\n$$' + cleanAcademicMath(inner.trim()) + '$$\n\n';
+    });
+    // Replace $$ ... $$ block math
+    raw = raw.replace(/\$\$([\s\S]*?)\$\$/g, (m, inner) => {
+      return '\n\n$$' + cleanAcademicMath(inner.trim()) + '$$\n\n';
+    });
+    // Replace inline $ ... $ — promote long equations with relations to display blocks
+    raw = raw.replace(/\$([^\$\n]+?)\$([,.]?)/g, (match, inner, punct) => {
+      const cleanInner = cleanAcademicMath(inner.trim());
+      const hasRelation = cleanInner.includes('=') || cleanInner.includes('->') ||
+                          cleanInner.includes('=>') || cleanInner.includes('≥') ||
+                          cleanInner.includes('≤') || cleanInner.includes('∈');
+      if (cleanInner.length >= 8 && hasRelation) {
+        return '\n\n$$' + cleanInner + (punct || '') + '$$\n\n';
       }
-      return trimmed + (punct || '');
+      return cleanInner + (punct || '');
     });
 
-    // Strip remaining inline $ markers
-    cleaned = cleaned.replace(/\$/g, '');
-    return cleaned;
+    // Clean the rest of the text (non-math parts)
+    const blocks = raw.split(/(\$\$[\s\S]*?\$\$)/g);
+    const result = blocks.map(b => {
+      if (b.startsWith('$$') && b.endsWith('$$')) return b; // preserve equation blocks as-is
+      return cleanAcademicMath(b);
+    }).join('');
+
+    return result.replace(/\$/g, ''); // strip any stray $
   }
 
   async function handleDownloadAction() {
@@ -4995,7 +5131,12 @@ window.closeModal = closeModal;
                 size: bodySize
               }),
               new TextRun({
-                text: draft.abstract,
+                text: cleanAcademicMath(draft.abstract
+                  .replace(/\*\*(.*?)\*\*/g, '$1')
+                  .replace(/\*(.*?)\*/g, '$1')
+                  .replace(/\$([^\$]+)\$/g, (m, inner) => cleanAcademicMath(inner))
+                  .replace(/\$/g, '')
+                  .trim()),
                 italics: isIEEE,
                 font: fFamily,
                 size: bodySize
@@ -6010,12 +6151,20 @@ window.closeModal = closeModal;
         blocks.forEach((block, bIdx) => {
           if (block.startsWith('$$') && block.endsWith('$$')) {
             const eq = block.slice(2, -2).trim();
+            if (!eq) return;
             y = checkPage(y, 12);
             y += 2;
-            doc.setFont('helvetica', 'italic');
+            doc.setFont(fontName, 'italic');
             doc.setFontSize(fontSize || 11);
+            // Scale down if equation is too wide
+            let eqFontSize = fontSize || 11;
+            while (doc.getTextWidth(eq) > contentWidth - 10 && eqFontSize > 7) {
+              eqFontSize -= 0.5;
+              doc.setFontSize(eqFontSize);
+            }
             doc.text(eq, pageWidth / 2, y, { align: 'center' });
-            doc.setFont('helvetica', 'normal');
+            doc.setFont(fontName, 'normal');
+            doc.setFontSize(fontSize || 11);
             y += 8;
             return;
           }

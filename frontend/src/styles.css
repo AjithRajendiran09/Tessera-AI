@@ -3521,6 +3521,34 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   text-align: justify;
 }
 
+/* ── Equation / Math Display Blocks ── */
+.draft-equation-block {
+  display: block;
+  text-align: center;
+  margin: 10px 0;
+  padding: 4px 12px;
+  font-family: 'Times New Roman', Times, serif;
+  font-style: italic;
+  font-size: 10.5px;
+  color: #111111;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.draft-equation-block .draft-eq-content {
+  display: inline-block;
+  text-align: center;
+  padding: 3px 16px;
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.draft-standard-p + .draft-equation-block,
+.draft-ieee-p + .draft-equation-block {
+  margin-top: 8px;
+}
+
 .draft-section-edit-btn {
   opacity: 0.25;
   transition: opacity 0.2s;
