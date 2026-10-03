@@ -4437,16 +4437,25 @@ POSTER ANALYSIS (extracted from uploaded research poster):
         analysisContext = `Research Theme: ${detectedTheme}`;
       }
 
-      const abstractPrompt = `You are a world-class academic writing expert specializing in writing high-impact, Scopus-quality research abstracts. You have deep knowledge of IEEE, Elsevier, Springer, and Taylor & Francis publication standards.
+      const abstractPrompt = `You are a world-class academic writing expert specializing in writing high-impact, Scopus-quality research abstracts and paper titles. You have deep knowledge of IEEE, Elsevier, Springer, and Taylor & Francis publication standards.
 
-TASK: Write a powerful, publication-ready abstract for a ${pubLabel}.
+TASK: Generate a powerful, publication-ready PAPER TITLE and ABSTRACT for a ${pubLabel}.
 
 ${analysisContext}
 
-STYLE REQUIREMENTS:
+TITLE REQUIREMENTS:
+- Craft a compelling, specific, and publishable paper title for a ${pubLabel}
+- IEEE Conference: Use clear technical title (Title Case, no subtitle, 8-15 words)
+- Journal Article: Can use "Title: Subtitle" format; precise, keyword-rich (10-18 words)
+- Book Chapter: Descriptive and conceptual (8-15 words)
+- Include the key technique/method and the application domain
+- Do NOT use vague titles like "A Study of..." or "An Investigation into..."
+- Make it sound like a real top-tier published paper
+
+ABSTRACT STYLE REQUIREMENTS:
 ${styleGuide}
 
-QUALITY STANDARDS (mandatory):
+ABSTRACT QUALITY STANDARDS (mandatory):
 1. Must reflect current state-of-the-art research language (2023-2025 vocabulary)
 2. Include at least 3 specific technical terms/concepts from the domain
 3. Mention a specific technique, algorithm, or framework name (realistic and domain-appropriate)
@@ -4455,21 +4464,44 @@ QUALITY STANDARDS (mandatory):
 6. The abstract should feel like it belongs in a top-tier Scopus Q1/Q2 journal or A/A* conference
 7. Do NOT use generic filler phrases like "this paper presents", "we aim to", "the results show" — be specific and powerful
 8. Do NOT use first person ("we", "our") — use objective academic voice
-9. Write it as a SINGLE flowing paragraph (no sub-headings, no bullets)
-10. Word count: EXACTLY ${targetWords} words (count carefully)
+9. Write the abstract as a SINGLE flowing paragraph (no sub-headings, no bullets)
+10. Word count: EXACTLY ${targetWords} words for the abstract only (count carefully)
 
-RETURN ONLY the abstract text. No title, no labels, no explanations. Just the abstract paragraph.`;
+RETURN ONLY valid JSON in this exact format (no markdown, no code fences, no extra text):
+{"title": "Your Paper Title Here", "abstract": "Your abstract paragraph here."}`;
 
       const result = await callGeminiWithRetry(genAI, abstractPrompt, null, {
         temperature: 0.35,
         topP: 0.9
       });
-      const abstractText = result.response.text().trim();
+      const rawText = result.response.text().trim();
 
-      // Word count
+      // Parse JSON response
+      let paperTitle = '';
+      let abstractText = '';
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          paperTitle = (parsed.title || '').trim();
+          abstractText = (parsed.abstract || '').trim();
+        } else {
+          abstractText = rawText;
+        }
+      } catch {
+        abstractText = rawText;
+      }
+
+      // Fallback: if title still empty, use detected theme
+      if (!paperTitle && detectedTheme) {
+        paperTitle = detectedTheme;
+      }
+
+      // Word count (abstract only)
       const wordCount_actual = abstractText.split(/\s+/).filter(w => w.length > 0).length;
 
       res.apiSuccess({
+        title: paperTitle,
         abstract: abstractText,
         detectedTheme,
         wordCount: wordCount_actual,

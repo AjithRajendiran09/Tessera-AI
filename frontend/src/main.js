@@ -7688,6 +7688,12 @@ function setupAbstractGeneratorPage() {
       };
       resultPubType.textContent = pubLabels[publicationType] || publicationType;
       resultWc.textContent = `${result.wordCount || wordCount} words`;
+
+      // Paper Title
+      const paperTitleEl = $('abgen-paper-title');
+      if (paperTitleEl) {
+        paperTitleEl.textContent = result.title || '';
+      }
       abstractText.textContent = result.abstract || '';
 
       // Show detected theme if from poster
@@ -7744,22 +7750,28 @@ function setupAbstractGeneratorPage() {
     }
   }
 
-  // ── Copy ──
+  // ── Copy ── (Title + Abstract)
   copyBtn.addEventListener('click', async () => {
-    const text = abstractText.textContent || abstractText.innerText || '';
+    const titleEl = $('abgen-paper-title');
+    const titleText = (titleEl?.textContent || '').trim();
+    const bodyText = (abstractText.textContent || abstractText.innerText || '').trim();
+    const full = titleText ? `${titleText}\n\n${bodyText}` : bodyText;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(full);
       const orig = copyBtn.textContent;
       copyBtn.textContent = '✅ Copied!';
       setTimeout(() => { copyBtn.textContent = orig; }, 1800);
     } catch { toast('Could not copy — please select and copy manually.', true); }
   });
 
-  // ── Download ──
+  // ── Download ── (Title + Abstract)
   downloadBtn.addEventListener('click', () => {
-    const text = abstractText.textContent || abstractText.innerText || '';
+    const titleEl = $('abgen-paper-title');
+    const titleText = (titleEl?.textContent || '').trim();
+    const bodyText = (abstractText.textContent || abstractText.innerText || '').trim();
+    const full = titleText ? `${titleText}\n\n${bodyText}` : bodyText;
     const pubType = document.querySelector('input[name="abgen-pubtype"]:checked')?.value || 'abstract';
-    const blob = new Blob([text], { type: 'text/plain' });
+    const blob = new Blob([full], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
