@@ -618,7 +618,9 @@ function setupNav() {
       if (currentPage === 'traceability') {
         setupTraceabilityPage();
       }
-      
+      if (currentPage === 'abstract-gen') {
+        setupAbstractGeneratorPage();
+      }
       // Close sidebar on mobile after nav click
       sidebar.classList.remove('open');
       overlay.classList.remove('active');
@@ -7542,3 +7544,240 @@ function loadBenchmarkPaperOptions() {
   sel.innerHTML = state.papers.map(p => `<option value="${p.id}">${p.title} (${p.year})</option>`).join('');
 }
 
+// ══════════════════════════════════════════════════════════════
+// ABSTRACT GENERATOR PAGE
+// ══════════════════════════════════════════════════════════════
+let _abgenInitialized = false;
+let _abgenPosterFile = null;
+
+function setupAbstractGeneratorPage() {
+  // Only wire up listeners once
+  if (_abgenInitialized) return;
+  _abgenInitialized = true;
+
+  const dropzone     = $('abgen-dropzone');
+  const posterInput  = $('abgen-poster-input');
+  const browseBtn    = $('abgen-browse-btn');
+  const removeBtn    = $('abgen-remove-poster');
+  const dropInner    = $('abgen-drop-inner');
+  const posterPrev   = $('abgen-poster-preview');
+  const posterImg    = $('abgen-poster-img');
+  const detectedDiv  = $('abgen-detected-theme');
+  const detectedVal  = $('abgen-detected-value');
+  const themeInput   = $('abgen-theme-input');
+  const wcSlider     = $('abgen-word-count');
+  const wcBadge      = $('abgen-wc-badge');
+  const generateBtn  = $('abgen-generate-btn');
+  const emptyState   = $('abgen-empty-state');
+  const loadingState = $('abgen-loading');
+  const loadingMsg   = $('abgen-loading-msg');
+  const resultState  = $('abgen-result');
+  const resultPubType = $('abgen-result-pubtype');
+  const resultWc     = $('abgen-result-wc');
+  const abstractText = $('abgen-abstract-text');
+  const copyBtn      = $('abgen-copy-btn');
+  const downloadBtn  = $('abgen-download-btn');
+  const regenBtn     = $('abgen-regenerate-btn');
+  const analysisStrip = $('abgen-analysis-strip');
+  const analysisGrid  = $('abgen-analysis-grid');
+  const kwStrip       = $('abgen-keywords-strip');
+  const kwTags        = $('abgen-kw-tags');
+
+  // ── Poster Drag & Drop ──
+  browseBtn.addEventListener('click', e => { e.stopPropagation(); posterInput.click(); });
+  dropzone.addEventListener('click', () => { if (!_abgenPosterFile) posterInput.click(); });
+
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) loadPosterFile(file);
+  });
+
+  posterInput.addEventListener('change', () => {
+    const file = posterInput.files[0];
+    if (file) loadPosterFile(file);
+  });
+
+  removeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    _abgenPosterFile = null;
+    posterInput.value = '';
+    posterImg.src = '';
+    posterPrev.style.display = 'none';
+    dropInner.style.display = 'flex';
+    detectedDiv.style.display = 'none';
+    detectedVal.textContent = '—';
+  });
+
+  function loadPosterFile(file) {
+    _abgenPosterFile = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      posterImg.src = e.target.result;
+      dropInner.style.display = 'none';
+      posterPrev.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Publication Type Cards ──
+  document.querySelectorAll('.abgen-pub-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.abgen-pub-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input[type="radio"]').checked = true;
+    });
+  });
+
+  // ── Word Count Slider ──
+  wcSlider.addEventListener('input', () => {
+    wcBadge.textContent = `${wcSlider.value} words`;
+    document.querySelectorAll('.abgen-preset-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.wc === wcSlider.value);
+    });
+  });
+
+  document.querySelectorAll('.abgen-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      wcSlider.value = btn.dataset.wc;
+      wcBadge.textContent = `${btn.dataset.wc} words`;
+      document.querySelectorAll('.abgen-preset-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // ── Generate ──
+  generateBtn.addEventListener('click', () => runAbstractGeneration());
+  regenBtn.addEventListener('click', () => runAbstractGeneration());
+
+  async function runAbstractGeneration() {
+    const manualTheme = themeInput.value.trim();
+    const hasPoster = !!_abgenPosterFile;
+
+    if (!hasPoster && !manualTheme) {
+      toast('Please upload a poster image or enter a research theme.', true);
+      return;
+    }
+
+    const publicationType = document.querySelector('input[name="abgen-pubtype"]:checked')?.value || 'ieee-conference';
+    const wordCount = parseInt(wcSlider.value) || 250;
+
+    // UI: show loading
+    generateBtn.disabled = true;
+    emptyState.style.display = 'none';
+    resultState.style.display = 'none';
+    loadingState.style.display = 'flex';
+    loadingMsg.textContent = hasPoster ? 'Analyzing poster...' : 'Generating abstract...';
+
+    try {
+      const result = await api.generateAbstract({
+        posterFile: _abgenPosterFile || null,
+        manualTheme,
+        publicationType,
+        wordCount
+      });
+
+      // Render result
+      const pubLabels = {
+        'ieee-conference': '🏛️ IEEE Conference',
+        'journal': '📰 Journal Article',
+        'book-chapter': '📖 Book Chapter'
+      };
+      resultPubType.textContent = pubLabels[publicationType] || publicationType;
+      resultWc.textContent = `${result.wordCount || wordCount} words`;
+      abstractText.textContent = result.abstract || '';
+
+      // Show detected theme if from poster
+      if (result.detectedTheme && hasPoster) {
+        detectedDiv.style.display = 'flex';
+        detectedVal.textContent = result.detectedTheme;
+      }
+
+      // Poster analysis strip
+      if (result.posterAnalysis) {
+        const a = result.posterAnalysis;
+        const fields = [
+          { label: 'Domain', value: a.domain },
+          { label: 'Methodology', value: a.methodology },
+          { label: 'Objectives', value: a.objectives },
+          { label: 'Results', value: a.results },
+        ].filter(f => f.value && f.value !== 'Not specified' && f.value !== 'Not visible in poster');
+
+        if (fields.length > 0) {
+          analysisGrid.innerHTML = fields.map(f => `
+            <div class="abgen-analysis-item">
+              <div class="abgen-analysis-item-label">${f.label}</div>
+              <div class="abgen-analysis-item-value">${f.value}</div>
+            </div>
+          `).join('');
+          analysisStrip.style.display = 'block';
+        } else {
+          analysisStrip.style.display = 'none';
+        }
+
+        // Keywords
+        if (a.keywords && a.keywords.length > 0) {
+          kwTags.innerHTML = a.keywords.map(k =>
+            `<span class="abgen-kw-tag">${k}</span>`
+          ).join('');
+          kwStrip.style.display = 'flex';
+        } else {
+          kwStrip.style.display = 'none';
+        }
+      } else {
+        analysisStrip.style.display = 'none';
+        kwStrip.style.display = 'none';
+      }
+
+      loadingState.style.display = 'none';
+      resultState.style.display = 'flex';
+
+    } catch (err) {
+      loadingState.style.display = 'none';
+      emptyState.style.display = 'flex';
+      toast(`Abstract generation failed: ${err.message}`, true);
+    } finally {
+      generateBtn.disabled = false;
+    }
+  }
+
+  // ── Copy ──
+  copyBtn.addEventListener('click', async () => {
+    const text = abstractText.textContent || abstractText.innerText || '';
+    try {
+      await navigator.clipboard.writeText(text);
+      const orig = copyBtn.textContent;
+      copyBtn.textContent = '✅ Copied!';
+      setTimeout(() => { copyBtn.textContent = orig; }, 1800);
+    } catch { toast('Could not copy — please select and copy manually.', true); }
+  });
+
+  // ── Download ──
+  downloadBtn.addEventListener('click', () => {
+    const text = abstractText.textContent || abstractText.innerText || '';
+    const pubType = document.querySelector('input[name="abgen-pubtype"]:checked')?.value || 'abstract';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `abstract_${pubType}_${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  // ── Keyword tag click → append to theme ──
+  kwTags.addEventListener('click', e => {
+    const tag = e.target.closest('.abgen-kw-tag');
+    if (!tag) return;
+    const kw = tag.textContent;
+    const cur = themeInput.value.trim();
+    if (!cur.toLowerCase().includes(kw.toLowerCase())) {
+      themeInput.value = cur ? `${cur}, ${kw}` : kw;
+    }
+  });
+}

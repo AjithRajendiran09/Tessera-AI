@@ -158,6 +158,9 @@
         <button class="nav-item" data-page="paper-draft">
           <span class="nav-icon">📝</span> Paper Draft
         </button>
+        <button class="nav-item" data-page="abstract-gen">
+          <span class="nav-icon">✍️</span> Abstract Generator
+        </button>
         <button class="nav-item" data-page="traceability">
           <span class="nav-icon">🛡️</span> Model Traceability
         </button>
@@ -1223,6 +1226,198 @@
               <button class="btn btn-primary" id="btn-run-benchmark"><span>📊</span> Calculate Benchmark Metrics</button>
             </div>
             <div id="benchmark-results" class="benchmark-results" style="display: none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page: Abstract Generator -->
+      <div id="page-abstract-gen" class="page">
+        <div class="page-header">
+          <div>
+            <h1>✍️ Abstract Generator</h1>
+            <p class="page-desc">Upload your research poster or describe your theme — get a powerful, Scopus-quality abstract in seconds</p>
+          </div>
+        </div>
+
+        <div class="abgen-layout">
+
+          <!-- LEFT PANEL: Inputs -->
+          <div class="abgen-inputs">
+
+            <!-- Poster Upload Zone -->
+            <div class="abgen-card">
+              <h3 class="abgen-card-title">
+                <span class="abgen-card-icon">🖼️</span> Research Poster
+                <span class="abgen-badge-optional">Optional</span>
+              </h3>
+              <p class="abgen-card-desc">Upload your research poster — Tessera AI will automatically extract the theme, methodology, contributions, and results.</p>
+
+              <div class="abgen-dropzone" id="abgen-dropzone">
+                <input type="file" id="abgen-poster-input" accept="image/*" style="display:none" />
+                <div class="abgen-drop-inner" id="abgen-drop-inner">
+                  <div class="abgen-drop-icon">📎</div>
+                  <p class="abgen-drop-title">Drop your poster here</p>
+                  <p class="abgen-drop-hint">PNG, JPG, WEBP — up to 10MB</p>
+                  <button class="btn btn-ghost abgen-browse-btn" id="abgen-browse-btn">Browse File</button>
+                </div>
+                <div class="abgen-poster-preview" id="abgen-poster-preview" style="display:none">
+                  <img id="abgen-poster-img" src="" alt="Poster preview" />
+                  <button class="abgen-remove-poster" id="abgen-remove-poster" title="Remove poster">✕</button>
+                </div>
+              </div>
+
+              <!-- Detected theme badge (shown after upload) -->
+              <div class="abgen-detected-theme" id="abgen-detected-theme" style="display:none">
+                <span class="abgen-detected-label">🎯 Detected Theme:</span>
+                <span class="abgen-detected-value" id="abgen-detected-value">—</span>
+              </div>
+            </div>
+
+            <!-- Manual Theme Override -->
+            <div class="abgen-card">
+              <h3 class="abgen-card-title">
+                <span class="abgen-card-icon">💬</span> Research Theme
+                <span class="abgen-badge-optional">Or type manually</span>
+              </h3>
+              <textarea
+                id="abgen-theme-input"
+                class="abgen-textarea"
+                placeholder="e.g. Federated Learning for Privacy-Preserving Healthcare Diagnostics using Transformer Models"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <!-- Publication Type -->
+            <div class="abgen-card">
+              <h3 class="abgen-card-title">
+                <span class="abgen-card-icon">📋</span> Publication Type
+              </h3>
+              <div class="abgen-pub-types" id="abgen-pub-types">
+                <label class="abgen-pub-card selected" data-value="ieee-conference">
+                  <input type="radio" name="abgen-pubtype" value="ieee-conference" checked style="display:none" />
+                  <span class="abgen-pub-icon">🏛️</span>
+                  <span class="abgen-pub-name">IEEE Conference</span>
+                  <span class="abgen-pub-hint">Dense, quantitative, structured paragraph</span>
+                </label>
+                <label class="abgen-pub-card" data-value="journal">
+                  <input type="radio" name="abgen-pubtype" value="journal" style="display:none" />
+                  <span class="abgen-pub-icon">📰</span>
+                  <span class="abgen-pub-name">Journal Article</span>
+                  <span class="abgen-pub-hint">Scopus Q1/Q2 scholarly depth</span>
+                </label>
+                <label class="abgen-pub-card" data-value="book-chapter">
+                  <input type="radio" name="abgen-pubtype" value="book-chapter" style="display:none" />
+                  <span class="abgen-pub-icon">📖</span>
+                  <span class="abgen-pub-name">Book Chapter</span>
+                  <span class="abgen-pub-hint">Accessible, conceptual narrative</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Word Count -->
+            <div class="abgen-card">
+              <h3 class="abgen-card-title">
+                <span class="abgen-card-icon">📏</span> Target Word Count
+                <span class="abgen-word-count-badge" id="abgen-wc-badge">250 words</span>
+              </h3>
+              <div class="abgen-slider-row">
+                <span class="abgen-slider-min">100</span>
+                <input type="range" id="abgen-word-count" min="100" max="600" value="250" step="25" class="abgen-slider" />
+                <span class="abgen-slider-max">600</span>
+              </div>
+              <div class="abgen-wc-presets">
+                <button class="abgen-preset-btn" data-wc="150">150 — Short</button>
+                <button class="abgen-preset-btn" data-wc="250">250 — Standard</button>
+                <button class="abgen-preset-btn" data-wc="350">350 — Extended</button>
+                <button class="abgen-preset-btn" data-wc="500">500 — Journal</button>
+              </div>
+            </div>
+
+            <!-- Generate Button -->
+            <button class="btn btn-primary abgen-generate-btn" id="abgen-generate-btn">
+              <span class="abgen-generate-icon">⚡</span>
+              Generate Abstract
+            </button>
+          </div>
+
+          <!-- RIGHT PANEL: Output -->
+          <div class="abgen-output-panel" id="abgen-output-panel">
+
+            <!-- Empty State -->
+            <div class="abgen-empty-state" id="abgen-empty-state">
+              <div class="abgen-empty-icon">✍️</div>
+              <h3>Your Abstract Will Appear Here</h3>
+              <p>Upload a poster or enter your research theme, configure the settings, and click <strong>Generate Abstract</strong>.</p>
+              <div class="abgen-features">
+                <div class="abgen-feature-item">🔬 Scopus-quality language</div>
+                <div class="abgen-feature-item">📊 Quantitative claims</div>
+                <div class="abgen-feature-item">🎯 Precise word count</div>
+                <div class="abgen-feature-item">🏛️ IEEE/Journal/Book styles</div>
+              </div>
+            </div>
+
+            <!-- Loading State -->
+            <div class="abgen-loading" id="abgen-loading" style="display:none">
+              <div class="abgen-loading-anim">
+                <div class="abgen-pulse-ring"></div>
+                <div class="abgen-pulse-core">✍️</div>
+              </div>
+              <h3 id="abgen-loading-msg">Analyzing poster...</h3>
+              <p>Tessera AI is crafting your abstract</p>
+            </div>
+
+            <!-- Result State -->
+            <div class="abgen-result" id="abgen-result" style="display:none">
+              <div class="abgen-result-header">
+                <div class="abgen-result-meta">
+                  <span class="abgen-result-badge" id="abgen-result-pubtype">IEEE Conference</span>
+                  <span class="abgen-result-wc" id="abgen-result-wc">— words</span>
+                </div>
+                <div class="abgen-result-actions">
+                  <button class="btn btn-ghost abgen-action-btn" id="abgen-copy-btn" title="Copy to clipboard">📋 Copy</button>
+                  <button class="btn btn-ghost abgen-action-btn" id="abgen-download-btn" title="Download as .txt">💾 Download</button>
+                  <button class="btn btn-ghost abgen-action-btn" id="abgen-regenerate-btn" title="Regenerate">🔄 Regenerate</button>
+                </div>
+              </div>
+
+              <!-- Detected Analysis -->
+              <div class="abgen-analysis-strip" id="abgen-analysis-strip" style="display:none">
+                <div class="abgen-analysis-title">🔍 Poster Analysis</div>
+                <div class="abgen-analysis-grid" id="abgen-analysis-grid"></div>
+              </div>
+
+              <!-- Abstract Text -->
+              <div class="abgen-abstract-box">
+                <div class="abgen-abstract-label">Generated Abstract</div>
+                <div class="abgen-abstract-text" id="abgen-abstract-text" contenteditable="true" spellcheck="true"></div>
+              </div>
+
+              <!-- Keyword Strip -->
+              <div class="abgen-keywords-strip" id="abgen-keywords-strip" style="display:none">
+                <span class="abgen-kw-label">Suggested Keywords:</span>
+                <div class="abgen-kw-tags" id="abgen-kw-tags"></div>
+              </div>
+
+              <!-- Quality Indicators -->
+              <div class="abgen-quality-bar">
+                <div class="abgen-quality-item">
+                  <span class="abgen-qi-icon">✅</span>
+                  <span class="abgen-qi-label">Scopus-Compliant</span>
+                </div>
+                <div class="abgen-quality-item">
+                  <span class="abgen-qi-icon">📊</span>
+                  <span class="abgen-qi-label">Quantitative Claims</span>
+                </div>
+                <div class="abgen-quality-item">
+                  <span class="abgen-qi-icon">🎓</span>
+                  <span class="abgen-qi-label">Academic Register</span>
+                </div>
+                <div class="abgen-quality-item">
+                  <span class="abgen-qi-icon">🔬</span>
+                  <span class="abgen-qi-label">Domain-Specific Terms</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

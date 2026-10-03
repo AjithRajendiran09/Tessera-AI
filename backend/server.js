@@ -4299,6 +4299,191 @@ app.get('/api/audit/logs', checkSupabase, authenticateUser, async (req, res) => 
   }
 });
 
+// ══════════════════════════════════════════════════════════════════
+// ABSTRACT GENERATOR — Poster → AI Abstract
+// POST /api/abstract-generator
+// Accepts: multipart/form-data: poster (image, optional), manualTheme (string, optional),
+//          publicationType ('ieee-conference'|'journal'|'book-chapter'),
+//          wordCount (number, default 250)
+// ══════════════════════════════════════════════════════════════════
+app.post('/api/abstract-generator',
+  aiRateLimiter,
+  upload.single('poster'),
+  checkSupabase,
+  authenticateUser,
+  async (req, res) => {
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+      }
+
+      const {
+        publicationType = 'ieee-conference',
+        wordCount = 250,
+        manualTheme = ''
+      } = req.body;
+
+      const targetWords = Math.min(Math.max(parseInt(wordCount) || 250, 100), 600);
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+      // ── Step 1: Detect theme from poster image (if uploaded) ──
+      let detectedTheme = manualTheme ? manualTheme.trim() : '';
+      let posterAnalysis = '';
+
+      if (req.file) {
+        const imageData = req.file.buffer.toString('base64');
+        const mimeType = req.file.mimetype || 'image/png';
+
+        // Use gemini-2.0-flash-exp or gemini-1.5-flash for vision
+        const visionModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-exp'];
+        let visionResult = null;
+
+        for (const modelName of visionModels) {
+          try {
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const visionPrompt = `You are an expert academic research analyst. Analyze this research poster image carefully.
+
+Extract and return a JSON object with these fields:
+{
+  "theme": "A precise, specific research topic/theme (2-6 words, e.g., 'Federated Learning for Healthcare Data Privacy')",
+  "domain": "The broad academic domain (e.g., 'Computer Science', 'Biomedical Engineering')",
+  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "methodology": "Brief description of the approach/method shown (1-2 sentences)",
+  "contributions": ["contribution 1", "contribution 2", "contribution 3"],
+  "objectives": "Main research objective (1-2 sentences)",
+  "results": "Key results/findings if visible (1-2 sentences, or 'Not visible in poster')",
+  "posterTitle": "The exact title text from the poster if readable"
+}
+
+Return ONLY the JSON object, no markdown, no extra text.`;
+
+            const visionRes = await model.generateContent([
+              visionPrompt,
+              { inlineData: { mimeType, data: imageData } }
+            ]);
+            const visionText = visionRes.response.text().trim();
+            const jsonMatch = visionText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              detectedTheme = parsed.theme || detectedTheme;
+              posterAnalysis = JSON.stringify(parsed);
+              visionResult = parsed;
+            }
+            break;
+          } catch (vErr) {
+            console.warn(`[Vision] ${modelName} failed: ${vErr.message?.substring(0, 100)}`);
+          }
+        }
+
+        if (!detectedTheme) {
+          detectedTheme = manualTheme || 'Research in Artificial Intelligence and Machine Learning';
+        }
+      } else if (!detectedTheme) {
+        return res.status(400).json({ error: 'Please upload a poster image or enter a research theme manually.' });
+      }
+
+      // ── Step 2: Generate the abstract ──
+      const pubTypeLabels = {
+        'ieee-conference': 'IEEE Conference Paper',
+        'journal': 'Scopus-Indexed Journal Article',
+        'book-chapter': 'Book Chapter'
+      };
+      const pubLabel = pubTypeLabels[publicationType] || 'IEEE Conference Paper';
+
+      // Publication-specific style guidance
+      const styleGuides = {
+        'ieee-conference': `
+- Follow strict IEEE conference abstract style (single dense paragraph)
+- Use present/past tense for results, present tense for objectives
+- Structure: [Context/Problem] → [Gap in existing work] → [Proposed approach] → [Key technique] → [Results with specific numbers] → [Significance/Impact]
+- Be quantitative: include % improvements, accuracy metrics, dataset sizes where plausible
+- Use active voice; avoid "we propose" at start — begin with context or problem
+- Include relevant IEEE technical terminology
+- Exactly ${targetWords} words (±10 words)`,
+        'journal': `
+- Follow Scopus-indexed journal abstract style (comprehensive structured narrative)
+- Structure: [Background/Motivation] → [Problem Statement] → [Research Objectives] → [Methodology] → [Results & Analysis] → [Conclusion & Future Work]
+- Be thorough, scholarly, and precise with technical depth
+- Include quantitative claims, comparison with state-of-the-art
+- Use formal academic register throughout
+- Exactly ${targetWords} words (±10 words)`,
+        'book-chapter': `
+- Follow academic book chapter abstract style (accessible yet rigorous)
+- Structure: [Chapter context] → [Core subject] → [Approach taken] → [Key insights/findings] → [Contribution to the field] → [Chapter overview]
+- Balance accessibility with scholarly precision
+- Mention the theoretical framework or conceptual contribution
+- Less metric-heavy than conference/journal, more conceptual
+- Exactly ${targetWords} words (±10 words)`
+      };
+
+      const styleGuide = styleGuides[publicationType] || styleGuides['ieee-conference'];
+
+      let analysisContext = '';
+      if (posterAnalysis) {
+        try {
+          const parsed = JSON.parse(posterAnalysis);
+          analysisContext = `
+POSTER ANALYSIS (extracted from uploaded research poster):
+- Research Theme: ${parsed.theme || detectedTheme}
+- Academic Domain: ${parsed.domain || 'Not specified'}
+- Keywords: ${(parsed.keywords || []).join(', ')}
+- Methodology: ${parsed.methodology || 'Not specified'}
+- Key Contributions: ${(parsed.contributions || []).join('; ')}
+- Research Objectives: ${parsed.objectives || 'Not specified'}
+- Results/Findings: ${parsed.results || 'Not specified'}
+- Poster Title: ${parsed.posterTitle || 'Not readable'}`;
+        } catch { analysisContext = `Research Theme: ${detectedTheme}`; }
+      } else {
+        analysisContext = `Research Theme: ${detectedTheme}`;
+      }
+
+      const abstractPrompt = `You are a world-class academic writing expert specializing in writing high-impact, Scopus-quality research abstracts. You have deep knowledge of IEEE, Elsevier, Springer, and Taylor & Francis publication standards.
+
+TASK: Write a powerful, publication-ready abstract for a ${pubLabel}.
+
+${analysisContext}
+
+STYLE REQUIREMENTS:
+${styleGuide}
+
+QUALITY STANDARDS (mandatory):
+1. Must reflect current state-of-the-art research language (2023-2025 vocabulary)
+2. Include at least 3 specific technical terms/concepts from the domain
+3. Mention a specific technique, algorithm, or framework name (realistic and domain-appropriate)
+4. Include at least one quantitative claim (accuracy, improvement %, dataset size, parameter count, etc.)
+5. Reference comparison with existing approaches ("outperforms baseline", "surpasses state-of-the-art", etc.)
+6. The abstract should feel like it belongs in a top-tier Scopus Q1/Q2 journal or A/A* conference
+7. Do NOT use generic filler phrases like "this paper presents", "we aim to", "the results show" — be specific and powerful
+8. Do NOT use first person ("we", "our") — use objective academic voice
+9. Write it as a SINGLE flowing paragraph (no sub-headings, no bullets)
+10. Word count: EXACTLY ${targetWords} words (count carefully)
+
+RETURN ONLY the abstract text. No title, no labels, no explanations. Just the abstract paragraph.`;
+
+      const result = await callGeminiWithRetry(genAI, abstractPrompt, null, {
+        temperature: 0.35,
+        topP: 0.9
+      });
+      const abstractText = result.response.text().trim();
+
+      // Word count
+      const wordCount_actual = abstractText.split(/\s+/).filter(w => w.length > 0).length;
+
+      res.apiSuccess({
+        abstract: abstractText,
+        detectedTheme,
+        wordCount: wordCount_actual,
+        publicationType,
+        posterAnalysis: posterAnalysis ? JSON.parse(posterAnalysis) : null
+      });
+
+    } catch (err) {
+      console.error('[Abstract Generator] Error:', err);
+      res.status(500).json({ error: err.message || 'Abstract generation failed. Please try again.' });
+    }
+  }
+);
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Backend API running on http://localhost:${PORT}`);

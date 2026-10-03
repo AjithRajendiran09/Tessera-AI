@@ -484,3 +484,34 @@ export async function rescoreWorkspacePapers(workspaceId, researchTopic = '') {
 export async function resolvePaperPdf(paperId) {
   return fetchAPI(`/papers/${paperId}/resolve-pdf`);
 }
+
+// ── Abstract Generator ──
+export async function generateAbstract({ posterFile, manualTheme, publicationType, wordCount }) {
+  const token = await getAuthToken();
+  const formData = new FormData();
+  if (posterFile) formData.append('poster', posterFile);
+  if (manualTheme) formData.append('manualTheme', manualTheme);
+  formData.append('publicationType', publicationType || 'ieee-conference');
+  formData.append('wordCount', String(wordCount || 250));
+
+  const res = await fetch(`${API_URL}/abstract-generator`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData
+  });
+
+  if (!res.ok) {
+    let rawText = '';
+    try {
+      rawText = await res.text();
+      const errorData = JSON.parse(rawText);
+      throw new Error(errorData.error?.message || errorData.error || `HTTP ${res.status}`);
+    } catch (e) {
+      if (e.message.includes('HTTP') || (e.message && !e.message.startsWith('Unexpected'))) throw e;
+      throw new Error(`HTTP ${res.status}: ${rawText.substring(0, 100)}`);
+    }
+  }
+  const json = await res.json();
+  if (json && json.success !== undefined && json.data !== undefined) return json.data;
+  return json;
+}
