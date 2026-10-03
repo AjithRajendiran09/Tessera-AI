@@ -4300,6 +4300,103 @@ app.get('/api/audit/logs', checkSupabase, authenticateUser, async (req, res) => 
 });
 
 // ══════════════════════════════════════════════════════════════════
+// ABSTRACT HISTORY — CRUD (DB-backed, per-user)
+// ══════════════════════════════════════════════════════════════════
+
+// GET  /api/abstract-history        → list user's history (newest first, max 50)
+app.get('/api/abstract-history', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { data, error } = await req.supabaseUser
+      .from('abstract_history')
+      .select('*')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) return res.status(400).json({ error: error.message });
+    res.apiSuccess({ history: data || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/abstract-history        → save a new entry
+app.post('/api/abstract-history', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { title, abstract, publication_type, word_count, detected_theme } = req.body;
+    if (!abstract) return res.status(400).json({ error: 'abstract is required.' });
+    const { data, error } = await req.supabaseUser
+      .from('abstract_history')
+      .insert({
+        user_id: req.user.id,
+        title: title || '',
+        abstract,
+        publication_type: publication_type || 'ieee-conference',
+        word_count: parseInt(word_count) || 0,
+        detected_theme: detected_theme || ''
+      })
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.apiSuccess({ entry: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH /api/abstract-history/:id   → update title or abstract (inline edit)
+app.patch('/api/abstract-history/:id', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, abstract } = req.body;
+    const updates = { updated_at: new Date().toISOString() };
+    if (title  !== undefined) updates.title    = title;
+    if (abstract !== undefined) updates.abstract = abstract;
+
+    const { data, error } = await req.supabaseUser
+      .from('abstract_history')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', req.user.id)
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.apiSuccess({ entry: data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/abstract-history/:id  → delete single entry
+app.delete('/api/abstract-history/:id', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await req.supabaseUser
+      .from('abstract_history')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', req.user.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.apiSuccess({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/abstract-history      → clear all user's history
+app.delete('/api/abstract-history', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { error } = await req.supabaseUser
+      .from('abstract_history')
+      .delete()
+      .eq('user_id', req.user.id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.apiSuccess({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
 // ABSTRACT GENERATOR — Poster → AI Abstract
 // POST /api/abstract-generator
 // Accepts: multipart/form-data: poster (image, optional), manualTheme (string, optional),

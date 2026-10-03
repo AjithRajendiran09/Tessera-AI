@@ -515,3 +515,30 @@ export async function generateAbstract({ posterFile, manualTheme, publicationTyp
   if (json && json.success !== undefined && json.data !== undefined) return json.data;
   return json;
 }
+
+// ── Abstract History (DB-backed) ──
+export async function getAbstractHistory() {
+  return fetchAPI('/abstract-history');
+}
+
+export async function saveAbstractHistory({ title, abstract, publication_type, word_count, detected_theme }) {
+  return fetchAPI('/abstract-history', {
+    method: 'POST',
+    body: JSON.stringify({ title, abstract, publication_type, word_count, detected_theme })
+  });
+}
+
+export async function updateAbstractHistory(id, { title, abstract }) {
+  return fetchAPI(`/abstract-history/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title, abstract })
+  });
+}
+
+export async function deleteAbstractHistory(id) {
+  return fetchAPI(`/abstract-history/${id}`, { method: 'DELETE' });
+}
+
+export async function clearAbstractHistory() {
+  return fetchAPI('/abstract-history', { method: 'DELETE' });
+}

@@ -249,3 +249,39 @@ BEGIN
 END;
 $$;
 
+
+-- ============================================================
+-- Abstract History Table
+-- Stores AI-generated abstracts per user (persistent across devices)
+-- Run in Supabase Dashboard → SQL Editor
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS abstract_history (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title TEXT,
+  abstract TEXT NOT NULL,
+  publication_type TEXT DEFAULT 'ieee-conference'
+    CHECK (publication_type IN ('ieee-conference','journal','book-chapter')),
+  word_count INTEGER DEFAULT 0,
+  detected_theme TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_abstract_history_user_created
+  ON abstract_history(user_id, created_at DESC);
+
+ALTER TABLE abstract_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own abstract history"
+  ON abstract_history FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own abstract history"
+  ON abstract_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own abstract history"
+  ON abstract_history FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own abstract history"
+  ON abstract_history FOR DELETE USING (auth.uid() = user_id);

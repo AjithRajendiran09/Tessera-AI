@@ -7806,10 +7806,15 @@ function setupAbstractGeneratorPage() {
   // ── History: clear all ──
   const clearAllBtn = $('abgen-history-clear-btn');
   if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', () => {
+    clearAllBtn.addEventListener('click', async () => {
       if (!confirm('Clear all generation history? This cannot be undone.')) return;
-      localStorage.removeItem(ABGEN_HISTORY_KEY);
-      abgenRenderHistory();
+      try {
+        await api.clearAbstractHistory();
+        _abgenHistoryCache = [];
+        abgenRenderHistory([]);
+      } catch (err) {
+        toast(`Could not clear history: ${err.message}`, true);
+      }
     });
   }
 
@@ -7817,37 +7822,54 @@ function setupAbstractGeneratorPage() {
   abgenRenderHistory();
 }
 
-// ══ History Helpers (localStorage) ══
+// ══ History Helpers (Supabase DB-backed) ══
 
-function abgenGetHistory() {
-  try { return JSON.parse(localStorage.getItem(ABGEN_HISTORY_KEY) || '[]'); }
-  catch { return []; }
+// In-memory cache so renders are instant without extra DB round-trips
+let _abgenHistoryCache = null;
+
+async function abgenSaveToHistory({ title, abstract, publicationType, wordCount, detectedTheme }) {
+  try {
+    const result = await api.saveAbstractHistory({
+      title,
+      abstract,
+      publication_type: publicationType,
+      word_count: wordCount,
+      detected_theme: detectedTheme
+    });
+    // Prepend to cache optimistically
+    const entry = result?.entry || {
+      id: result?.id || String(Date.now()),
+      title, abstract,
+      publication_type: publicationType,
+      word_count: wordCount,
+      detected_theme: detectedTheme,
+      created_at: new Date().toISOString()
+    };
+    if (_abgenHistoryCache) _abgenHistoryCache.unshift(entry);
+    abgenRenderHistory(_abgenHistoryCache || [entry]);
+  } catch (err) {
+    console.warn('[AbgenHistory] Save failed:', err.message);
+  }
 }
 
-function abgenSaveToHistory({ title, abstract, publicationType, wordCount, detectedTheme }) {
-  const history = abgenGetHistory();
-  const entry = {
-    id: Date.now(),
-    title,
-    abstract,
-    publicationType,
-    wordCount,
-    detectedTheme,
-    timestamp: new Date().toISOString()
-  };
-  history.unshift(entry);          // newest first
-  if (history.length > 30) history.splice(30); // cap at 30
-  localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(history));
-  abgenRenderHistory();
-}
-
-function abgenRenderHistory() {
+async function abgenRenderHistory(cachedHistory = null) {
   const list    = $('abgen-history-list');
   const panel   = $('abgen-history-panel');
   const countEl = $('abgen-history-count');
   if (!list || !panel) return;
 
-  const history = abgenGetHistory();
+  let history = cachedHistory;
+  if (!history) {
+    try {
+      const res = await api.getAbstractHistory();
+      history = res?.history || [];
+      _abgenHistoryCache = history;
+    } catch (err) {
+      console.warn('[AbgenHistory] Load failed:', err.message);
+      history = [];
+    }
+  }
+
   countEl && (countEl.textContent = history.length);
 
   if (history.length === 0) {
@@ -7856,23 +7878,20 @@ function abgenRenderHistory() {
   }
   panel.style.display = 'block';
 
-  const pubLabels = {
-    'ieee-conference': 'IEEE',
-    'journal': 'Journal',
-    'book-chapter': 'Book'
-  };
-  const pubClasses = {
-    'ieee-conference': 'ieee',
-    'journal': 'journal',
-    'book-chapter': 'book'
-  };
+  const pubLabels  = { 'ieee-conference': 'IEEE', 'journal': 'Journal', 'book-chapter': 'Book' };
+  const pubClasses = { 'ieee-conference': 'ieee', 'journal': 'journal', 'book-chapter': 'book' };
 
   list.innerHTML = history.map(entry => {
-    const date = new Date(entry.timestamp);
-    const timeStr = date.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
-      + ' ' + date.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
-    const pubLabel = pubLabels[entry.publicationType] || entry.publicationType;
-    const pubCls   = pubClasses[entry.publicationType] || 'ieee';
+    // Support both DB column names and legacy camelCase
+    const pubType   = entry.publication_type || entry.publicationType || 'ieee-conference';
+    const wc        = entry.word_count       || entry.wordCount       || 0;
+    const theme     = entry.detected_theme   || entry.detectedTheme   || '';
+    const createdAt = entry.created_at       || entry.timestamp       || new Date().toISOString();
+    const date      = new Date(createdAt);
+    const timeStr   = date.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+                    + ' ' + date.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+    const pubLabel  = pubLabels[pubType]  || pubType;
+    const pubCls    = pubClasses[pubType] || 'ieee';
     const titlePrev = (entry.title || 'Untitled Abstract').substring(0, 80);
 
     return `
@@ -7881,9 +7900,9 @@ function abgenRenderHistory() {
         <div class="abgen-hist-card-meta">
           <span class="abgen-hist-pub-badge ${pubCls}">${pubLabel}</span>
           <span class="abgen-hist-title-preview" title="${entry.title || ''}">${
-            titlePrev || (entry.detectedTheme || '—').substring(0, 80)
+            titlePrev || theme.substring(0, 80) || '—'
           }</span>
-          <span class="abgen-hist-wc">${entry.wordCount} words</span>
+          <span class="abgen-hist-wc">${wc} words</span>
           <span class="abgen-hist-time">${timeStr}</span>
         </div>
         <div class="abgen-hist-card-actions">
@@ -7907,37 +7926,44 @@ function abgenRenderHistory() {
     </div>`;
   }).join('');
 
-  // ── Expand / collapse on header click ──
+  // ── Expand / collapse ──
   list.querySelectorAll('.abgen-hist-card-header').forEach(header => {
     header.addEventListener('click', e => {
-      if (e.target.closest('.abgen-hist-action-btn')) return; // don't toggle on btn click
-      const card = header.closest('.abgen-hist-card');
-      card.classList.toggle('expanded');
+      if (e.target.closest('.abgen-hist-action-btn')) return;
+      header.closest('.abgen-hist-card').classList.toggle('expanded');
     });
   });
 
-  // ── Inline edit → auto-save to localStorage ──
+  // ── Inline edit → debounced PATCH to DB ──
+  const editTimers = {};
   list.querySelectorAll('[data-field]').forEach(el => {
     el.addEventListener('input', () => {
-      const id    = parseInt(el.dataset.histId);
+      const id    = el.dataset.histId;
       const field = el.dataset.field;
-      const hist  = abgenGetHistory();
-      const entry = hist.find(h => h.id === id);
-      if (!entry) return;
-      entry[field] = el.textContent || el.innerText || '';
-      localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(hist));
+      const value = el.textContent || el.innerText || '';
+      // Update cache immediately
+      if (_abgenHistoryCache) {
+        const cached = _abgenHistoryCache.find(h => String(h.id) === String(id));
+        if (cached) cached[field] = value;
+      }
+      // Debounce DB save 600ms
+      clearTimeout(editTimers[id + field]);
+      editTimers[id + field] = setTimeout(async () => {
+        try { await api.updateAbstractHistory(id, { [field]: value }); }
+        catch (err) { console.warn('[AbgenHistory] Update failed:', err.message); }
+      }, 600);
     });
   });
 
-  // ── Copy button ──
+  // ── Copy ──
   list.querySelectorAll('.abgen-hist-action-btn.copy').forEach(btn => {
     btn.addEventListener('click', async e => {
       e.stopPropagation();
-      const id   = parseInt(btn.dataset.histId);
-      const hist = abgenGetHistory();
-      const entry = hist.find(h => h.id === id);
-      if (!entry) return;
-      const full = entry.title ? `${entry.title}\n\n${entry.abstract}` : entry.abstract;
+      const id    = btn.dataset.histId;
+      const card  = btn.closest('.abgen-hist-card');
+      const title = card.querySelector('[data-field="title"]')?.textContent?.trim() || '';
+      const abs   = card.querySelector('[data-field="abstract"]')?.textContent?.trim() || '';
+      const full  = title ? `${title}\n\n${abs}` : abs;
       try {
         await navigator.clipboard.writeText(full);
         const orig = btn.textContent;
@@ -7947,15 +7973,22 @@ function abgenRenderHistory() {
     });
   });
 
-  // ── Delete button ──
+  // ── Delete ──
   list.querySelectorAll('.abgen-hist-action-btn.delete').forEach(btn => {
-    btn.addEventListener('click', e => {
+    btn.addEventListener('click', async e => {
       e.stopPropagation();
-      const id   = parseInt(btn.dataset.histId);
-      let hist   = abgenGetHistory();
-      hist       = hist.filter(h => h.id !== id);
-      localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(hist));
-      abgenRenderHistory();
+      const id = btn.dataset.histId;
+      // Optimistic remove from cache
+      if (_abgenHistoryCache) {
+        _abgenHistoryCache = _abgenHistoryCache.filter(h => String(h.id) !== String(id));
+        abgenRenderHistory(_abgenHistoryCache);
+      }
+      try { await api.deleteAbstractHistory(id); }
+      catch (err) {
+        console.warn('[AbgenHistory] Delete failed:', err.message);
+        _abgenHistoryCache = null;
+        abgenRenderHistory(); // re-fetch from DB
+      }
     });
   });
 }
