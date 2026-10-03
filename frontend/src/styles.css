@@ -4494,3 +4494,196 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
 }
+
+/* ══ Abstract Generator — History Panel ══ */
+.abgen-history-panel {
+  margin-top: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.abgen-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(99,102,241,0.05), rgba(16,185,129,0.05));
+}
+.abgen-history-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.abgen-history-count {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  min-width: 22px;
+  text-align: center;
+}
+.abgen-history-clear-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.06);
+  color: #f87171;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.abgen-history-clear-btn:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.5);
+}
+.abgen-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+/* History Card */
+.abgen-hist-card {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.abgen-hist-card:last-child { border-bottom: none; }
+.abgen-hist-card:hover { background: rgba(99,102,241,0.03); }
+
+.abgen-hist-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  cursor: pointer;
+  user-select: none;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.abgen-hist-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.abgen-hist-pub-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.abgen-hist-pub-badge.ieee    { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+.abgen-hist-pub-badge.journal { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+.abgen-hist-pub-badge.book    { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+
+.abgen-hist-title-preview {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.abgen-hist-wc {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.abgen-hist-time {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.abgen-hist-chevron {
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.abgen-hist-card.expanded .abgen-hist-chevron { transform: rotate(180deg); }
+
+.abgen-hist-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.abgen-hist-action-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.abgen-hist-action-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.08); }
+.abgen-hist-action-btn.delete:hover { border-color: rgba(239,68,68,0.5); color: #f87171; background: rgba(239,68,68,0.08); }
+
+/* Expanded body */
+.abgen-hist-card-body {
+  display: none;
+  padding: 0 20px 16px;
+  flex-direction: column;
+  gap: 10px;
+}
+.abgen-hist-card.expanded .abgen-hist-card-body { display: flex; }
+.abgen-hist-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 4px;
+}
+.abgen-hist-title-edit {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Times New Roman', Times, serif;
+  color: var(--text);
+  text-align: center;
+  text-transform: uppercase;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.06), rgba(139,92,246,0.06));
+  border: 1px solid rgba(99,102,241,0.2);
+  border-radius: 8px;
+  outline: none;
+  min-height: 38px;
+  word-break: break-word;
+  transition: border-color 0.2s;
+}
+.abgen-hist-title-edit:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+
+.abgen-hist-abstract-edit {
+  font-size: 13px;
+  font-family: 'Times New Roman', Times, serif;
+  color: var(--text);
+  line-height: 1.75;
+  text-align: justify;
+  padding: 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  min-height: 120px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transition: border-color 0.2s;
+}
+.abgen-hist-abstract-edit:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }

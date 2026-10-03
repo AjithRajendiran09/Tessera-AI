@@ -7549,6 +7549,7 @@ function loadBenchmarkPaperOptions() {
 // ══════════════════════════════════════════════════════════════
 let _abgenInitialized = false;
 let _abgenPosterFile = null;
+const ABGEN_HISTORY_KEY = 'tessera_abgen_history';
 
 function setupAbstractGeneratorPage() {
   // Only wire up listeners once
@@ -7741,6 +7742,15 @@ function setupAbstractGeneratorPage() {
       loadingState.style.display = 'none';
       resultState.style.display = 'flex';
 
+      // Save to history
+      abgenSaveToHistory({
+        title: result.title || '',
+        abstract: result.abstract || '',
+        publicationType,
+        wordCount: result.wordCount || wordCount,
+        detectedTheme: result.detectedTheme || manualTheme
+      });
+
     } catch (err) {
       loadingState.style.display = 'none';
       emptyState.style.display = 'flex';
@@ -7791,5 +7801,161 @@ function setupAbstractGeneratorPage() {
     if (!cur.toLowerCase().includes(kw.toLowerCase())) {
       themeInput.value = cur ? `${cur}, ${kw}` : kw;
     }
+  });
+
+  // ── History: clear all ──
+  const clearAllBtn = $('abgen-history-clear-btn');
+  if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', () => {
+      if (!confirm('Clear all generation history? This cannot be undone.')) return;
+      localStorage.removeItem(ABGEN_HISTORY_KEY);
+      abgenRenderHistory();
+    });
+  }
+
+  // Initial render of history on page load
+  abgenRenderHistory();
+}
+
+// ══ History Helpers (localStorage) ══
+
+function abgenGetHistory() {
+  try { return JSON.parse(localStorage.getItem(ABGEN_HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function abgenSaveToHistory({ title, abstract, publicationType, wordCount, detectedTheme }) {
+  const history = abgenGetHistory();
+  const entry = {
+    id: Date.now(),
+    title,
+    abstract,
+    publicationType,
+    wordCount,
+    detectedTheme,
+    timestamp: new Date().toISOString()
+  };
+  history.unshift(entry);          // newest first
+  if (history.length > 30) history.splice(30); // cap at 30
+  localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(history));
+  abgenRenderHistory();
+}
+
+function abgenRenderHistory() {
+  const list    = $('abgen-history-list');
+  const panel   = $('abgen-history-panel');
+  const countEl = $('abgen-history-count');
+  if (!list || !panel) return;
+
+  const history = abgenGetHistory();
+  countEl && (countEl.textContent = history.length);
+
+  if (history.length === 0) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+
+  const pubLabels = {
+    'ieee-conference': 'IEEE',
+    'journal': 'Journal',
+    'book-chapter': 'Book'
+  };
+  const pubClasses = {
+    'ieee-conference': 'ieee',
+    'journal': 'journal',
+    'book-chapter': 'book'
+  };
+
+  list.innerHTML = history.map(entry => {
+    const date = new Date(entry.timestamp);
+    const timeStr = date.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+      + ' ' + date.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+    const pubLabel = pubLabels[entry.publicationType] || entry.publicationType;
+    const pubCls   = pubClasses[entry.publicationType] || 'ieee';
+    const titlePrev = (entry.title || 'Untitled Abstract').substring(0, 80);
+
+    return `
+    <div class="abgen-hist-card" data-hist-id="${entry.id}">
+      <div class="abgen-hist-card-header">
+        <div class="abgen-hist-card-meta">
+          <span class="abgen-hist-pub-badge ${pubCls}">${pubLabel}</span>
+          <span class="abgen-hist-title-preview" title="${entry.title || ''}">${
+            titlePrev || (entry.detectedTheme || '—').substring(0, 80)
+          }</span>
+          <span class="abgen-hist-wc">${entry.wordCount} words</span>
+          <span class="abgen-hist-time">${timeStr}</span>
+        </div>
+        <div class="abgen-hist-card-actions">
+          <button class="abgen-hist-action-btn copy" data-hist-id="${entry.id}">📋 Copy</button>
+          <button class="abgen-hist-action-btn delete" data-hist-id="${entry.id}">🗑️</button>
+        </div>
+        <span class="abgen-hist-chevron">▼</span>
+      </div>
+      <div class="abgen-hist-card-body">
+        <div>
+          <div class="abgen-hist-field-label">📄 Paper Title</div>
+          <div class="abgen-hist-title-edit" contenteditable="true" spellcheck="true"
+               data-field="title" data-hist-id="${entry.id}">${entry.title || ''}</div>
+        </div>
+        <div>
+          <div class="abgen-hist-field-label">Abstract</div>
+          <div class="abgen-hist-abstract-edit" contenteditable="true" spellcheck="true"
+               data-field="abstract" data-hist-id="${entry.id}">${entry.abstract || ''}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // ── Expand / collapse on header click ──
+  list.querySelectorAll('.abgen-hist-card-header').forEach(header => {
+    header.addEventListener('click', e => {
+      if (e.target.closest('.abgen-hist-action-btn')) return; // don't toggle on btn click
+      const card = header.closest('.abgen-hist-card');
+      card.classList.toggle('expanded');
+    });
+  });
+
+  // ── Inline edit → auto-save to localStorage ──
+  list.querySelectorAll('[data-field]').forEach(el => {
+    el.addEventListener('input', () => {
+      const id    = parseInt(el.dataset.histId);
+      const field = el.dataset.field;
+      const hist  = abgenGetHistory();
+      const entry = hist.find(h => h.id === id);
+      if (!entry) return;
+      entry[field] = el.textContent || el.innerText || '';
+      localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(hist));
+    });
+  });
+
+  // ── Copy button ──
+  list.querySelectorAll('.abgen-hist-action-btn.copy').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      const id   = parseInt(btn.dataset.histId);
+      const hist = abgenGetHistory();
+      const entry = hist.find(h => h.id === id);
+      if (!entry) return;
+      const full = entry.title ? `${entry.title}\n\n${entry.abstract}` : entry.abstract;
+      try {
+        await navigator.clipboard.writeText(full);
+        const orig = btn.textContent;
+        btn.textContent = '✅ Copied!';
+        setTimeout(() => { btn.textContent = orig; }, 1600);
+      } catch { toast('Could not copy to clipboard.', true); }
+    });
+  });
+
+  // ── Delete button ──
+  list.querySelectorAll('.abgen-hist-action-btn.delete').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const id   = parseInt(btn.dataset.histId);
+      let hist   = abgenGetHistory();
+      hist       = hist.filter(h => h.id !== id);
+      localStorage.setItem(ABGEN_HISTORY_KEY, JSON.stringify(hist));
+      abgenRenderHistory();
+    });
   });
 }
