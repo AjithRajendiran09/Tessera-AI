@@ -4047,6 +4047,7 @@ window.closeModal = closeModal;
     const isTwoCol = cols === '2' || (cols === 'auto' && (citationStyle === 'IEEE' || vType === 'conference'));
 
     container.className = 'draft-preview-paper' + (isTwoCol ? ' ieee-style' : ' standard-style');
+    container.style.fontFamily = fFamily;
 
     let html = '';
 
@@ -4229,25 +4230,53 @@ window.closeModal = closeModal;
       // ══════════════════════════════════════════════════════════
       // STANDARD SINGLE-COLUMN MANUSCRIPT (APA / MLA / CHICAGO)
       // ══════════════════════════════════════════════════════════
+      const titleText = (draft.title || parsedExcel?.metadata?.title || 'Untitled Research Paper').trim();
+      const kwItems = Array.isArray(draft.keywords) ? draft.keywords : (draft.keywords ? [draft.keywords] : []);
+
       html += `
-        <h1 class="draft-paper-title">${draft.title || parsedExcel?.metadata?.title || 'Untitled Paper'}</h1>
-        ${authors.length > 0 ? `<p class="draft-paper-authors">${authors.map(a => `${a.name}${a.affiliation ? ' <em>(' + a.affiliation + ')</em>' : ''}${a.email ? ' · ' + a.email : ''}`).join(' &nbsp;•&nbsp; ')}</p>` : ''}
-        <div class="draft-paper-abstract">
-          <h4>Abstract</h4>
-          <p>${draft.abstract || ''}</p>
-        </div>
-        ${draft.keywords && draft.keywords.length > 0 ? `<div class="draft-paper-keywords">${draft.keywords.map(k => `<span>${k}</span>`).join('')}</div>` : ''}
+        <header class="draft-standard-header">
+          <h1 class="draft-paper-title">${escapeHtml(titleText)}</h1>
+          ${authors.length > 0 ? `
+            <div class="draft-paper-authors">
+              ${authors.map(a => `
+                <span class="draft-standard-author-item">
+                  <strong>${escapeHtml(a.name)}</strong>${a.affiliation ? ` <em>(${escapeHtml(a.affiliation)})</em>` : ''}${a.email ? ` · <code>${escapeHtml(a.email)}</code>` : ''}
+                </span>
+              `).join(' &nbsp;•&nbsp; ')}
+            </div>
+          ` : ''}
+          <div class="draft-paper-abstract">
+            <h4>Abstract</h4>
+            <p>${draft.abstract || ''}</p>
+          </div>
+          ${kwItems.length > 0 ? `
+            <div class="draft-paper-keywords">
+              <span class="kw-label">Keywords:</span>
+              ${kwItems.map(k => `<span class="kw-tag">${escapeHtml(k)}</span>`).join('')}
+            </div>
+          ` : ''}
+        </header>
       `;
 
+      let chartsPlacedSingle = false;
+      let tablesPlacedSingle = false;
+
       (draft.sections || []).forEach((section, sIdx) => {
+        let headingText = (section.heading || section.title || `Section ${sIdx + 1}`).trim();
+        if (!headingText.match(/^(?:\d+\.|\d+\.\d+|[IVXLCDM]+\.)/i)) {
+          headingText = `${sIdx + 1}. ${headingText}`;
+        }
+
         const rawContent = section.content || '';
         const processedContent = processMathAndEquations(rawContent);
         const paras = processedContent.split(/\n\n+/).map(p => p.trim().replace(/^[,\s]+/, '')).filter(Boolean);
 
         html += `
           <div class="draft-section" id="draft-section-${sIdx}">
-            <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})">✏️ Edit</button>
-            <h2 class="draft-section-heading">${section.heading}</h2>
+            <div class="draft-section-title-row">
+              <h2 class="draft-section-heading">${escapeHtml(headingText)}</h2>
+              <button class="draft-section-edit-btn" onclick="window._draftToggleEdit(${sIdx})" title="Edit section content">✏️ Edit</button>
+            </div>
             <div class="draft-section-content" id="draft-section-content-${sIdx}">
               ${paras.map(p => {
                 if (p.startsWith('$$') && p.endsWith('$$')) {
@@ -4260,45 +4289,115 @@ window.closeModal = closeModal;
           </div>
         `;
 
+        // Subsections support in single column
+        if (section.subsections && Array.isArray(section.subsections)) {
+          section.subsections.forEach((sub, subIdx) => {
+            const subRaw = (sub.title || sub.heading || `Subsection ${subIdx + 1}`).trim();
+            const subTitle = `${sIdx + 1}.${subIdx + 1} ${subRaw}`;
+            const subProcessed = processMathAndEquations(sub.content || '');
+            const subParas = subProcessed.split(/\n\n+/).map(p => p.trim().replace(/^[,\s]+/, '')).filter(Boolean);
+            html += `
+              <div class="draft-standard-subsection">
+                <h3 class="draft-standard-subsection-heading">${escapeHtml(subTitle)}</h3>
+                <div class="draft-section-content">
+                  ${subParas.map(p => {
+                    if (p.startsWith('$$') && p.endsWith('$$')) {
+                      const eqContent = p.slice(2, -2).trim();
+                      return `<div class="draft-equation-block"><span class="draft-eq-content">${eqContent}</span></div>`;
+                    }
+                    return `<p class="draft-standard-p">${p.trim()}</p>`;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          });
+        }
+
         // Place charts for this section by sectionIndex, fallback to result/eval sections
-        const isEvalSec2 = section.heading.toLowerCase().includes('result') || section.heading.toLowerCase().includes('evaluation');
+        const isEvalSec2 = section.heading.toLowerCase().includes('result') ||
+                           section.heading.toLowerCase().includes('evaluation') ||
+                           section.heading.toLowerCase().includes('experiment') ||
+                           sIdx === Math.min(2, (draft.sections || []).length - 1);
+
         const sectionCharts2 = chartData.filter(c =>
           c.sectionIndex === sIdx ||
-          (c.sectionIndex === undefined && isEvalSec2)
+          (c.sectionIndex === undefined && isEvalSec2 && !chartsPlacedSingle)
         );
+
         if (sectionCharts2.length > 0) {
-          sectionCharts2.forEach((chart, cIdx) => {
+          chartsPlacedSingle = true;
+          sectionCharts2.forEach((chart) => {
             const globalCIdx = chartData.indexOf(chart);
             html += `
               <div class="draft-chart-container" id="draft-chart-preview-${globalCIdx}">
                 <canvas id="draft-chart-preview-canvas-${globalCIdx}" width="700" height="350"></canvas>
-                <p class="chart-caption">Figure ${chart.figureNumber}: ${chart.title}</p>
+                <p class="chart-caption"><em>Figure ${chart.figureNumber}:</em> ${escapeHtml(chart.title)}</p>
               </div>
             `;
           });
+        }
 
+        if (isEvalSec2 && !tablesPlacedSingle && dataTables.length > 0) {
+          tablesPlacedSingle = true;
           dataTables.forEach((table, tIdx) => {
             const keyCols = selectKeyColumns(table, 6);
             const maxPreviewRows = 12;
             const rows = (table.rows || []).slice(0, maxPreviewRows);
             html += `
               <div class="draft-data-table-wrap">
-                <h4>Table ${tIdx + 1}: ${table.title}</h4>
+                <h4>Table ${tIdx + 1}: ${escapeHtml(table.title || 'Summary Data')}</h4>
                 <table class="draft-standard-table">
-                  <thead><tr>${keyCols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+                  <thead><tr>${keyCols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
                   <tbody>${rows.map(row => `<tr>${keyCols.map(c => `<td>${truncateCell(row[c], 35)}</td>`).join('')}</tr>`).join('')}</tbody>
                 </table>
+                ${(table.totalRows || table.rows.length) > maxPreviewRows ? `<p class="draft-standard-table-note">Showing ${maxPreviewRows} of ${table.totalRows || table.rows.length} rows</p>` : ''}
               </div>
             `;
           });
         }
       });
 
+      // Fallback: Ensure data tables are placed if not placed in eval section
+      if (!tablesPlacedSingle && dataTables.length > 0) {
+        tablesPlacedSingle = true;
+        dataTables.forEach((table, tIdx) => {
+          const keyCols = selectKeyColumns(table, 6);
+          const maxPreviewRows = 12;
+          const rows = (table.rows || []).slice(0, maxPreviewRows);
+          html += `
+            <div class="draft-data-table-wrap">
+              <h4>Table ${tIdx + 1}: ${escapeHtml(table.title || 'Summary Data')}</h4>
+              <table class="draft-standard-table">
+                <thead><tr>${keyCols.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead>
+                <tbody>${rows.map(row => `<tr>${keyCols.map(c => `<td>${truncateCell(row[c], 35)}</td>`).join('')}</tr>`).join('')}</tbody>
+              </table>
+              ${(table.totalRows || table.rows.length) > maxPreviewRows ? `<p class="draft-standard-table-note">Showing ${maxPreviewRows} of ${table.totalRows || table.rows.length} rows</p>` : ''}
+            </div>
+          `;
+        });
+      }
+
+      // Fallback: Ensure charts are placed if any unplaced
+      if (!chartsPlacedSingle && chartData.length > 0) {
+        chartsPlacedSingle = true;
+        chartData.forEach((chart) => {
+          const globalCIdx = chartData.indexOf(chart);
+          html += `
+            <div class="draft-chart-container" id="draft-chart-preview-${globalCIdx}">
+              <canvas id="draft-chart-preview-canvas-${globalCIdx}" width="700" height="350"></canvas>
+              <p class="chart-caption"><em>Figure ${chart.figureNumber}:</em> ${escapeHtml(chart.title)}</p>
+            </div>
+          `;
+        });
+      }
+
       if (draft.acknowledgments) {
         html += `
           <div class="draft-section">
-            <h2 class="draft-section-heading">Acknowledgments</h2>
-            <div class="draft-section-content"><p>${draft.acknowledgments}</p></div>
+            <div class="draft-section-title-row">
+              <h2 class="draft-section-heading">Acknowledgments</h2>
+            </div>
+            <div class="draft-section-content"><p class="draft-standard-p">${draft.acknowledgments}</p></div>
           </div>
         `;
       }
@@ -6417,6 +6516,31 @@ window.closeModal = closeModal;
           if (!trimmed) continue;
           y = writeParagraph(trimmed, y, 11, paraIndent);
           y += 2; // inter-paragraph spacing
+        }
+
+        // Subsections if any
+        if (section.subsections && Array.isArray(section.subsections)) {
+          section.subsections.forEach((sub, subIdx) => {
+            const subRaw = (sub.title || sub.heading || `Subsection ${subIdx + 1}`).trim();
+            const cleanSub = subRaw.replace(/^[A-Z\d]+\.?\s*/i, '').trim() || subRaw;
+            const subTitle = `${sIdx + 1}.${subIdx + 1} ${cleanSub}`;
+
+            y += 4;
+            y = checkPage(y, 14);
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text(subTitle, marginL, y);
+            y += 6;
+            doc.setFont('helvetica', 'normal');
+
+            if (sub.content) {
+              const subParas = sub.content.split(/\n\n+/).filter(sp => sp.trim());
+              subParas.forEach(sp => {
+                y = writeParagraph(sp.trim(), y, 11, paraIndent);
+                y += 2;
+              });
+            }
+          });
         }
 
         // Section-specific Charts (Architecture, PRISMA, Benchmarks)
