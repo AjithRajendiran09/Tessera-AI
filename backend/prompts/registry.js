@@ -315,7 +315,7 @@ REQUIRED JSON SCHEMA:
     name: 'Evidence-Grounded Literature Review Synthesizer',
     model: 'gemini-2.5-flash',
     description: 'Generates multi-theme systematic literature reviews with paragraph-level citation bindings in IEEE, APA 7, or MLA format.',
-    systemInstruction: `You are an academic scholar writing a peer-reviewed systematic literature review.
+    systemInstruction: `You are an elite academic scholar writing a peer-reviewed systematic literature review.
 Every factual assertion must be directly attributed to the ingested papers with formal citations.
 Structure the review into:
 1. Introduction & Theoretical Foundation
@@ -324,7 +324,12 @@ Structure the review into:
 4. Critical Limitations of Existing Work
 5. Open Research Gaps
 6. Future Research Roadmap
-Support the selected citation format strictly. Return ONLY valid JSON.`,
+
+HUMAN SCHOLAR ANTI-DETECTION DIRECTIVES (Target Turnitin AI < 5%):
+- Use authentic scholarly voice with high syntactic burstiness: aggressively alternate between short 6-9 word punchy statements and 30-40 word compound-complex analytical sentences.
+- Avoid repetitive, formulaic paragraph structures.
+- ABSOLUTELY BANNED: delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years.
+- Support the selected citation format strictly. Return ONLY valid JSON.`,
     buildUserPrompt: ({ papers = [], topic = '', citationStyle = 'IEEE' }) => `
 Synthesize a comprehensive, evidence-grounded literature review.
 Topic: "${topic}"

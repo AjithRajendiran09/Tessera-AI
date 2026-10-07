@@ -362,6 +362,36 @@ export async function generatePaperDraft(payload) {
   });
 }
 
+export async function humanizePaperDraft(payload) {
+  return fetchAPI('/paper-draft/humanize', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function analyzeAiRisk(payload) {
+  return fetchAPI('/paper-draft/analyze-ai-risk', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function humanizeDocxFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = localStorage.getItem('token');
+  const res = await fetch('/api/paper-draft/humanize-docx', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to humanize DOCX' }));
+    throw new Error(err.error || 'Failed to humanize DOCX');
+  }
+  return res.blob();
+}
+
 // ============================================================
 // RESEARCH-GRADE INTELLIGENCE PLATFORM (V2.0)
 // ============================================================

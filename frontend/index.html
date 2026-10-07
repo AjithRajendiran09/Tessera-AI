@@ -821,6 +821,17 @@
               </div>
 
               <div class="draft-field">
+                <label>AI Detection Shield (Turnitin / GPTZero / Copyleaks)</label>
+                <div class="draft-format-pills" id="draft-humanize-pills">
+                  <button class="draft-pill active" data-humanize="true">🛡️ Humanize Engine (Target &lt; 5-10% AI)</button>
+                  <button class="draft-pill" data-humanize="false">Standard Mode</button>
+                </div>
+                <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block;">
+                  Applies high burstiness, dynamic sentence length variation, active scholarly framing, and eradicates 40+ AI red-flag clichés.
+                </small>
+              </div>
+
+              <div class="draft-field">
                 <label>Authors (up to 5)</label>
                 <div class="draft-authors-list" id="draft-authors-list">
                   <div class="draft-author-row">
@@ -830,6 +841,23 @@
                   </div>
                 </div>
                 <button class="btn btn-ghost btn-sm" id="draft-add-author">＋ Add Author</button>
+              </div>
+
+              <!-- Quick Existing DOCX Humanizer Card -->
+              <div class="draft-card" style="margin-top:20px;background:rgba(59,130,246,0.05);border:1px dashed rgba(59,130,246,0.4);">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                  <div>
+                    <h4 style="margin:0 0 4px 0;font-size:13px;color:var(--text-bright);">⚡ Already have a .docx with high AI score?</h4>
+                    <p style="margin:0;font-size:11px;color:var(--text-muted);">Upload your existing Word manuscript to humanize all sections and drop Turnitin AI score to &lt; 5%.</p>
+                  </div>
+                  <div>
+                    <label class="btn btn-secondary btn-sm" style="cursor:pointer;margin:0;">
+                      📤 Upload &amp; Humanize DOCX
+                      <input type="file" id="draft-upload-humanize-docx" accept=".docx" style="display:none;" />
+                    </label>
+                  </div>
+                </div>
+                <div id="draft-docx-humanize-status" style="margin-top:8px;font-size:12px;display:none;"></div>
               </div>
             </div>
           </div>
@@ -878,6 +906,25 @@
           </div>
 
           <div id="draft-preview-content" style="display:none">
+            <!-- Turnitin AI Risk & Humanizer Status Bar -->
+            <div class="draft-humanize-banner" id="draft-humanize-banner" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(16,185,129,0.1),rgba(59,130,246,0.08));border:1px solid rgba(16,185,129,0.35);border-radius:10px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <span style="font-size:24px;">🛡️</span>
+                <div>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <strong style="color:var(--text-bright);font-size:13px;">Turnitin / GPTZero AI Risk:</strong>
+                    <span id="draft-ai-score-badge" style="background:#10b981;color:#ffffff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;">&lt; 5% Low Risk</span>
+                  </div>
+                  <div id="draft-humanize-metrics" style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                    High burstiness applied • Active first-person scholarly voice • 0 AI clichés detected
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-secondary btn-sm" id="draft-rehumanize-btn">✨ Run Humanizer Engine Again</button>
+              </div>
+            </div>
+
             <div class="draft-preview-paper" id="draft-preview-paper"></div>
 
             <div class="draft-nav-buttons">

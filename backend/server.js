@@ -26,6 +26,12 @@ const {
   calculateGapEvidenceScore
 } = require('./services/gapScorer');
 const { fetchSemanticScholarMetadata } = require('./services/semanticScholar');
+const {
+  analyzeAiDetectionRisk,
+  cleanAiMarkers,
+  humanizeTextBlock,
+  humanizePaperDraft
+} = require('./services/humanizerEngine');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
@@ -3444,7 +3450,7 @@ app.post('/api/paper-draft/generate', checkSupabase, authenticateUser, async (re
     }`).join(',\n');
 
     // Phase 1 Prompt: Title, Abstract, Keywords, and Initial Sections
-    const prompt1 = `You are a distinguished senior academic researcher and peer reviewer for IEEE Transactions and ACM Journals. Write PART 1 of an authentic, publication-grade academic paper draft.
+    const prompt1 = `You are an elite senior academic scholar and peer reviewer for IEEE Transactions and ACM Journals. Write PART 1 of an authentic, publication-grade academic paper draft.
 
 PAPER TYPE: ${resolvedPaperType.toUpperCase()} PAPER
 TARGET VENUE: ${resolvedVenue.toUpperCase()}
@@ -3460,12 +3466,22 @@ ${dataContext}
 ${refsContext}
 ${chartsContext}
 
-CRITICAL SCHOLARLY WRITING GUIDELINES:
-1. ABSOLUTE BAN ON AI CLICHES: Never use delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, in conclusion, furthermore, moreover.
-2. SYNTACTIC BURSTINESS: Vary sentence lengths dynamically. Use active analytical verbs: demonstrates, exhibits, delineates, diverges, corroborates, attenuates.
-3. GROUNDING: Quote real numbers, percentages, and datasets from the provided rows.
-4. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
-5. Write each of the following ${part1Templates.length} sections with 2-3 full, substantive paragraphs:
+CRITICAL ANTI-DETECTION & HUMAN SCHOLARLY WRITING DIRECTIVES (Target Turnitin AI Score: < 5%):
+1. HIGH BURSTINESS & SENTENCE DIVERSITY:
+   - You MUST vary sentence structures and lengths dynamically. Alternate between:
+     * Short, punchy declarations (5-10 words): e.g., "Terahertz links face severe path loss." "Hardware limitations compound this difficulty."
+     * Balanced analytical sentences (15-22 words).
+     * Long compound-complex sentences (30-45 words) with semicolons, conditional clauses, or parenthetical qualifications.
+   - NEVER generate 3 consecutive sentences with similar length or syntactic rhythm.
+2. AUTHENTIC SCHOLARLY VOICE:
+   - Use active first-person plural framing ("We examine...", "Our review synthesizes...", "We observe...", "We evaluate...", "We argue that...").
+   - Frame discussions around realistic engineering trade-offs, empirical friction, and practical constraints.
+3. ABSOLUTE BAN ON AI CLICHES & TRANSITION GLUE:
+   - NEVER use: delve, delves, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years.
+   - Do NOT start paragraphs with formulaic phrases like "In recent years,", "The transition toward,", "To ensure methodological rigor,", "The analyzed literature exhibits,".
+4. GROUNDING: Quote real numbers, percentages, and datasets from the provided rows.
+5. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
+6. Write each of the following ${part1Templates.length} sections with 2-3 full, substantive paragraphs:
 ${part1Templates.map((s, idx) => `   ${idx + 1}. ${s.heading}: ${s.desc}`).join('\n')}
 
 Return ONLY a valid JSON object matching this schema:
@@ -3480,7 +3496,9 @@ ${part1JsonSchema}
 
     const res1 = await callGeminiWithRetry(genAI, prompt1, null, {
       responseMimeType: 'application/json',
-      maxOutputTokens: 8192
+      maxOutputTokens: 8192,
+      temperature: 0.82,
+      topP: 0.95
     });
     const phase1Draft = safeParseJsonWithRepair(res1.response.text());
     const generatedPaperTitle = (phase1Draft.title && !/A highly specific/i.test(phase1Draft.title))
@@ -3488,7 +3506,7 @@ ${part1JsonSchema}
       : (isCustomTitle ? meta.title.trim() : (detectedTopic ? `Empirical Evaluation and Optimization of ${detectedTopic}` : (resolvedTitle || 'Academic Research Paper Draft')));
 
     // Phase 2 Prompt: Remaining Sections, Figure/Table Discussion, and Acknowledgments
-    const prompt2 = `You are a distinguished senior academic researcher and peer reviewer for IEEE Transactions and ACM Journals. Continue writing PART 2 of this academic paper draft (Core Implementation, Empirical Evaluation, Discussion, and Conclusion).
+    const prompt2 = `You are an elite senior academic scholar and peer reviewer for IEEE Transactions and ACM Journals. Continue writing PART 2 of this academic paper draft (Core Implementation, Empirical Evaluation, Discussion, and Conclusion).
 
 PAPER TITLE: "${generatedPaperTitle}"
 PAPER TYPE: ${resolvedPaperType.toUpperCase()} PAPER
@@ -3500,14 +3518,20 @@ ${dataContext}
 ${refsContext}
 ${chartsContext}
 
-CRITICAL SCHOLARLY WRITING & EMPIRICAL BENCHMARKING GUIDELINES:
-1. ABSOLUTE BAN ON AI CLICHES (delve, tapestry, beacon, testament, pivotal, paramount, revolutionize, etc.).
-2. FIGURE & TABLE REFERENCES:
+CRITICAL ANTI-DETECTION & HUMAN SCHOLARLY WRITING DIRECTIVES (Target Turnitin AI Score: < 5%):
+1. HIGH BURSTINESS & SENTENCE DIVERSITY:
+   - Alternate between short punchy sentences (5-10 words) and longer compound-complex analytical sentences (30-45 words).
+   - Break formulaic sentence cadence; employ diverse grammatical entry points.
+2. AUTHENTIC SCHOLARLY VOICE:
+   - Use active first-person plural framing ("We analyze...", "Our benchmarks indicate...", "We observed that...").
+   - Express empirical skepticism and realistic trade-offs.
+3. ABSOLUTE BAN ON AI CLICHES (delve, tapestry, beacon, testament, pivotal, paramount, revolutionize, furthermore, moreover, in summary, underscores, etc.).
+4. FIGURE & TABLE REFERENCES:
    - Sections discussing methodology, architecture, or evaluation MUST explicitly reference: "${isIEEE ? 'Fig. 1' : 'Figure 1'}", "${isIEEE ? 'Fig. 2' : 'Figure 2'}", "${isIEEE ? 'Fig. 3' : 'Figure 3'}", and tables as "${isIEEE ? 'Table I' : 'Table 1'}".
-3. CONCRETE QUANTITATIVE DATA:
+5. CONCRETE QUANTITATIVE DATA:
    - State exact metric values: percentages (e.g. 96.4%), latencies (e.g. 14.2ms), error margins, and baseline comparisons.
-4. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
-5. Write each of the following ${part2Templates.length} remaining sections with 2-3 full paragraphs:
+6. MATHEMATICAL EQUATIONS: When formalizing system models, tuples, or predicate rules, format standalone equations on their own separate line wrapped in $$ ... $$ (e.g. $$P = (R, O, A, C)$$), and use clean academic notation for inline variables (e.g. P, R, e_i) rather than raw nested LaTeX markup.
+7. Write each of the following ${part2Templates.length} remaining sections with 2-3 full paragraphs:
 ${part2Templates.map((s, idx) => `   ${splitIdx + idx + 1}. ${s.heading}: ${s.desc}`).join('\n')}
 
 Return ONLY a valid JSON object matching this schema:
@@ -3522,7 +3546,9 @@ ${part2JsonSchema}
     try {
       const res2 = await callGeminiWithRetry(genAI, prompt2, null, {
         responseMimeType: 'application/json',
-        maxOutputTokens: 8192
+        maxOutputTokens: 8192,
+        temperature: 0.82,
+        topP: 0.95
       });
       phase2Draft = safeParseJsonWithRepair(res2.response.text());
     } catch (p2Err) {
@@ -3557,7 +3583,7 @@ ${part2JsonSchema}
       totalRows: sheet.rows.length
     }));
 
-    res.json({
+    const responsePayload = {
       draft,
       formattedReferences,
       chartData,
@@ -3571,12 +3597,139 @@ ${part2JsonSchema}
       fontFamily: fontFamily || 'Times New Roman',
       fontSize: fontSize || '10',
       lineSpacing: lineSpacing || '1.0',
-      columns: columns || 'auto'
-    });
+      columns: columns || 'auto',
+      humanized: true
+    };
+
+    // Auto-humanize if enabled (default ON)
+    if (req.body.humanize !== false) {
+      try {
+        console.log('[Paper Draft] Auto-running Humanizer Engine on generated draft...');
+        const humanizedResult = await humanizePaperDraft(genAI, draft);
+        responsePayload.draft = humanizedResult.draft;
+        responsePayload.aiDetectionRisk = humanizedResult.metrics;
+      } catch (hErr) {
+        console.warn('[Paper Draft] Auto-humanization notice:', hErr.message);
+        responsePayload.aiDetectionRisk = analyzeAiDetectionRisk(
+          [draft.abstract, ...(draft.sections || []).map(s => s.content)].join(' ')
+        );
+      }
+    } else {
+      responsePayload.aiDetectionRisk = analyzeAiDetectionRisk(
+        [draft.abstract, ...(draft.sections || []).map(s => s.content)].join(' ')
+      );
+    }
+
+    res.json(responsePayload);
 
   } catch (error) {
     console.error('[Paper Draft] Generation error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate paper draft.' });
+  }
+});
+
+// POST /api/paper-draft/humanize — Rewrite paper sections to bypass AI detectors (Turnitin / GPTZero < 5%)
+app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+
+    const { draft, sectionIndex, textToHumanize } = req.body;
+    if (!draft && !textToHumanize) {
+      return res.status(400).json({ error: 'Missing draft or textToHumanize.' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+    // Single block humanization
+    if (textToHumanize) {
+      const beforeRisk = analyzeAiDetectionRisk(textToHumanize);
+      const humanized = await humanizeTextBlock(genAI, textToHumanize, { contextLabel: 'Custom Text' });
+      const afterRisk = analyzeAiDetectionRisk(humanized);
+      return res.json({
+        humanizedText: humanized,
+        beforeRisk,
+        afterRisk
+      });
+    }
+
+    // Specific section humanization
+    if (typeof sectionIndex === 'number' && draft?.sections?.[sectionIndex]) {
+      const sec = draft.sections[sectionIndex];
+      const beforeRisk = analyzeAiDetectionRisk(sec.content);
+      const humanizedContent = await humanizeTextBlock(genAI, sec.content, {
+        contextLabel: sec.heading || `Section ${sectionIndex + 1}`
+      });
+      draft.sections[sectionIndex].content = humanizedContent;
+      const afterRisk = analyzeAiDetectionRisk(humanizedContent);
+      return res.json({
+        draft,
+        updatedSectionIndex: sectionIndex,
+        beforeRisk,
+        afterRisk
+      });
+    }
+
+    // Full draft humanization via humanizerEngine module
+    const result = await humanizePaperDraft(genAI, draft);
+    return res.json(result);
+
+  } catch (error) {
+    console.error('[Paper Draft] Humanize error:', error);
+    res.status(500).json({ error: error.message || 'Failed to humanize draft.' });
+  }
+});
+
+// POST /api/paper-draft/analyze-ai-risk — Calculate Turnitin AI Detection risk score
+app.post('/api/paper-draft/analyze-ai-risk', checkSupabase, authenticateUser, (req, res) => {
+  try {
+    const { text, draft } = req.body;
+    let targetText = text || '';
+    if (!targetText && draft) {
+      targetText = [draft.abstract, ...(draft.sections || []).map(s => s.content)].join(' ');
+    }
+    const metrics = analyzeAiDetectionRisk(targetText);
+    res.json({ metrics });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/paper-draft/humanize-docx — Upload any existing .docx paper and download humanized version
+app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Please upload a Word (.docx) file.' });
+    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+
+    const fs = require('fs');
+    const path = require('path');
+    const { execSync } = require('child_process');
+
+    const inputPath = path.join('/tmp', `upload_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+    const outputPath = path.join('/tmp', `humanized_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+    fs.writeFileSync(inputPath, req.file.buffer);
+
+    const workerScript = path.join(__dirname, 'services/docxHumanizerWorker.py');
+    console.log(`[Humanize DOCX] Executing worker: ${workerScript}`);
+    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${process.env.GEMINI_API_KEY}"`, {
+      timeout: 240000,
+      maxBuffer: 25 * 1024 * 1024
+    });
+
+    if (!fs.existsSync(outputPath)) {
+      throw new Error('Worker finished without creating output document.');
+    }
+
+    const outputBuffer = fs.readFileSync(outputPath);
+
+    // Clean up temporary files
+    try { fs.unlinkSync(inputPath); fs.unlinkSync(outputPath); } catch (_) {}
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="Humanized_${req.file.originalname}"`);
+    res.send(outputBuffer);
+  } catch (error) {
+    console.error('[Humanize DOCX] Error:', error);
+    res.status(500).json({ error: error.message || 'Failed to humanize DOCX document.' });
   }
 });
 
