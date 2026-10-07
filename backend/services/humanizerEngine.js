@@ -2,20 +2,26 @@
  * Tessera AI — Academic Humanizer & Anti-Detection Engine
  * 
  * Powered by:
- * 1. Anthropic Claude 3.5 Sonnet (State-of-the-art scholarly reasoning and natural human cadence)
- * 2. Google Gemini 2.5 Flash (High-throughput parallel generation & fallback)
- * 3. GPTZero API v2 Verification (Closed-loop real-time detection feedback & verification)
+ * 1. AIHumanizerAPI.com (Free tier: 10k words/month, specialized anti-detection model)
+ * 2. Groq Cloud (Free Meta Llama 3.3 70B & DeepSeek R1, alternative token distribution)
+ * 3. OpenRouter (Free tier models: Llama 3.3 70B Free, DeepSeek R1 Free, Mistral Free)
+ * 4. Google Gemini 2.5 Flash (Free high-throughput parallel generation & fallback)
+ * 5. Anthropic Claude 3.5 Sonnet (Scholarly reasoning)
+ * 6. GPTZero API v2 Verification (Closed-loop detection feedback)
  * 
  * Core Mechanisms:
- * - High Syntactic Burstiness (aggressively alternating sentence lengths: 3-7 words vs 30-45 words)
- * - High Perplexity Sampling (natural human engineering terminology & concrete constraints)
- * - AI Linguistic De-Biasing (eliminating 45+ stereotypical LLM transitions and clichés)
+ * - High Syntactic Burstiness (aggressively alternating sentence lengths: 4-8 words vs 28-45 words)
+ * - High Perplexity Technical Sampling (authentic peer-reviewed engineering terminology)
+ * - Complete De-Biasing (eliminating both LLM filler clichés AND casual humanizer idioms)
  * - Exact In-Text Citation, Equation, and Figure Retention
  */
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { predictAiWithGptZero } = require('./gptZeroService');
+const { humanizeWithAiHumanizerApi } = require('./aiHumanizerApiService');
+const { callGroqChat } = require('./groqService');
+const { callOpenRouterChat } = require('./openRouterService');
 
 // Stereotypical AI tokens flagged by Turnitin / GPTZero / Copyleaks classifiers
 const BANNED_AI_PATTERNS = [
@@ -51,7 +57,22 @@ const BANNED_AI_PATTERNS = [
   /\bthis paper is organized as follows\b/gi,
   /\bto address these challenges\b/gi,
   /\bnotwithstanding these achievements\b/gi,
-  /\bto ensure methodological rigor\b/gi
+  /\bto ensure methodological rigor\b/gi,
+  // Casual humanizer clichés flagged by Turnitin as AI Paraphrased
+  /\bcranking up\b/gi,
+  /\bcalling the shots\b/gi,
+  /\bsound(?:s)? almost impossible\b/gi,
+  /\bacademic silos\b/gi,
+  /\bneat trick\b/gi,
+  /\bpulled off\b/gi,
+  /\bgame changer\b/gi,
+  /\bgame-changing\b/gi,
+  /\bsilver bullet\b/gi,
+  /\bdouble-edged sword\b/gi,
+  /\bat the end of the day\b/gi,
+  /\btake(?:s)? center stage\b/gi,
+  /\bboils down to\b/gi,
+  /\bno walk in the park\b/gi
 ];
 
 /**
@@ -132,6 +153,10 @@ function cleanAiMarkers(text) {
                    .replace(/\bIt is worth noting that\s*/gi, '')
                    .replace(/\bIt is important to note that\s*/gi, '')
                    .replace(/\bIn recent years,\s*/gi, '')
+                   .replace(/\bcranking up transmission bandwidth\b/gi, 'scaling carrier frequencies into upper millimetric spectrum')
+                   .replace(/\bcranking up bandwidth\b/gi, 'increasing channel bandwidth')
+                   .replace(/\bsound almost impossible\b/gi, 'push theoretical boundary limits')
+                   .replace(/\blocked in separate academic silos\b/gi, 'isolated within specialized subfields')
                    .replace(/\bplays a pivotal role in\b/gi, 'is essential for')
                    .replace(/\bplays a crucial role in\b/gi, 'directly influences')
                    .replace(/\bdelve into\b/gi, 'examine')
@@ -161,37 +186,35 @@ function cleanAiMarkers(text) {
  * @returns {string}
  */
 function buildHumanizerSystemPrompt(contextLabel = 'Section') {
-  return `You are an experienced research engineer and peer reviewer writing in an authentic, natural human scholarly voice.
+  return `You are a distinguished IEEE Transactions senior fellow and rigorous peer reviewer writing in an authentic, high-precision academic voice.
 Rewrite and thoroughly humanize the following academic manuscript text ("${contextLabel}").
 
 PRIMARY MANDATE:
-The rewritten text must read as authentic, rigorous, human-authored scholarship that achieves < 5% AI detection on Turnitin, GPTZero, and Copyleaks.
+The rewritten text must read as authentic, rigorous human scholarship that passes Turnitin's August 2025/2026 AI & Paraphraser detection (< 10% AI score).
 
 STRICT HUMAN-WRITTEN STYLISTIC DIRECTIVES:
 1. DYNAMIC SYNTACTIC BURSTINESS:
-   - You MUST vary sentence structures and lengths aggressively across every paragraph.
+   - Aggressively vary sentence structures and lengths across every paragraph.
    - Alternate between:
-     * Ultra-short, punchy declarations (3-7 words): "The bottleneck is latency." "Simulations hide these costs." "Hardware realities bite hard." "Speed kills link stability." "Theory is not enough."
-     * Balanced analytical assertions (12-18 words).
-     * Long compound-complex sentences (30-45 words) incorporating semicolons, contrastive clauses, or parenthetical engineering caveats.
+     * Short direct technical assertions (4-8 words): "Propagation path losses are severe." "Hardware constraints limit performance." "Phase noise degrades accuracy." "Theory diverges from silicon."
+     * Medium analytical clauses (12-18 words).
+     * Extended compound-complex sentences (30-45 words) containing subordinate qualifications, semicolons, or parenthetical hardware limits.
    - NEVER generate 3 consecutive sentences with similar length or cadence.
 
-2. AUTHENTIC SCHOLARLY VOICE & HIGH PERPLEXITY:
-   - Use direct, natural scholarly diction with concrete engineering skepticism.
-   - Contrast theoretical math with physical hardware friction (phase quantization noise in 1-bit/2-bit PIN diodes, insertion loss, thermal dissipation, coherence intervals).
-   - Avoid mechanical sentence structures and predictable listing triplets.
+2. AUTHENTIC SCHOLARLY REGISTER (NO SLANG OR CASUAL METAPHORS):
+   - Maintain rigorous scientific vocabulary. Turnitin flags casual humanizer slang (e.g. "cranking up", "calling the shots", "sound impossible", "academic silos", "pulled off") as "AI-generated and revised by AI".
+   - Use authentic academic phrasing: "empirical divergence", "circuit-level thermal dissipation", "phase quantization error", "Rayleigh fading bounds", "coherence block duration".
 
-3. ABSOLUTE BAN ON AI FORMULAS & CLICHES:
-   - FORBIDDEN TOKENS: delve, delves, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years, plays a pivotal role.
-   - Do NOT open paragraphs with formulaic phrases like "Our inquiry is structured...", "Our synthesis reveals...", "In recent years,", "To bridge this gap,", "The analyzed literature exhibits,".
+3. ZERO AI FORMULAS & CLICHES:
+   - ABSOLUTE BAN: delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years, plays a pivotal role.
+   - Do NOT start paragraphs with formulaic intros like "Our inquiry is structured...", "Our synthesis reveals...", "In recent years,", "To bridge this gap,".
 
-4. FACTUAL & CITATION FIDELITY:
-   - Preserve ALL existing in-text citations exactly as written (e.g., (Author, Year) or [1], [2]).
-   - Retain all Figure and Table citations verbatim (e.g., Figure 1, Figure 2, Table 1).
-   - Retain all specific metrics, numbers, and technical terminology (e.g. RIS, GNN, THz, CSI, STAR-IRS).
-   - Preserve the paragraph structure (return the same number of substantive paragraphs separated by double newlines).
+4. CITATION, FIGURE & METRIC FIDELITY:
+   - Preserve ALL in-text citations verbatim (e.g., [1], [2], or (Author, Year)).
+   - Retain all Figure/Table references and quantitative metrics verbatim.
+   - Return the exact same number of substantive paragraphs separated by double newlines.
 
-Return ONLY the humanized paragraphs separated by two newlines (\\n\\n). Do NOT include meta commentary, headers, or markdown formatting tags.`;
+Return ONLY the humanized paragraphs separated by two newlines (\\n\\n). Do NOT include meta commentary, markdown formatting, or quotation marks.`;
 }
 
 /**
@@ -237,7 +260,7 @@ async function humanizeWithGemini(genAI, text, options = {}) {
   const modelName = options.modelName || 'gemini-2.5-flash';
   const systemPrompt = buildHumanizerSystemPrompt(contextLabel);
 
-  console.log(`[HumanizerEngine:Gemini] Calling Gemini 2.5 for ${contextLabel}...`);
+  console.log(`[HumanizerEngine:Gemini] Calling Gemini for ${contextLabel}...`);
   const model = genAI.getGenerativeModel({
     model: modelName,
     generationConfig: {
@@ -255,26 +278,74 @@ async function humanizeWithGemini(genAI, text, options = {}) {
 }
 
 /**
- * Core Humanization function for a text block (Claude 3.5 Sonnet preferred, Gemini fallback)
+ * Core Humanization function for a text block supporting multiple free & specialized engines
  * @param {object|null} genAI - Initialized GoogleGenerativeAI instance
  * @param {string} text - Source text
- * @param {object} options - { contextLabel, preferredEngine, anthropicApiKey }
+ * @param {object} options - { contextLabel, preferredEngine, anthropicApiKey, groqApiKey, openRouterApiKey, aiHumanizerApiKey }
  * @returns {Promise<string>}
  */
 async function humanizeTextBlock(genAI, text, options = {}) {
   if (!text || typeof text !== 'string' || text.trim().length === 0) return '';
 
-  const preferClaude = options.preferredEngine === 'claude' || (!options.preferredEngine && !!(options.anthropicApiKey || process.env.ANTHROPIC_API_KEY));
+  const engine = options.preferredEngine || (
+    options.aiHumanizerApiKey || process.env.AI_HUMANIZER_API_KEY ? 'aihumanizer' :
+    options.groqApiKey || process.env.GROQ_API_KEY ? 'groq' :
+    options.openRouterApiKey || process.env.OPENROUTER_API_KEY ? 'openrouter' :
+    options.anthropicApiKey || process.env.ANTHROPIC_API_KEY ? 'claude' : 'gemini'
+  );
 
-  if (preferClaude && (options.anthropicApiKey || process.env.ANTHROPIC_API_KEY)) {
+  // 1. AIHumanizerAPI.com (Free tier: 10k words/mo, anti-Turnitin neural model)
+  if (engine === 'aihumanizer' || options.aiHumanizerApiKey || process.env.AI_HUMANIZER_API_KEY) {
     try {
-      return await humanizeWithClaude(text, options);
-    } catch (claudeErr) {
-      console.warn('[HumanizerEngine] Claude invocation notice, falling back to Gemini:', claudeErr.message);
+      console.log(`[HumanizerEngine:AIHumanizerAPI] Humanizing ${options.contextLabel || 'Section'}...`);
+      const res = await humanizeWithAiHumanizerApi(text, options.aiHumanizerApiKey);
+      if (res.success && res.humanizedText) {
+        return cleanAiMarkers(res.humanizedText);
+      }
+      console.warn('[HumanizerEngine] AIHumanizerAPI notice, falling back:', res.message);
+    } catch (hErr) {
+      console.warn('[HumanizerEngine] AIHumanizerAPI error, falling back:', hErr.message);
     }
   }
 
-  // Gemini path
+  // 2. Groq Cloud (100% Free Meta Llama 3.3 70B & DeepSeek R1)
+  if (engine === 'groq' || options.groqApiKey || process.env.GROQ_API_KEY) {
+    try {
+      console.log(`[HumanizerEngine:Groq] Humanizing ${options.contextLabel || 'Section'} with Llama 3.3 70B...`);
+      const systemPrompt = buildHumanizerSystemPrompt(options.contextLabel || 'Section');
+      const rewritten = await callGroqChat(`TEXT TO HUMANIZE:\n${text}`, systemPrompt, options.groqApiKey);
+      if (rewritten) {
+        return cleanAiMarkers(rewritten);
+      }
+    } catch (gErr) {
+      console.warn('[HumanizerEngine] Groq error, falling back:', gErr.message);
+    }
+  }
+
+  // 3. OpenRouter Free Tier (100% Free Llama 3.3 70B Free / DeepSeek R1 Free)
+  if (engine === 'openrouter' || options.openRouterApiKey || process.env.OPENROUTER_API_KEY) {
+    try {
+      console.log(`[HumanizerEngine:OpenRouter] Humanizing ${options.contextLabel || 'Section'} via OpenRouter Free...`);
+      const systemPrompt = buildHumanizerSystemPrompt(options.contextLabel || 'Section');
+      const rewritten = await callOpenRouterChat(`TEXT TO HUMANIZE:\n${text}`, systemPrompt, options.openRouterApiKey);
+      if (rewritten) {
+        return cleanAiMarkers(rewritten);
+      }
+    } catch (orErr) {
+      console.warn('[HumanizerEngine] OpenRouter error, falling back:', orErr.message);
+    }
+  }
+
+  // 4. Anthropic Claude 3.5 Sonnet (Paid optional)
+  if (engine === 'claude' && (options.anthropicApiKey || process.env.ANTHROPIC_API_KEY)) {
+    try {
+      return await humanizeWithClaude(text, options);
+    } catch (claudeErr) {
+      console.warn('[HumanizerEngine] Claude invocation notice, falling back:', claudeErr.message);
+    }
+  }
+
+  // 5. Google Gemini Fallback (Free tier with Gemini key)
   if (genAI) {
     try {
       return await humanizeWithGemini(genAI, text, options);
@@ -299,9 +370,18 @@ async function humanizePaperDraft(genAI, draft, options = {}) {
   }
 
   const updatedDraft = JSON.parse(JSON.stringify(draft));
-  const engineInUse = (options.preferredEngine === 'claude' || (!options.preferredEngine && !!(options.anthropicApiKey || process.env.ANTHROPIC_API_KEY)))
-    ? 'Claude 3.5 Sonnet'
-    : 'Gemini 2.5 Flash';
+
+  const chosen = options.preferredEngine || (
+    options.aiHumanizerApiKey || process.env.AI_HUMANIZER_API_KEY ? 'aihumanizer' :
+    options.groqApiKey || process.env.GROQ_API_KEY ? 'groq' :
+    options.openRouterApiKey || process.env.OPENROUTER_API_KEY ? 'openrouter' :
+    options.anthropicApiKey || process.env.ANTHROPIC_API_KEY ? 'claude' : 'gemini'
+  );
+
+  const engineInUse = chosen === 'aihumanizer' ? 'AIHumanizerAPI (Free 10k)' :
+                      chosen === 'groq' ? 'Groq (Llama 3.3 70B Free)' :
+                      chosen === 'openrouter' ? 'OpenRouter (Free Tier)' :
+                      chosen === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash (Free)';
 
   console.log(`[HumanizerEngine] Starting humanization of draft: "${draft.title || 'Untitled'}" using ${engineInUse}...`);
 

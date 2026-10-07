@@ -3669,14 +3669,21 @@ window.closeModal = closeModal;
       });
     });
 
-    // Humanizer Engine selector pills (Gemini 100% Free vs Claude 3.5 Sonnet)
+    // Humanizer Engine selector pills (Gemini Free vs AIHumanizerAPI vs Groq vs Claude)
     let humanizerEngine = 'gemini';
     $('draft-engine-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         $('draft-engine-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         humanizerEngine = pill.dataset.engine || 'gemini';
-        toast(`Humanizer Model: ${humanizerEngine === 'claude' ? '🟣 Claude 3.5 Sonnet' : '⚡ Gemini 2.5 Flash (Free)'}`);
+        const engineLabels = {
+          gemini: '⚡ Gemini 2.5 Flash (Free Active)',
+          aihumanizer: '🛡️ AIHumanizerAPI.com (Free 10k Words)',
+          groq: '🚀 Groq Llama 3.3 70B (100% Free)',
+          openrouter: '🌐 OpenRouter (Free Tier Models)',
+          claude: '🟣 Claude 3.5 Sonnet'
+        };
+        toast(`Humanizer Model: ${engineLabels[humanizerEngine] || humanizerEngine}`);
       });
     });
 

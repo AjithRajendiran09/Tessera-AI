@@ -3647,9 +3647,27 @@ app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (re
 
     const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
     const humanizeOptions = {
-      preferredEngine: preferredEngine || (process.env.ANTHROPIC_API_KEY || anthropicApiKey ? 'claude' : 'gemini'),
+      preferredEngine: preferredEngine || (
+        req.body.aiHumanizerApiKey || process.env.AI_HUMANIZER_API_KEY ? 'aihumanizer' :
+        req.body.groqApiKey || process.env.GROQ_API_KEY ? 'groq' :
+        req.body.openRouterApiKey || process.env.OPENROUTER_API_KEY ? 'openrouter' :
+        anthropicApiKey || process.env.ANTHROPIC_API_KEY ? 'claude' : 'gemini'
+      ),
       anthropicApiKey: anthropicApiKey || process.env.ANTHROPIC_API_KEY,
-      gptZeroApiKey: gptZeroApiKey || process.env.GPTZERO_API_KEY
+      gptZeroApiKey: gptZeroApiKey || process.env.GPTZERO_API_KEY,
+      aiHumanizerApiKey: req.body.aiHumanizerApiKey || process.env.AI_HUMANIZER_API_KEY,
+      groqApiKey: req.body.groqApiKey || process.env.GROQ_API_KEY,
+      openRouterApiKey: req.body.openRouterApiKey || process.env.OPENROUTER_API_KEY
+    };
+
+    const getEngineName = (eng) => {
+      switch (eng) {
+        case 'aihumanizer': return 'AIHumanizerAPI (Specialized Free 10k)';
+        case 'groq': return 'Groq (Llama 3.3 70B Free)';
+        case 'openrouter': return 'OpenRouter (Free Tier)';
+        case 'claude': return 'Claude 3.5 Sonnet';
+        default: return 'Gemini 2.5 Flash (Free)';
+      }
     };
 
     // Single block humanization
@@ -3664,7 +3682,7 @@ app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (re
 
       return res.json({
         humanizedText: humanized,
-        engineInUse: humanizeOptions.preferredEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash',
+        engineInUse: getEngineName(humanizeOptions.preferredEngine),
         beforeRisk: beforeHeuristic,
         afterRisk: afterHeuristic,
         gptZero: gptZeroResult
@@ -3686,7 +3704,7 @@ app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (re
       return res.json({
         draft,
         updatedSectionIndex: sectionIndex,
-        engineInUse: humanizeOptions.preferredEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash',
+        engineInUse: getEngineName(humanizeOptions.preferredEngine),
         beforeRisk: beforeHeuristic,
         afterRisk: afterHeuristic,
         gptZero: gptZeroResult
@@ -3732,8 +3750,8 @@ app.post('/api/paper-draft/analyze-ai-risk', checkSupabase, authenticateUser, as
 app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Please upload a Word (.docx) file.' });
-    if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: 'Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is configured.' });
+    if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY && !process.env.GROQ_API_KEY && !process.env.OPENROUTER_API_KEY && !process.env.AI_HUMANIZER_API_KEY) {
+      return res.status(500).json({ error: 'No AI engine key configured. Please configure GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, or AI_HUMANIZER_API_KEY.' });
     }
 
     const fs = require('fs');
@@ -3746,10 +3764,13 @@ app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, uplo
 
     const workerScript = path.join(__dirname, 'services/docxHumanizerWorker.py');
     const geminiKey = process.env.GEMINI_API_KEY || 'none';
-    const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
+    const anthropicKey = process.env.ANTHROPIC_API_KEY || 'none';
+    const groqKey = process.env.GROQ_API_KEY || 'none';
+    const openRouterKey = process.env.OPENROUTER_API_KEY || 'none';
+    const aiHumanizerKey = process.env.AI_HUMANIZER_API_KEY || 'none';
 
-    console.log(`[Humanize DOCX] Executing worker with Claude 3.5 Sonnet / Gemini...`);
-    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${geminiKey}" "${anthropicKey}"`, {
+    console.log(`[Humanize DOCX] Executing worker with active AI engines...`);
+    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${geminiKey}" "${anthropicKey}" "${groqKey}" "${openRouterKey}" "${aiHumanizerKey}"`, {
       timeout: 300000,
       maxBuffer: 25 * 1024 * 1024
     });
