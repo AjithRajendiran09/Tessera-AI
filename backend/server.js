@@ -32,6 +32,7 @@ const {
   humanizeTextBlock,
   humanizePaperDraft
 } = require('./services/humanizerEngine');
+const { predictAiWithGptZero } = require('./services/gptZeroService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
@@ -3628,49 +3629,72 @@ ${part2JsonSchema}
   }
 });
 
-// POST /api/paper-draft/humanize — Rewrite paper sections to bypass AI detectors (Turnitin / GPTZero < 5%)
+// POST /api/paper-draft/humanize — Rewrite paper sections using Claude 3.5 Sonnet / Gemini with GPTZero verification
 app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (req, res) => {
   try {
-    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+    const {
+      draft,
+      sectionIndex,
+      textToHumanize,
+      preferredEngine,
+      anthropicApiKey,
+      gptZeroApiKey
+    } = req.body;
 
-    const { draft, sectionIndex, textToHumanize } = req.body;
     if (!draft && !textToHumanize) {
       return res.status(400).json({ error: 'Missing draft or textToHumanize.' });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+    const humanizeOptions = {
+      preferredEngine: preferredEngine || (process.env.ANTHROPIC_API_KEY || anthropicApiKey ? 'claude' : 'gemini'),
+      anthropicApiKey: anthropicApiKey || process.env.ANTHROPIC_API_KEY,
+      gptZeroApiKey: gptZeroApiKey || process.env.GPTZERO_API_KEY
+    };
 
     // Single block humanization
     if (textToHumanize) {
-      const beforeRisk = analyzeAiDetectionRisk(textToHumanize);
-      const humanized = await humanizeTextBlock(genAI, textToHumanize, { contextLabel: 'Custom Text' });
-      const afterRisk = analyzeAiDetectionRisk(humanized);
+      const beforeHeuristic = analyzeAiDetectionRisk(textToHumanize);
+      const humanized = await humanizeTextBlock(genAI, textToHumanize, {
+        contextLabel: 'Custom Text',
+        ...humanizeOptions
+      });
+      const afterHeuristic = analyzeAiDetectionRisk(humanized);
+      const gptZeroResult = await predictAiWithGptZero(humanized, humanizeOptions.gptZeroApiKey);
+
       return res.json({
         humanizedText: humanized,
-        beforeRisk,
-        afterRisk
+        engineInUse: humanizeOptions.preferredEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash',
+        beforeRisk: beforeHeuristic,
+        afterRisk: afterHeuristic,
+        gptZero: gptZeroResult
       });
     }
 
     // Specific section humanization
     if (typeof sectionIndex === 'number' && draft?.sections?.[sectionIndex]) {
       const sec = draft.sections[sectionIndex];
-      const beforeRisk = analyzeAiDetectionRisk(sec.content);
+      const beforeHeuristic = analyzeAiDetectionRisk(sec.content);
       const humanizedContent = await humanizeTextBlock(genAI, sec.content, {
-        contextLabel: sec.heading || `Section ${sectionIndex + 1}`
+        contextLabel: sec.heading || `Section ${sectionIndex + 1}`,
+        ...humanizeOptions
       });
       draft.sections[sectionIndex].content = humanizedContent;
-      const afterRisk = analyzeAiDetectionRisk(humanizedContent);
+      const afterHeuristic = analyzeAiDetectionRisk(humanizedContent);
+      const gptZeroResult = await predictAiWithGptZero(humanizedContent, humanizeOptions.gptZeroApiKey);
+
       return res.json({
         draft,
         updatedSectionIndex: sectionIndex,
-        beforeRisk,
-        afterRisk
+        engineInUse: humanizeOptions.preferredEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash',
+        beforeRisk: beforeHeuristic,
+        afterRisk: afterHeuristic,
+        gptZero: gptZeroResult
       });
     }
 
     // Full draft humanization via humanizerEngine module
-    const result = await humanizePaperDraft(genAI, draft);
+    const result = await humanizePaperDraft(genAI, draft, humanizeOptions);
     return res.json(result);
 
   } catch (error) {
@@ -3679,16 +3703,26 @@ app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (re
   }
 });
 
-// POST /api/paper-draft/analyze-ai-risk — Calculate Turnitin AI Detection risk score
-app.post('/api/paper-draft/analyze-ai-risk', checkSupabase, authenticateUser, (req, res) => {
+// POST /api/paper-draft/analyze-ai-risk — Calculate Turnitin AI Detection risk score + Live GPTZero verification
+app.post('/api/paper-draft/analyze-ai-risk', checkSupabase, authenticateUser, async (req, res) => {
   try {
-    const { text, draft } = req.body;
+    const { text, draft, gptZeroApiKey } = req.body;
     let targetText = text || '';
     if (!targetText && draft) {
       targetText = [draft.abstract, ...(draft.sections || []).map(s => s.content)].join(' ');
     }
-    const metrics = analyzeAiDetectionRisk(targetText);
-    res.json({ metrics });
+
+    const heuristicMetrics = analyzeAiDetectionRisk(targetText);
+    const gptZeroMetrics = await predictAiWithGptZero(targetText, gptZeroApiKey || process.env.GPTZERO_API_KEY);
+
+    res.json({
+      metrics: {
+        ...heuristicMetrics,
+        estimatedAiPercent: gptZeroMetrics.available ? gptZeroMetrics.aiProbability : heuristicMetrics.estimatedAiPercent,
+        verifiedByGptZero: gptZeroMetrics.available
+      },
+      gptZero: gptZeroMetrics
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -3698,7 +3732,9 @@ app.post('/api/paper-draft/analyze-ai-risk', checkSupabase, authenticateUser, (r
 app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Please upload a Word (.docx) file.' });
-    if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY not configured.' });
+    if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: 'Neither GEMINI_API_KEY nor ANTHROPIC_API_KEY is configured.' });
+    }
 
     const fs = require('fs');
     const path = require('path');
@@ -3709,9 +3745,12 @@ app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, uplo
     fs.writeFileSync(inputPath, req.file.buffer);
 
     const workerScript = path.join(__dirname, 'services/docxHumanizerWorker.py');
-    console.log(`[Humanize DOCX] Executing worker: ${workerScript}`);
-    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${process.env.GEMINI_API_KEY}"`, {
-      timeout: 240000,
+    const geminiKey = process.env.GEMINI_API_KEY || 'none';
+    const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
+
+    console.log(`[Humanize DOCX] Executing worker with Claude 3.5 Sonnet / Gemini...`);
+    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${geminiKey}" "${anthropicKey}"`, {
+      timeout: 300000,
       maxBuffer: 25 * 1024 * 1024
     });
 

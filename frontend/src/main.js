@@ -3663,7 +3663,20 @@ window.closeModal = closeModal;
         $('draft-humanize-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         humanizeMode = pill.dataset.humanize === 'true';
+        const engineCont = $('draft-engine-container');
+        if (engineCont) engineCont.style.display = humanizeMode ? '' : 'none';
         toast(humanizeMode ? '🛡️ Humanize Engine activated (Turnitin target < 5-10%)' : 'Standard academic generation mode');
+      });
+    });
+
+    // Humanizer Engine selector pills (Claude 3.5 Sonnet vs Gemini)
+    let humanizerEngine = 'claude';
+    $('draft-engine-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-engine-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        humanizerEngine = pill.dataset.engine || 'claude';
+        toast(`Humanizer Model: ${humanizerEngine === 'claude' ? '🟣 Claude 3.5 Sonnet (Recommended)' : '⚡ Gemini 2.5 Flash'}`);
       });
     });
 
@@ -3766,23 +3779,57 @@ window.closeModal = closeModal;
     $('draft-download-docx-btn')?.addEventListener('click', generateAndDownloadDOCX);
     $('draft-restart')?.addEventListener('click', resetDraftWizard);
 
+    // Live GPTZero Scan button
+    $('draft-gptzero-scan-btn')?.addEventListener('click', async () => {
+      if (!generatedResult?.draft) return;
+      const btn = $('draft-gptzero-scan-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning GPTZero...'; }
+      try {
+        const res = await api.analyzeAiRisk({ draft: generatedResult.draft });
+        if (res?.gptZero) {
+          const gz = res.gptZero;
+          if (gz.available) {
+            generatedResult.aiDetectionRisk = {
+              ...(generatedResult.aiDetectionRisk || {}),
+              estimatedAiPercent: gz.aiProbability,
+              burstinessScore: gz.overallBurstiness || generatedResult.aiDetectionRisk?.burstinessScore,
+              verifiedByGptZero: true
+            };
+            renderDraftPreview();
+            toast(`GPTZero Scan Complete: ${gz.aiProbability}% AI Probability (${gz.predictedClass})`);
+          } else {
+            toast(gz.message || 'GPTZero scan unavailable. Local heuristic metrics applied.', true);
+          }
+        }
+      } catch (err) {
+        toast(`GPTZero scan failed: ${err.message}`, true);
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 Scan with GPTZero'; }
+      }
+    });
+
     // Re-humanize entire paper button
     $('draft-rehumanize-btn')?.addEventListener('click', async () => {
       if (!generatedResult?.draft) return;
       const btn = $('draft-rehumanize-btn');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ Humanizing Paper...'; }
+      const isClaude = humanizerEngine === 'claude';
+      if (btn) { btn.disabled = true; btn.textContent = isClaude ? '⏳ Humanizing with Claude 3.5...' : '⏳ Humanizing with Gemini...'; }
       try {
-        const res = await api.humanizePaperDraft({ draft: generatedResult.draft });
+        const res = await api.humanizePaperDraft({
+          draft: generatedResult.draft,
+          preferredEngine: humanizerEngine
+        });
         if (res && res.draft) {
           generatedResult.draft = res.draft;
+          generatedResult.engineInUse = res.engineInUse || (isClaude ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash');
           if (res.metrics) generatedResult.aiDetectionRisk = res.metrics.postHumanization || res.metrics;
           renderDraftPreview();
-          toast('Paper successfully re-humanized! Predicted AI risk: < 5%');
+          toast(`Paper successfully re-humanized with ${generatedResult.engineInUse}! Target Turnitin score: < 5%`);
         }
       } catch (err) {
         toast(`Humanization failed: ${err.message}`, true);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '✨ Run Humanizer Engine Again'; }
+        if (btn) { btn.disabled = false; btn.textContent = `✨ Run Humanizer (${isClaude ? 'Claude 3.5' : 'Gemini'})`; }
       }
     });
 
@@ -3797,7 +3844,8 @@ window.closeModal = closeModal;
     try {
       const res = await api.humanizePaperDraft({
         draft: generatedResult.draft,
-        sectionIndex: sIdx
+        sectionIndex: sIdx,
+        preferredEngine: typeof humanizerEngine !== 'undefined' ? humanizerEngine : 'claude'
       });
       if (res && res.draft?.sections?.[sIdx]) {
         generatedResult.draft.sections[sIdx].content = res.draft.sections[sIdx].content;
@@ -4137,21 +4185,27 @@ window.closeModal = closeModal;
 
     // Update Turnitin AI Risk status banner
     const scoreBadge = $('draft-ai-score-badge');
+    const engineBadge = $('draft-ai-engine-badge');
     const metricsEl = $('draft-humanize-metrics');
     const risk = generatedResult?.aiDetectionRisk;
     if (scoreBadge) {
       if (risk && risk.estimatedAiPercent !== undefined) {
         const pct = risk.estimatedAiPercent;
-        scoreBadge.textContent = `${pct}% ${pct <= 10 ? 'Low Risk' : pct <= 25 ? 'Moderate Risk' : 'Elevated Risk'}`;
+        const verifiedTag = risk.verifiedByGptZero ? ' (GPTZero Verified)' : '';
+        scoreBadge.textContent = `${pct}% ${pct <= 10 ? 'Low Risk' : pct <= 25 ? 'Moderate Risk' : 'Elevated Risk'}${verifiedTag}`;
         scoreBadge.style.background = pct <= 10 ? '#10b981' : pct <= 25 ? '#f59e0b' : '#ef4444';
       } else {
         scoreBadge.textContent = '< 5% Low Risk';
         scoreBadge.style.background = '#10b981';
       }
     }
+    if (engineBadge) {
+      const activeEngine = generatedResult.engineInUse || (typeof humanizerEngine !== 'undefined' && humanizerEngine === 'gemini' ? 'Gemini 2.5 Flash' : 'Claude 3.5 Sonnet');
+      engineBadge.textContent = activeEngine;
+    }
     if (metricsEl) {
       if (risk && risk.burstinessScore !== undefined) {
-        metricsEl.textContent = `Burstiness Score: ${risk.burstinessScore} • Avg Sentence: ${risk.averageSentenceLength || 18} words • Clichés Detected: ${risk.clicheMatches || 0} • Formatted with ${refs.length} citations`;
+        metricsEl.textContent = `Burstiness: ${risk.burstinessScore} • Avg Sentence: ${risk.averageSentenceLength || 18} words • Clichés: ${risk.clicheMatches || 0} • Citations: ${refs.length}`;
       } else {
         metricsEl.textContent = 'High burstiness applied • Active first-person scholarly voice • 0 AI clichés detected';
       }
