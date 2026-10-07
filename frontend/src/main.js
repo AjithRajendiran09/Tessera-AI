@@ -3669,14 +3669,14 @@ window.closeModal = closeModal;
       });
     });
 
-    // Humanizer Engine selector pills (Claude 3.5 Sonnet vs Gemini)
-    let humanizerEngine = 'claude';
+    // Humanizer Engine selector pills (Gemini 100% Free vs Claude 3.5 Sonnet)
+    let humanizerEngine = 'gemini';
     $('draft-engine-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         $('draft-engine-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
-        humanizerEngine = pill.dataset.engine || 'claude';
-        toast(`Humanizer Model: ${humanizerEngine === 'claude' ? '🟣 Claude 3.5 Sonnet (Recommended)' : '⚡ Gemini 2.5 Flash'}`);
+        humanizerEngine = pill.dataset.engine || 'gemini';
+        toast(`Humanizer Model: ${humanizerEngine === 'claude' ? '🟣 Claude 3.5 Sonnet' : '⚡ Gemini 2.5 Flash (Free)'}`);
       });
     });
 
@@ -4200,7 +4200,7 @@ window.closeModal = closeModal;
       }
     }
     if (engineBadge) {
-      const activeEngine = generatedResult.engineInUse || (typeof humanizerEngine !== 'undefined' && humanizerEngine === 'gemini' ? 'Gemini 2.5 Flash' : 'Claude 3.5 Sonnet');
+      const activeEngine = generatedResult.engineInUse || (typeof humanizerEngine !== 'undefined' && humanizerEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash');
       engineBadge.textContent = activeEngine;
     }
     if (metricsEl) {
