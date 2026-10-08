@@ -369,11 +369,6 @@ export async function humanizePaperDraft(payload) {
   });
 }
 
-export async function getAvailableEngines() {
-  return fetchAPI('/paper-draft/engines');
-}
-
-
 export async function analyzeAiRisk(payload) {
   return fetchAPI('/paper-draft/analyze-ai-risk', {
     method: 'POST',

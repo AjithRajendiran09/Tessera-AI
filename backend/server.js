@@ -3778,7 +3778,7 @@ app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, uplo
 
     const fs = require('fs');
     const path = require('path');
-    const { execSync } = require('child_process');
+    const { execFile } = require('child_process');
 
     const inputPath = path.join('/tmp', `upload_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
     const outputPath = path.join('/tmp', `humanized_${Date.now()}_${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
@@ -3791,10 +3791,27 @@ app.post('/api/paper-draft/humanize-docx', checkSupabase, authenticateUser, uplo
     const openRouterKey = process.env.OPENROUTER_API_KEY || 'none';
     const aiHumanizerKey = process.env.AI_HUMANIZER_API_KEY || 'none';
 
-    console.log(`[Humanize DOCX] Executing worker with active AI engines...`);
-    execSync(`python3 "${workerScript}" "${inputPath}" "${outputPath}" "${geminiKey}" "${anthropicKey}" "${groqKey}" "${openRouterKey}" "${aiHumanizerKey}"`, {
-      timeout: 300000,
-      maxBuffer: 25 * 1024 * 1024
+    console.log(`[Humanize DOCX] Executing non-blocking worker with active AI engines...`);
+    await new Promise((resolve, reject) => {
+      execFile('python3', [
+        workerScript,
+        inputPath,
+        outputPath,
+        geminiKey,
+        anthropicKey,
+        groqKey,
+        openRouterKey,
+        aiHumanizerKey
+      ], {
+        timeout: 180000,
+        maxBuffer: 25 * 1024 * 1024
+      }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('[Humanize DOCX] Worker stderr:', stderr);
+          return reject(new Error(stderr || error.message));
+        }
+        resolve(stdout);
+      });
     });
 
     if (!fs.existsSync(outputPath)) {

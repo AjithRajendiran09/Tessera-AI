@@ -3669,32 +3669,16 @@ window.closeModal = closeModal;
       });
     });
 
-    // Active Humanizer Engine
+    // Active Humanizer Engine (Gemini 2.5 Flash active)
     let humanizerEngine = 'gemini';
-    const initEnginePills = async () => {
-      try {
-        const data = await api.getAvailableEngines();
-        const pillsContainer = $('draft-engine-pills');
-        if (pillsContainer && data?.engines?.length) {
-          pillsContainer.innerHTML = data.engines.map((eng, idx) => `
-            <button class="draft-pill ${eng.id === humanizerEngine || idx === 0 ? 'active' : ''}" data-engine="${eng.id}">
-              ${eng.name}
-            </button>
-          `).join('');
-          pillsContainer.querySelectorAll('.draft-pill').forEach(pill => {
-            pill.addEventListener('click', () => {
-              pillsContainer.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
-              pill.classList.add('active');
-              humanizerEngine = pill.dataset.engine || 'gemini';
-              toast(`Active Humanizer: ${pill.textContent.trim()}`);
-            });
-          });
-        }
-      } catch (_) {
-        // Fallback default
-      }
-    };
-    initEnginePills();
+    $('draft-engine-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        $('draft-engine-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        humanizerEngine = pill.dataset.engine || 'gemini';
+        toast(`Active Humanizer: ${pill.textContent.trim()}`);
+      });
+    });
 
     // Upload & Humanize existing .docx file
     $('draft-upload-humanize-docx')?.addEventListener('change', async e => {
