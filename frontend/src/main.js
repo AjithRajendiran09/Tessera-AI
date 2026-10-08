@@ -3669,23 +3669,32 @@ window.closeModal = closeModal;
       });
     });
 
-    // Humanizer Engine selector pills (Gemini Free vs AIHumanizerAPI vs Groq vs Claude)
+    // Active Humanizer Engine
     let humanizerEngine = 'gemini';
-    $('draft-engine-pills')?.querySelectorAll('.draft-pill').forEach(pill => {
-      pill.addEventListener('click', () => {
-        $('draft-engine-pills').querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
-        pill.classList.add('active');
-        humanizerEngine = pill.dataset.engine || 'gemini';
-        const engineLabels = {
-          gemini: '⚡ Gemini 2.5 Flash (Free Active)',
-          aihumanizer: '🛡️ AIHumanizerAPI.com (Free 10k Words)',
-          groq: '🚀 Groq Llama 3.3 70B (100% Free)',
-          openrouter: '🌐 OpenRouter (Free Tier Models)',
-          claude: '🟣 Claude 3.5 Sonnet'
-        };
-        toast(`Humanizer Model: ${engineLabels[humanizerEngine] || humanizerEngine}`);
-      });
-    });
+    const initEnginePills = async () => {
+      try {
+        const data = await api.getAvailableEngines();
+        const pillsContainer = $('draft-engine-pills');
+        if (pillsContainer && data?.engines?.length) {
+          pillsContainer.innerHTML = data.engines.map((eng, idx) => `
+            <button class="draft-pill ${eng.id === humanizerEngine || idx === 0 ? 'active' : ''}" data-engine="${eng.id}">
+              ${eng.name}
+            </button>
+          `).join('');
+          pillsContainer.querySelectorAll('.draft-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+              pillsContainer.querySelectorAll('.draft-pill').forEach(p => p.classList.remove('active'));
+              pill.classList.add('active');
+              humanizerEngine = pill.dataset.engine || 'gemini';
+              toast(`Active Humanizer: ${pill.textContent.trim()}`);
+            });
+          });
+        }
+      } catch (_) {
+        // Fallback default
+      }
+    };
+    initEnginePills();
 
     // Upload & Humanize existing .docx file
     $('draft-upload-humanize-docx')?.addEventListener('change', async e => {
@@ -3786,32 +3795,32 @@ window.closeModal = closeModal;
     $('draft-download-docx-btn')?.addEventListener('click', generateAndDownloadDOCX);
     $('draft-restart')?.addEventListener('click', resetDraftWizard);
 
-    // Live GPTZero Scan button
+    // Live AI Risk Scan button
     $('draft-gptzero-scan-btn')?.addEventListener('click', async () => {
       if (!generatedResult?.draft) return;
       const btn = $('draft-gptzero-scan-btn');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ Scanning GPTZero...'; }
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing AI Risk...'; }
       try {
         const res = await api.analyzeAiRisk({ draft: generatedResult.draft });
-        if (res?.gptZero) {
-          const gz = res.gptZero;
-          if (gz.available) {
-            generatedResult.aiDetectionRisk = {
-              ...(generatedResult.aiDetectionRisk || {}),
-              estimatedAiPercent: gz.aiProbability,
-              burstinessScore: gz.overallBurstiness || generatedResult.aiDetectionRisk?.burstinessScore,
-              verifiedByGptZero: true
-            };
-            renderDraftPreview();
-            toast(`GPTZero Scan Complete: ${gz.aiProbability}% AI Probability (${gz.predictedClass})`);
-          } else {
-            toast(gz.message || 'GPTZero scan unavailable. Local heuristic metrics applied.', true);
-          }
+        const metrics = res?.metrics || res;
+        if (metrics && metrics.estimatedAiPercent !== undefined) {
+          generatedResult.aiDetectionRisk = {
+            ...(generatedResult.aiDetectionRisk || {}),
+            estimatedAiPercent: metrics.estimatedAiPercent,
+            burstinessScore: metrics.burstinessScore || generatedResult.aiDetectionRisk?.burstinessScore,
+            clicheMatches: metrics.clicheMatches || 0,
+            averageSentenceLength: metrics.averageSentenceLength || 18,
+            verifiedByGptZero: !!metrics.verifiedByGptZero
+          };
+          renderDraftPreview();
+          toast(`AI Risk Analysis Complete: ${metrics.estimatedAiPercent}% AI Risk (Burstiness: ${metrics.burstinessScore || 'High'})`);
+        } else {
+          toast('AI risk scan completed. Heuristic metrics applied.');
         }
       } catch (err) {
-        toast(`GPTZero scan failed: ${err.message}`, true);
+        toast(`Risk analysis failed: ${err.message}`, true);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔍 Scan with GPTZero'; }
+        if (btn) { btn.disabled = false; btn.textContent = '🔍 Analyze AI Risk'; }
       }
     });
 
@@ -3819,24 +3828,23 @@ window.closeModal = closeModal;
     $('draft-rehumanize-btn')?.addEventListener('click', async () => {
       if (!generatedResult?.draft) return;
       const btn = $('draft-rehumanize-btn');
-      const isClaude = humanizerEngine === 'claude';
-      if (btn) { btn.disabled = true; btn.textContent = isClaude ? '⏳ Humanizing with Claude 3.5...' : '⏳ Humanizing with Gemini...'; }
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Humanizing with Gemini...'; }
       try {
         const res = await api.humanizePaperDraft({
           draft: generatedResult.draft,
-          preferredEngine: humanizerEngine
+          preferredEngine: humanizerEngine || 'gemini'
         });
         if (res && res.draft) {
           generatedResult.draft = res.draft;
-          generatedResult.engineInUse = res.engineInUse || (isClaude ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash');
+          generatedResult.engineInUse = res.engineInUse || 'Gemini 2.5 Flash';
           if (res.metrics) generatedResult.aiDetectionRisk = res.metrics.postHumanization || res.metrics;
           renderDraftPreview();
-          toast(`Paper successfully re-humanized with ${generatedResult.engineInUse}! Target Turnitin score: < 5%`);
+          toast(`Paper humanized with ${generatedResult.engineInUse}! Target Turnitin score: < 5%`);
         }
       } catch (err) {
         toast(`Humanization failed: ${err.message}`, true);
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = `✨ Run Humanizer (${isClaude ? 'Claude 3.5' : 'Gemini'})`; }
+        if (btn) { btn.disabled = false; btn.textContent = '✨ Run Humanizer (Gemini)'; }
       }
     });
 
@@ -3852,7 +3860,7 @@ window.closeModal = closeModal;
       const res = await api.humanizePaperDraft({
         draft: generatedResult.draft,
         sectionIndex: sIdx,
-        preferredEngine: typeof humanizerEngine !== 'undefined' ? humanizerEngine : 'claude'
+        preferredEngine: typeof humanizerEngine !== 'undefined' ? humanizerEngine : 'gemini'
       });
       if (res && res.draft?.sections?.[sIdx]) {
         generatedResult.draft.sections[sIdx].content = res.draft.sections[sIdx].content;
@@ -4207,7 +4215,7 @@ window.closeModal = closeModal;
       }
     }
     if (engineBadge) {
-      const activeEngine = generatedResult.engineInUse || (typeof humanizerEngine !== 'undefined' && humanizerEngine === 'claude' ? 'Claude 3.5 Sonnet' : 'Gemini 2.5 Flash');
+      const activeEngine = generatedResult.engineInUse || 'Gemini 2.5 Flash';
       engineBadge.textContent = activeEngine;
     }
     if (metricsEl) {

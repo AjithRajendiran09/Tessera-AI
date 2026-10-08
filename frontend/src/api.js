@@ -369,6 +369,11 @@ export async function humanizePaperDraft(payload) {
   });
 }
 
+export async function getAvailableEngines() {
+  return fetchAPI('/paper-draft/engines');
+}
+
+
 export async function analyzeAiRisk(payload) {
   return fetchAPI('/paper-draft/analyze-ai-risk', {
     method: 'POST',
@@ -379,10 +384,14 @@ export async function analyzeAiRisk(payload) {
 export async function humanizeDocxFile(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const token = localStorage.getItem('token');
-  const res = await fetch('/api/paper-draft/humanize-docx', {
+  const token = await getAuthToken();
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${API_URL}/paper-draft/humanize-docx`, {
     method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers,
     body: formData
   });
   if (!res.ok) {

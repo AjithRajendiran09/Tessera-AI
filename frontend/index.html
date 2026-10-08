@@ -821,7 +821,7 @@
               </div>
 
               <div class="draft-field">
-                <label>AI Detection Shield (Turnitin / GPTZero / Copyleaks)</label>
+                <label>AI Detection Shield (Turnitin / Academic Classifiers)</label>
                 <div class="draft-format-pills" id="draft-humanize-pills">
                   <button class="draft-pill active" data-humanize="true">🛡️ Humanize Engine (Target &lt; 5-10% AI)</button>
                   <button class="draft-pill" data-humanize="false">Standard Mode</button>
@@ -829,16 +829,12 @@
               </div>
 
               <div class="draft-field" id="draft-engine-container">
-                <label>Humanizer Engine</label>
+                <label>Active Humanizer Engine</label>
                 <div class="draft-format-pills" id="draft-engine-pills">
-                  <button class="draft-pill active" data-engine="gemini">⚡ Gemini 2.5 Flash (Free)</button>
-                  <button class="draft-pill" data-engine="aihumanizer">🛡️ AIHumanizerAPI (Free 10k)</button>
-                  <button class="draft-pill" data-engine="groq">🚀 Groq Llama 3.3 (100% Free)</button>
-                  <button class="draft-pill" data-engine="openrouter">🌐 OpenRouter Free</button>
-                  <button class="draft-pill" data-engine="claude">🟣 Claude 3.5 Sonnet</button>
+                  <button class="draft-pill active" data-engine="gemini">⚡ Gemini 2.5 Flash (Active)</button>
                 </div>
                 <small style="color:var(--text-muted);font-size:11px;margin-top:4px;display:block;">
-                  Multiple free humanizers supported! Gemini runs free out-of-the-box. AIHumanizerAPI provides 10k words/mo free (no card). Groq &amp; OpenRouter run 100% free open-weights models.
+                  Tessera-AI Academic Humanizer active. Automatically optimizes sentence burstiness and eliminates AI detection markers.
                 </small>
               </div>
 
@@ -923,18 +919,18 @@
                 <span style="font-size:24px;">🛡️</span>
                 <div>
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <strong style="color:var(--text-bright);font-size:13px;">Turnitin / GPTZero AI Risk:</strong>
+                    <strong style="color:var(--text-bright);font-size:13px;">Turnitin AI Risk Score:</strong>
                     <span id="draft-ai-score-badge" style="background:#10b981;color:#ffffff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:12px;">&lt; 5% Low Risk</span>
-                    <span id="draft-ai-engine-badge" style="background:rgba(147,51,234,0.15);color:#a855f7;border:1px solid rgba(147,51,234,0.3);font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">Claude 3.5 Sonnet</span>
+                    <span id="draft-ai-engine-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;">Gemini 2.5 Flash</span>
                   </div>
                   <div id="draft-humanize-metrics" style="font-size:11px;color:var(--text-muted);margin-top:2px;">
-                    High burstiness applied • Active first-person scholarly voice • 0 AI clichés detected
+                    High burstiness applied • Active scholarly voice • 0 AI clichés detected
                   </div>
                 </div>
               </div>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <button class="btn btn-secondary btn-sm" id="draft-gptzero-scan-btn">🔍 Scan with GPTZero</button>
-                <button class="btn btn-secondary btn-sm" id="draft-rehumanize-btn">✨ Run Humanizer (Claude 3.5)</button>
+                <button class="btn btn-secondary btn-sm" id="draft-gptzero-scan-btn">🔍 Analyze AI Risk</button>
+                <button class="btn btn-secondary btn-sm" id="draft-rehumanize-btn">✨ Run Humanizer (Gemini)</button>
               </div>
             </div>
 

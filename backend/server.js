@@ -3627,9 +3627,31 @@ ${part2JsonSchema}
     console.error('[Paper Draft] Generation error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate paper draft.' });
   }
+// GET /api/paper-draft/engines — Returns list of active engines whose API keys are configured
+app.get('/api/paper-draft/engines', (req, res) => {
+  const engines = [];
+  if (process.env.GEMINI_API_KEY) {
+    engines.push({ id: 'gemini', name: '⚡ Gemini 2.5 Flash (Active)', active: true });
+  }
+  if (process.env.AI_HUMANIZER_API_KEY) {
+    engines.push({ id: 'aihumanizer', name: '🛡️ AIHumanizerAPI', active: true });
+  }
+  if (process.env.GROQ_API_KEY) {
+    engines.push({ id: 'groq', name: '🚀 Groq Llama 3.3', active: true });
+  }
+  if (process.env.OPENROUTER_API_KEY) {
+    engines.push({ id: 'openrouter', name: '🌐 OpenRouter Free', active: true });
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    engines.push({ id: 'claude', name: '🟣 Claude 3.5 Sonnet', active: true });
+  }
+  res.json({
+    engines,
+    hasGptZero: !!process.env.GPTZERO_API_KEY
+  });
 });
 
-// POST /api/paper-draft/humanize — Rewrite paper sections using Claude 3.5 Sonnet / Gemini with GPTZero verification
+// POST /api/paper-draft/humanize — Rewrite paper sections with academic anti-detection rubric
 app.post('/api/paper-draft/humanize', checkSupabase, authenticateUser, async (req, res) => {
   try {
     const {
