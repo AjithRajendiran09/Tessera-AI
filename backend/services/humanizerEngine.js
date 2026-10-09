@@ -255,26 +255,43 @@ async function humanizeWithClaude(text, options = {}) {
  * @param {object} options 
  * @returns {Promise<string>}
  */
+const GEMINI_HUMANIZER_MODELS = [
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash'
+];
+
 async function humanizeWithGemini(genAI, text, options = {}) {
   const contextLabel = options.contextLabel || 'Section';
-  const modelName = options.modelName || 'gemini-2.5-flash';
   const systemPrompt = buildHumanizerSystemPrompt(contextLabel);
+  const models = options.modelName ? [options.modelName, ...GEMINI_HUMANIZER_MODELS] : GEMINI_HUMANIZER_MODELS;
 
-  console.log(`[HumanizerEngine:Gemini] Calling Gemini for ${contextLabel}...`);
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: {
-      temperature: 0.90,
-      topP: 0.95
+  for (const modelName of models) {
+    try {
+      console.log(`[HumanizerEngine:Gemini] Calling ${modelName} for ${contextLabel}...`);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.88,
+          topP: 0.95
+        }
+      });
+
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nTEXT TO HUMANIZE:\n${text}` }] }]
+      });
+
+      const rawHumanized = result.response.text().trim();
+      if (rawHumanized && rawHumanized.length > 20) {
+        return cleanAiMarkers(rawHumanized);
+      }
+    } catch (err) {
+      console.warn(`[HumanizerEngine:Gemini] Model ${modelName} failed (${err.message}), trying fallback...`);
     }
-  });
+  }
 
-  const result = await model.generateContent({
-    contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nTEXT TO HUMANIZE:\n${text}` }] }]
-  });
-
-  const rawHumanized = result.response.text().trim();
-  return cleanAiMarkers(rawHumanized);
+  throw new Error('All Gemini humanizer models failed to generate content.');
 }
 
 /**

@@ -676,11 +676,10 @@ app.get('/api/papers/:id/gaps', checkSupabase, authenticateUser, async (req, res
 // --- AI PARSER ---
 // Verified active Gemini models with robust fallback chain
 const MODELS_TO_TRY = [
-  'gemini-2.5-flash',
-  'gemini-flash-lite-latest',
-  'gemini-3.5-flash-lite',
   'gemini-3.5-flash',
-  'gemini-flash-latest'
+  'gemini-flash-latest',
+  'gemini-flash-lite-latest',
+  'gemini-2.5-flash'
 ];
 
 async function callGeminiWithRetry(genAI, prompt, systemInstruction = null, configOverride = {}) {
