@@ -3626,6 +3626,8 @@ ${part2JsonSchema}
     console.error('[Paper Draft] Generation error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate paper draft.' });
   }
+});
+
 // GET /api/paper-draft/engines — Returns list of active engines whose API keys are configured
 app.get('/api/paper-draft/engines', (req, res) => {
   const engines = [];
