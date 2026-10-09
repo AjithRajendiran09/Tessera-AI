@@ -62,16 +62,19 @@ HUMANIZER_SYSTEM_PROMPT = """You are an experienced IEEE Transactions peer revie
 Rewrite and humanize this academic paragraph to pass Turnitin AI detection (< 5% AI score).
 
 STRICT WRITING RULES:
-1. DYNAMIC BURSTINESS: Aggressively alternate between short punchy technical statements (4-7 words) and long, multi-clause analytical sentences (30-45 words).
-2. FORMAL ACADEMIC REGISTER: Use rigorous engineering vocabulary. Never use colloquial slang (no 'cranking up', no 'game changer', no 'academic silos').
-3. BAN AI WORDS: Never use delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, furthermore, moreover, additionally.
-4. CITATION FIDELITY: Retain ALL citations (e.g., [1], [2], or Author, Year) and quantitative metrics VERBATIM.
-5. Return ONLY the rewritten paragraph. Absolutely NO introductory text, markdown headers, or bullet points."""
+1. DYNAMIC BURSTINESS: Aggressively alternate between short punchy technical statements (4-7 words: e.g., 'Propagation losses are severe.' 'Thermal limits bound throughput.') and long multi-clause analytical sentences (30-45 words) with semicolons or dependent clauses.
+2. VARIED SENTENCE OPENERS: Never start consecutive sentences with 'The...' or 'This...'. Use diverse transitions: 'In practice,', 'By contrast,', 'To evaluate this tradeoff,', 'Under peak load,'.
+3. FORMAL ACADEMIC REGISTER: Use rigorous engineering vocabulary. Never use colloquial slang (no 'cranking up', no 'game changer', no 'academic silos'). Use authentic active researcher voice ('We observed that...', 'Our benchmark testbed revealed...').
+4. BAN AI WORDS: Never use delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, furthermore, moreover, additionally, in conclusion, notably, in recent years.
+5. CITATION FIDELITY: Retain ALL citations (e.g., [1], [2], or Author, Year) and quantitative metrics VERBATIM.
+6. Return ONLY the rewritten paragraph. Absolutely NO introductory text, markdown headers, or bullet points."""
 
 GEMINI_MODELS = [
-    'gemini-3.5-flash',
     'gemini-flash-lite-latest',
-    'gemini-flash-latest'
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-3.5-flash'
 ]
 
 def clean_markers(text):

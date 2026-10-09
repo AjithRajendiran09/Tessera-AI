@@ -3152,7 +3152,7 @@ async function handleDiscoverSearch(page = 1) {
   $('btn-discover-search').innerHTML = '<span class="scopus-search-icon">⏳</span> Searching...';
 
   try {
-    const isScopusOnly = $('discover-index-filter') ? ($('discover-index-filter').value === 'scopus') : true;
+    const isScopusOnly = $('discover-index-filter') ? ($('discover-index-filter').value === 'scopus') : false;
     const options = {
       page,
       per_page: $('discover-per-page')?.value || 25,

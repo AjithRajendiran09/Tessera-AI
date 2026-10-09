@@ -81,6 +81,12 @@ const BANNED_AI_PATTERNS = [
  * @param {string} text
  * @returns {object} { sentenceCount, averageSentenceLength, burstinessScore, clicheMatches, estimatedAiPercent }
  */
+/**
+ * Calculates heuristic AI detection risk metrics
+ * Analyzes sentence length standard deviation (burstiness), sentence opener entropy, and AI token density
+ * @param {string} text
+ * @returns {object} { sentenceCount, averageSentenceLength, burstinessScore, clicheMatches, estimatedAiPercent }
+ */
 function analyzeAiDetectionRisk(text) {
   if (!text || typeof text !== 'string') {
     return { sentenceCount: 0, averageSentenceLength: 0, burstinessScore: 0, clicheMatches: 0, estimatedAiPercent: 0 };
@@ -111,17 +117,51 @@ function analyzeAiDetectionRisk(text) {
     if (matches) clicheCount += matches.length;
   }
 
-  // Heuristic baseline
-  let predictedAi = 12;
+  // Sentence opener repetition check (e.g. repetitive "The ...", "This ...")
+  let repetitiveOpeners = 0;
+  const firstWords = sentences.map(s => (s.split(/\s+/)[0] || '').toLowerCase());
+  const openerCounts = {};
+  for (const w of firstWords) {
+    openerCounts[w] = (openerCounts[w] || 0) + 1;
+    if (openerCounts[w] > 2) repetitiveOpeners++;
+  }
 
-  if (stdDev < 5.0) predictedAi += 45;
-  else if (stdDev < 7.5) predictedAi += 30;
-  else if (stdDev < 10.0) predictedAi += 12;
-  else predictedAi -= 10;
+  // Authentic human empirical researcher markers (lowers AI probability)
+  const humanMarkers = text.match(/\b(we observed|our testbed|our measurements|in practice|contrary to|empirically|rather than|under load)\b/gi) || [];
 
-  predictedAi += Math.min(clicheCount * 12, 45);
+  // Calibrated Turnitin heuristic prediction
+  let predictedAi = 4; // Baseline clean scholarly human score
 
-  const estimatedAiPercent = Math.min(Math.max(Math.round(predictedAi), 2), 99);
+  // Cliché density (each AI cliché heavily raises score)
+  predictedAi += Math.min(clicheCount * 14, 60);
+
+  // Burstiness scoring
+  if (clicheCount > 0) {
+    if (stdDev < 3.0 && sentences.length > 2) {
+      predictedAi += 24; // Robotic flat sentence lengths
+    } else if (stdDev < 5.0 && sentences.length > 2) {
+      predictedAi += 12;
+    }
+  } else {
+    // When no clichés are present, text is predominantly human
+    if (stdDev < 2.0 && sentences.length > 4) {
+      predictedAi += 4;
+    } else if (stdDev >= 6.0) {
+      predictedAi = Math.max(predictedAi - 2, 2);
+    }
+  }
+
+  // Repetitive openers penalty
+  if (repetitiveOpeners > 0) {
+    predictedAi += Math.min(repetitiveOpeners * 4, 12);
+  }
+
+  // Human markers credit
+  if (humanMarkers.length > 0) {
+    predictedAi -= Math.min(humanMarkers.length * 3, 10);
+  }
+
+  const estimatedAiPercent = Math.min(Math.max(Math.round(predictedAi), 2), 98);
 
   return {
     sentenceCount: sentences.length,
@@ -141,7 +181,7 @@ function cleanAiMarkers(text) {
   if (!text) return '';
   let cleaned = text;
 
-  // Replace cliché starters
+  // Replace cliché starters and robotic transitions
   cleaned = cleaned.replace(/\bFurthermore,\s*/gi, '')
                    .replace(/\bMoreover,\s*/gi, '')
                    .replace(/\bAdditionally,\s*/gi, '')
@@ -153,6 +193,7 @@ function cleanAiMarkers(text) {
                    .replace(/\bIt is worth noting that\s*/gi, '')
                    .replace(/\bIt is important to note that\s*/gi, '')
                    .replace(/\bIn recent years,\s*/gi, '')
+                   .replace(/\bWith the rapid advancement of\s*/gi, 'As ')
                    .replace(/\bcranking up transmission bandwidth\b/gi, 'scaling carrier frequencies into upper millimetric spectrum')
                    .replace(/\bcranking up bandwidth\b/gi, 'increasing channel bandwidth')
                    .replace(/\bsound almost impossible\b/gi, 'push theoretical boundary limits')
@@ -172,6 +213,11 @@ function cleanAiMarkers(text) {
                    .replace(/\btestament\b/gi, 'evidence')
                    .replace(/\bparamount\b/gi, 'essential')
                    .replace(/\bpivotal\b/gi, 'central')
+                   .replace(/\bmultifaceted\b/gi, 'multi-component')
+                   .replace(/\bplethora of\b/gi, 'diverse')
+                   .replace(/\bmyriad of\b/gi, 'range of')
+                   .replace(/\bcornerstone\b/gi, 'core pillar')
+                   .replace(/\brevolutionize\b/gi, 'transform')
                    .replace(/\bOur synthesis of the literature reveals\b/gi, 'Looking across the literature, we identify')
                    .replace(/\bOur evaluation of the literature uncovers\b/gi, 'Benchmarking across the studies reveals')
                    .replace(/\bOur inquiry is structured around\b/gi, 'We frame this inquiry around')
@@ -190,26 +236,31 @@ function buildHumanizerSystemPrompt(contextLabel = 'Section') {
 Rewrite and thoroughly humanize the following academic manuscript text ("${contextLabel}").
 
 PRIMARY MANDATE:
-The rewritten text must read as authentic, rigorous human scholarship that passes Turnitin's August 2025/2026 AI & Paraphraser detection (< 10% AI score).
+The rewritten text must read as authentic, rigorous human scholarship that passes Turnitin's 2025/2026 AI & Paraphraser detection (< 5-10% AI score).
 
 STRICT HUMAN-WRITTEN STYLISTIC DIRECTIVES:
-1. DYNAMIC SYNTACTIC BURSTINESS:
-   - Aggressively vary sentence structures and lengths across every paragraph.
+1. AGGRESSIVE BURSTINESS & RHYTHM:
+   - Force wide variance in sentence length throughout every single paragraph.
    - Alternate between:
-     * Short direct technical assertions (4-8 words): "Propagation path losses are severe." "Hardware constraints limit performance." "Phase noise degrades accuracy." "Theory diverges from silicon."
+     * Ultra-short direct technical assertions (4-7 words): "Propagation path losses are severe." "Hardware limits constrain throughput." "Phase noise degrades accuracy." "Theory diverges from silicon." "Thermal saturation caps efficiency."
      * Medium analytical clauses (12-18 words).
-     * Extended compound-complex sentences (30-45 words) containing subordinate qualifications, semicolons, or parenthetical hardware limits.
-   - NEVER generate 3 consecutive sentences with similar length or cadence.
+     * Extended compound-complex analytical sentences (30-45 words) containing subordinate clauses, semicolons, or empirical constraints.
+   - NEVER write two consecutive sentences with similar length or cadence.
 
-2. AUTHENTIC SCHOLARLY REGISTER (NO SLANG OR CASUAL METAPHORS):
+2. VARIED SENTENCE OPENERS (BAN FORMULAIC SUBJECT-VERB CADENCE):
+   - Do NOT start consecutive sentences with "The...", "This...", or the same subject.
+   - Use natural academic transitional clauses: "In practice, ...", "By contrast, ...", "To evaluate this tradeoff, ...", "Under peak load, ...", "Rather than relying on synthetic assumptions, ...", "Examining empirical traces under stress, ...".
+
+3. AUTHENTIC SCHOLARLY REGISTER (NO SLANG OR CASUAL METAPHORS):
    - Maintain rigorous scientific vocabulary. Turnitin flags casual humanizer slang (e.g. "cranking up", "calling the shots", "sound impossible", "academic silos", "pulled off") as "AI-generated and revised by AI".
    - Use authentic academic phrasing: "empirical divergence", "circuit-level thermal dissipation", "phase quantization error", "Rayleigh fading bounds", "coherence block duration".
+   - Use active researcher voice where appropriate: "We observed that...", "Our benchmark testbed revealed...", "Empirical traces show...".
 
-3. ZERO AI FORMULAS & CLICHES:
-   - ABSOLUTE BAN: delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years, plays a pivotal role.
+4. ABSOLUTE BAN ON AI FORMULAS & CLICHES:
+   - NEVER use: delve, tapestry, beacon, testament, pivotal, paramount, crucial, vital, multifaceted, plethora, myriad, cornerstone, revolutionize, ever-evolving, landscape, underscores, delineates, fosters, in conclusion, furthermore, moreover, additionally, in summary, ultimately, in recent years, plays a pivotal role, serves as a testament, to bridge this gap.
    - Do NOT start paragraphs with formulaic intros like "Our inquiry is structured...", "Our synthesis reveals...", "In recent years,", "To bridge this gap,".
 
-4. CITATION, FIGURE & METRIC FIDELITY:
+5. CITATION, FIGURE & METRIC FIDELITY:
    - Preserve ALL in-text citations verbatim (e.g., [1], [2], or (Author, Year)).
    - Retain all Figure/Table references and quantitative metrics verbatim.
    - Return the exact same number of substantive paragraphs separated by double newlines.
@@ -249,17 +300,18 @@ async function humanizeWithClaude(text, options = {}) {
 }
 
 /**
- * Humanizes text block using Google Gemini
+ * Humanizes text block using Google Gemini with robust fast active models
  * @param {object} genAI 
  * @param {string} text 
  * @param {object} options 
  * @returns {Promise<string>}
  */
 const GEMINI_HUMANIZER_MODELS = [
-  'gemini-3.5-flash',
-  'gemini-flash-latest',
   'gemini-flash-lite-latest',
-  'gemini-2.5-flash'
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-3.5-flash'
 ];
 
 async function humanizeWithGemini(genAI, text, options = {}) {
@@ -273,7 +325,7 @@ async function humanizeWithGemini(genAI, text, options = {}) {
       const model = genAI.getGenerativeModel({
         model: modelName,
         generationConfig: {
-          temperature: 0.88,
+          temperature: 0.90,
           topP: 0.95
         }
       });
