@@ -228,6 +228,7 @@ async function initApp() {
   $('btn-add-domain').addEventListener('click', () => openDomainForm());
   $('btn-add-gap').addEventListener('click', () => openGapForm());
   $('btn-export').addEventListener('click', exportPapers);
+  $('btn-remove-duplicates')?.addEventListener('click', handleRemoveDuplicates);
   $('search-input').addEventListener('input', e => { searchQuery = e.target.value.toLowerCase(); renderPapers(); });
   $('domain-filter').addEventListener('change', e => { domainFilter = e.target.value; renderPapers(); });
   $('sort-select').addEventListener('change', e => { sortMode = e.target.value; renderPapers(); });
@@ -2618,6 +2619,131 @@ function exportPapers() {
 function exportDomainPapers(domainId, domainName) {
   const filtered = state.papers.filter(p => p.domain_id === domainId);
   exportToExcel(filtered, domainName || 'Domain');
+}
+
+// ── Remove Duplicates ──
+async function handleRemoveDuplicates() {
+  const btn = $('btn-remove-duplicates');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳</span> Scanning...';
+  }
+
+  try {
+    const data = await api.getDuplicatePapers(currentWorkspace?.id);
+    if (!data || data.totalDuplicates === 0) {
+      toast('✅ No duplicate papers found in this workspace!');
+      return;
+    }
+
+    const modalBody = $('modal-body');
+    modalBody.innerHTML = `
+      <div style="margin-bottom: 20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
+          <h2 style="margin:0;display:flex;align-items:center;gap:8px;font-size:1.25rem;">
+            <span>🧹</span> Duplicate Papers Detected (${data.totalDuplicates})
+          </h2>
+          <span style="background:rgba(239,68,68,0.15);color:#ef4444;font-size:0.75rem;padding:4px 10px;border-radius:20px;font-weight:700;">
+            ${data.groupsCount} group${data.groupsCount > 1 ? 's' : ''} found
+          </span>
+        </div>
+        <p style="color:var(--text2);font-size:0.88rem;margin:0;line-height:1.5;">
+          Tessera AI identified ${data.totalDuplicates} duplicate paper${data.totalDuplicates > 1 ? 's' : ''} based on matching DOI and Title. For each group, we preserve the richest copy (with full PDF or most complete metadata) and mark redundant copies for deletion.
+        </p>
+      </div>
+
+      <div class="dedup-groups-container" style="display:flex;flex-direction:column;gap:16px;max-height:55vh;overflow-y:auto;padding-right:4px;">
+        ${data.duplicateGroups.map((g, gIdx) => `
+          <div class="dedup-group-card" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);">
+              <span style="font-size:0.78rem;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:6px;">
+                <span>📌</span> Group #${gIdx + 1}: ${escapeHtml(g.matchReason)}
+              </span>
+              <span style="font-size:0.75rem;color:var(--text2);">${g.duplicatePapers.length} redundant cop${g.duplicatePapers.length > 1 ? 'ies' : 'y'}</span>
+            </div>
+
+            <!-- Kept Paper -->
+            <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:12px;margin-bottom:10px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:0.75rem;font-weight:700;color:#10b981;text-transform:uppercase;letter-spacing:0.5px;">
+                  ✅ KEEP (Primary Record)
+                </span>
+                <span style="font-size:0.75rem;color:var(--text2);">
+                  ${g.keptPaper.hasPdf ? '📄 Has PDF • ' : ''}📅 ${g.keptPaper.year || 'N/A'}
+                </span>
+              </div>
+              <div style="font-size:0.92rem;font-weight:600;color:var(--text);margin-bottom:4px;line-height:1.4;">
+                ${escapeHtml(g.keptPaper.title)}
+              </div>
+              <div style="font-size:0.78rem;color:var(--text2);">
+                ${g.keptPaper.authors ? escapeHtml(g.keptPaper.authors) + ' • ' : ''}${escapeHtml(g.keptPaper.venue || 'Academic Journal')}
+                ${g.keptPaper.doi ? ` • <code style="font-size:0.72rem;background:rgba(0,0,0,0.3);padding:2px 5px;border-radius:4px;">DOI: ${escapeHtml(g.keptPaper.doi)}</code>` : ''}
+              </div>
+            </div>
+
+            <!-- Duplicate Papers to remove -->
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              ${g.duplicatePapers.map(dp => `
+                <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                  <div style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+                      <span style="font-size:0.72rem;font-weight:700;color:#ef4444;text-transform:uppercase;">❌ Remove</span>
+                      <span style="font-size:0.75rem;color:var(--text2);">• Added ${new Date(dp.created_at || Date.now()).toLocaleDateString()}</span>
+                    </div>
+                    <div style="font-size:0.85rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                      ${escapeHtml(dp.title)}
+                    </div>
+                  </div>
+                  <span style="font-size:0.72rem;background:rgba(239,68,68,0.15);color:#ef4444;padding:3px 8px;border-radius:6px;white-space:nowrap;">
+                    Redundant
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="form-actions" style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-duplicates" style="background:linear-gradient(135deg, #ef4444, #dc2626);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(239,68,68,0.35);">
+          <span>🗑️</span> Remove All ${data.totalDuplicates} Duplicate${data.totalDuplicates > 1 ? 's' : ''}
+        </button>
+      </div>
+    `;
+
+    openModal();
+
+    $('btn-confirm-delete-duplicates')?.addEventListener('click', async () => {
+      const confirmBtn = $('btn-confirm-delete-duplicates');
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<span>⏳</span> Removing duplicates...';
+      }
+
+      try {
+        const allDuplicateIds = data.duplicateGroups.flatMap(g => g.duplicatePapers.map(dp => dp.id));
+        const res = await api.removeDuplicatePapers(allDuplicateIds, currentWorkspace?.id);
+        closeModal();
+        await loadAll();
+        toast(`🎉 Successfully removed ${res.removedCount || data.totalDuplicates} duplicate paper(s)!`);
+      } catch (err) {
+        toast(`Failed to remove duplicates: ${err.message}`, true);
+        if (confirmBtn) {
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = `<span>🗑️</span> Remove All ${data.totalDuplicates} Duplicates`;
+        }
+      }
+    });
+
+  } catch (err) {
+    toast(`Failed to scan duplicates: ${err.message}`, true);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🧹 Remove Duplicates';
+    }
+  }
 }
 
 function exportToExcel(papers, sheetLabel) {

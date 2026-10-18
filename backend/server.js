@@ -491,6 +491,285 @@ app.get('/api/papers', checkSupabase, authenticateUser, async (req, res) => {
   res.json(data);
 });
 
+// ── GET /api/papers/duplicates — Scan and group duplicate papers ──
+app.get('/api/papers/duplicates', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    let query = req.supabaseUser
+      .from('papers')
+      .select('id, title, authors, year, venue, doi, storage_path, url, abstract, contribution, notes, relevance_score, citation_count, is_read, extended_metadata, created_at, domain_id, domains(name, color, icon)')
+      .eq('user_id', req.user.id);
+
+    if (req.query.workspace_id) {
+      query = query.eq('workspace_id', req.query.workspace_id);
+    }
+
+    const { data: papers, error } = await query;
+    if (error) return res.status(400).json({ error: error.message });
+    if (!papers || papers.length < 2) {
+      return res.json({ totalDuplicates: 0, groupsCount: 0, duplicateGroups: [] });
+    }
+
+    // Normalization helpers
+    const normalizeDoi = (d) => {
+      if (!d || typeof d !== 'string') return '';
+      return d.toLowerCase().trim()
+        .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '')
+        .replace(/^doi:\s*/i, '')
+        .replace(/[\s\/\.]+$/g, '')
+        .trim();
+    };
+
+    const normalizeTitle = (t) => {
+      if (!t || typeof t !== 'string') return '';
+      return t.toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const calculateRichness = (p) => {
+      let score = 0;
+      if (p.storage_path) score += 100;
+      if (p.url && p.url.includes('.pdf')) score += 30;
+      if (p.abstract && p.abstract.trim().length > 30) score += 25;
+      if (p.doi && p.doi.trim().length > 4) score += 20;
+      if (p.contribution && p.contribution.trim().length > 10) score += 15;
+      if (p.notes && p.notes.trim().length > 5) score += 15;
+      if (p.relevance_score && p.relevance_score > 0) score += 10;
+      if (p.citation_count && p.citation_count > 0) score += 5;
+      if (p.extended_metadata && typeof p.extended_metadata === 'object' && Object.keys(p.extended_metadata).length > 0) score += 20;
+      if (p.is_read) score += 5;
+      if (p.venue && p.venue.trim().length > 2) score += 5;
+      return score;
+    };
+
+    class UnionFind {
+      constructor(n) {
+        this.parent = Array.from({ length: n }, (_, i) => i);
+      }
+      find(i) {
+        if (this.parent[i] === i) return i;
+        return this.parent[i] = this.find(this.parent[i]);
+      }
+      union(i, j) {
+        const rootI = this.find(i);
+        const rootJ = this.find(j);
+        if (rootI !== rootJ) this.parent[rootI] = rootJ;
+      }
+    }
+
+    const uf = new UnionFind(papers.length);
+    const doiMap = new Map();
+    const titleMap = new Map();
+
+    papers.forEach((p, idx) => {
+      const d = normalizeDoi(p.doi);
+      if (d && d.length >= 5) {
+        if (doiMap.has(d)) uf.union(idx, doiMap.get(d));
+        else doiMap.set(d, idx);
+      }
+      const t = normalizeTitle(p.title);
+      if (t && t.length >= 8) {
+        if (titleMap.has(t)) uf.union(idx, titleMap.get(t));
+        else titleMap.set(t, idx);
+      }
+    });
+
+    const groupsMap = new Map();
+    papers.forEach((p, idx) => {
+      const root = uf.find(idx);
+      if (!groupsMap.has(root)) groupsMap.set(root, []);
+      groupsMap.get(root).push(p);
+    });
+
+    const duplicateGroups = [];
+    let totalDuplicates = 0;
+
+    for (const members of groupsMap.values()) {
+      if (members.length > 1) {
+        // Sort descending by richness score, then by earliest creation date
+        members.sort((a, b) => {
+          const scoreDiff = calculateRichness(b) - calculateRichness(a);
+          if (scoreDiff !== 0) return scoreDiff;
+          return (new Date(a.created_at || 0)) - (new Date(b.created_at || 0));
+        });
+
+        const keptPaper = members[0];
+        const duplicates = members.slice(1);
+        totalDuplicates += duplicates.length;
+
+        // Determine match reason
+        const sampleDoi = normalizeDoi(keptPaper.doi);
+        const sampleTitle = normalizeTitle(keptPaper.title);
+        const doiMatch = sampleDoi && duplicates.some(d => normalizeDoi(d.doi) === sampleDoi);
+        const titleMatch = sampleTitle && duplicates.some(d => normalizeTitle(d.title) === sampleTitle);
+
+        let matchReason = 'Matching Title';
+        if (doiMatch && titleMatch) matchReason = `Matching DOI (${sampleDoi}) & Title`;
+        else if (doiMatch) matchReason = `Matching DOI (${sampleDoi})`;
+
+        duplicateGroups.push({
+          matchReason,
+          keptPaper: {
+            id: keptPaper.id,
+            title: keptPaper.title,
+            year: keptPaper.year,
+            venue: keptPaper.venue,
+            doi: keptPaper.doi,
+            authors: keptPaper.authors,
+            hasPdf: Boolean(keptPaper.storage_path || keptPaper.url?.includes('.pdf')),
+            richnessScore: calculateRichness(keptPaper),
+            created_at: keptPaper.created_at
+          },
+          duplicatePapers: duplicates.map(dp => ({
+            id: dp.id,
+            title: dp.title,
+            year: dp.year,
+            venue: dp.venue,
+            doi: dp.doi,
+            authors: dp.authors,
+            hasPdf: Boolean(dp.storage_path || dp.url?.includes('.pdf')),
+            richnessScore: calculateRichness(dp),
+            created_at: dp.created_at
+          }))
+        });
+      }
+    }
+
+    res.json({
+      totalDuplicates,
+      groupsCount: duplicateGroups.length,
+      duplicateGroups
+    });
+  } catch (err) {
+    console.error('[Duplicates] Scan error:', err);
+    res.status(500).json({ error: err.message || 'Failed to scan for duplicate papers.' });
+  }
+});
+
+// ── POST /api/papers/deduplicate — Remove redundant duplicate papers ──
+app.post('/api/papers/deduplicate', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    let idsToDelete = req.body?.paper_ids;
+
+    // If no specific IDs provided, scan and determine automatically
+    if (!Array.isArray(idsToDelete) || idsToDelete.length === 0) {
+      let query = req.supabaseUser
+        .from('papers')
+        .select('id, title, doi, storage_path, url, abstract, contribution, notes, relevance_score, citation_count, is_read, extended_metadata, created_at')
+        .eq('user_id', req.user.id);
+
+      if (req.body?.workspace_id) {
+        query = query.eq('workspace_id', req.body.workspace_id);
+      }
+
+      const { data: papers, error } = await query;
+      if (error) return res.status(400).json({ error: error.message });
+      if (!papers || papers.length < 2) {
+        return res.json({ success: true, removedCount: 0, removedIds: [] });
+      }
+
+      const normalizeDoi = (d) => (d || '').toLowerCase().trim().replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').replace(/[\s\/\.]+$/g, '').trim();
+      const normalizeTitle = (t) => (t || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+      const calculateRichness = (p) => {
+        let score = 0;
+        if (p.storage_path) score += 100;
+        if (p.url && p.url.includes('.pdf')) score += 30;
+        if (p.abstract && p.abstract.trim().length > 30) score += 25;
+        if (p.doi && p.doi.trim().length > 4) score += 20;
+        if (p.contribution && p.contribution.trim().length > 10) score += 15;
+        if (p.notes && p.notes.trim().length > 5) score += 15;
+        if (p.relevance_score && p.relevance_score > 0) score += 10;
+        if (p.extended_metadata && typeof p.extended_metadata === 'object' && Object.keys(p.extended_metadata).length > 0) score += 20;
+        return score;
+      };
+
+      class UnionFind {
+        constructor(n) { this.parent = Array.from({ length: n }, (_, i) => i); }
+        find(i) { return this.parent[i] === i ? i : (this.parent[i] = this.find(this.parent[i])); }
+        union(i, j) {
+          const rootI = this.find(i);
+          const rootJ = this.find(j);
+          if (rootI !== rootJ) this.parent[rootI] = rootJ;
+        }
+      }
+
+      const uf = new UnionFind(papers.length);
+      const doiMap = new Map();
+      const titleMap = new Map();
+
+      papers.forEach((p, idx) => {
+        const d = normalizeDoi(p.doi);
+        if (d && d.length >= 5) {
+          if (doiMap.has(d)) uf.union(idx, doiMap.get(d));
+          else doiMap.set(d, idx);
+        }
+        const t = normalizeTitle(p.title);
+        if (t && t.length >= 8) {
+          if (titleMap.has(t)) uf.union(idx, titleMap.get(t));
+          else titleMap.set(t, idx);
+        }
+      });
+
+      const groupsMap = new Map();
+      papers.forEach((p, idx) => {
+        const root = uf.find(idx);
+        if (!groupsMap.has(root)) groupsMap.set(root, []);
+        groupsMap.get(root).push(p);
+      });
+
+      idsToDelete = [];
+      for (const members of groupsMap.values()) {
+        if (members.length > 1) {
+          members.sort((a, b) => {
+            const scoreDiff = calculateRichness(b) - calculateRichness(a);
+            if (scoreDiff !== 0) return scoreDiff;
+            return (new Date(a.created_at || 0)) - (new Date(b.created_at || 0));
+          });
+          const duplicates = members.slice(1);
+          duplicates.forEach(d => idsToDelete.push(d.id));
+        }
+      }
+    }
+
+    if (idsToDelete.length === 0) {
+      return res.json({ success: true, removedCount: 0, removedIds: [] });
+    }
+
+    // Clean up dependent child rows in related tables first
+    try {
+      await req.supabaseUser.from('paper_gaps').delete().in('paper_id', idsToDelete).catch(() => {});
+      await req.supabaseUser.from('evidence_items').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_methods').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_datasets').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_findings').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+    } catch (cleanErr) {
+      console.warn('[Deduplicate] Child table cleanup notice:', cleanErr.message);
+    }
+
+    // Delete redundant papers strictly scoped to authenticated user
+    const { error: deleteError } = await req.supabaseUser
+      .from('papers')
+      .delete()
+      .in('id', idsToDelete)
+      .eq('user_id', req.user.id);
+
+    if (deleteError) {
+      return res.status(400).json({ error: deleteError.message });
+    }
+
+    console.log(`[Deduplicate] Successfully removed ${idsToDelete.length} duplicate papers for user ${req.user.id}`);
+    res.json({
+      success: true,
+      removedCount: idsToDelete.length,
+      removedIds: idsToDelete
+    });
+  } catch (err) {
+    console.error('[Deduplicate] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to remove duplicate papers.' });
+  }
+});
+
 app.get('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) => {
   const { data, error } = await req.supabaseUser
     .from('papers')

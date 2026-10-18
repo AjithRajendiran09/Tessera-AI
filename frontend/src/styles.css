@@ -4966,3 +4966,22 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
   transition: border-color 0.2s;
 }
 .abgen-hist-abstract-edit:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+
+/* Deduplicate Modal Styles */
+.dedup-groups-container::-webkit-scrollbar {
+  width: 6px;
+}
+.dedup-groups-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+.dedup-groups-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+.dedup-group-card {
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.dedup-group-card:hover {
+  border-color: rgba(124, 92, 255, 0.35);
+}

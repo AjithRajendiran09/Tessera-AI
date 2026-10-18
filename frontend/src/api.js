@@ -248,6 +248,17 @@ export async function deletePaper(id) {
   });
 }
 
+export async function getDuplicatePapers(workspaceId) {
+  return fetchAPI(workspaceId ? `/papers/duplicates?workspace_id=${workspaceId}` : '/papers/duplicates');
+}
+
+export async function removeDuplicatePapers(paperIds = null, workspaceId = null) {
+  return fetchAPI('/papers/deduplicate', {
+    method: 'POST',
+    body: JSON.stringify({ paper_ids: paperIds, workspace_id: workspaceId })
+  });
+}
+
 // ── RESEARCH GAPS ──
 export async function getGaps(workspaceId) {
   return fetchAPI(workspaceId ? `/gaps?workspace_id=${workspaceId}` : '/gaps');
