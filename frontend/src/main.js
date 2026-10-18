@@ -52,10 +52,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Listen for auth state changes (e.g., token refresh)
   api.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_OUT') {
+    if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESH_FAILED') {
       currentUser = null;
       currentProfile = null;
       showAuthScreen();
+      if (event === 'TOKEN_REFRESH_FAILED') {
+        toast('Session expired. Please sign in again.', true);
+      }
     }
   });
 });
