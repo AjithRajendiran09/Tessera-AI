@@ -248,6 +248,13 @@ export async function deletePaper(id) {
   });
 }
 
+export async function bulkDeletePapers(paperIds) {
+  return fetchAPI('/papers/bulk-delete', {
+    method: 'POST',
+    body: JSON.stringify({ paper_ids: paperIds })
+  });
+}
+
 export async function getDuplicatePapers(workspaceId) {
   return fetchAPI(workspaceId ? `/papers/duplicates?workspace_id=${workspaceId}` : '/papers/duplicates');
 }

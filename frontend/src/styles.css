@@ -4985,3 +4985,88 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:
 .dedup-group-card:hover {
   border-color: rgba(124, 92, 255, 0.35);
 }
+
+/* Batch / Multi-Select Mode */
+.batch-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(124, 92, 255, 0.08);
+  border: 1px solid rgba(124, 92, 255, 0.25);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(10px);
+  animation: fadeIn 0.2s ease;
+}
+.batch-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.batch-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  color: var(--text);
+}
+.batch-checkbox, .paper-checkbox {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.batch-divider {
+  color: var(--border);
+}
+.batch-selected-badge {
+  background: rgba(124, 92, 255, 0.2);
+  color: #c084fc;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.batch-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.paper-card.is-selected {
+  border-color: rgba(124, 92, 255, 0.65) !important;
+  background: rgba(124, 92, 255, 0.06) !important;
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.4), 0 8px 30px rgba(124, 92, 255, 0.15);
+}
+.paper-card-select-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.paper-card-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text2);
+  cursor: pointer;
+}
+.paper-card.is-selected .paper-card-checkbox-label {
+  color: #c084fc;
+}
+#btn-toggle-select-papers.active {
+  background: rgba(124, 92, 255, 0.25);
+  color: #c084fc;
+  border-color: rgba(124, 92, 255, 0.5);
+}
+

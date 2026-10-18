@@ -19,6 +19,8 @@ let domainFilter = '';
 let sortMode = 'year-desc';
 let currentUser = null;
 let currentProfile = null;
+let selectedPaperIds = new Set();
+let isPaperSelectMode = false;
 
 // ── DOM ──
 const $ = id => document.getElementById(id);
@@ -232,6 +234,10 @@ async function initApp() {
   $('btn-add-gap').addEventListener('click', () => openGapForm());
   $('btn-export').addEventListener('click', exportPapers);
   $('btn-remove-duplicates')?.addEventListener('click', handleRemoveDuplicates);
+  $('btn-toggle-select-papers')?.addEventListener('click', togglePaperSelectMode);
+  $('chk-batch-select-all')?.addEventListener('change', handleBatchSelectAll);
+  $('btn-batch-cancel')?.addEventListener('click', cancelPaperSelectMode);
+  $('btn-batch-delete')?.addEventListener('click', handleBatchDeletePapers);
   $('search-input').addEventListener('input', e => { searchQuery = e.target.value.toLowerCase(); renderPapers(); });
   $('domain-filter').addEventListener('change', e => { domainFilter = e.target.value; renderPapers(); });
   $('sort-select').addEventListener('change', e => { sortMode = e.target.value; renderPapers(); });
@@ -758,6 +764,8 @@ function renderPapers() {
     return a.title.localeCompare(b.title);
   });
 
+  updateBatchBar(filtered);
+
   const grid = $('papers-grid');
   $('papers-empty').style.display = filtered.length ? 'none' : 'block';
 
@@ -781,9 +789,19 @@ function renderPapers() {
       if (typeof t === 'string' && !topics.includes(t)) topics.push(t);
     });
 
+    const isSelected = selectedPaperIds.has(p.id);
+
     return `
-    <div class="paper-card" data-id="${p.id}" style="animation:fadeIn .3s ease ${i * 0.03}s both">
+    <div class="paper-card ${isSelected ? 'is-selected' : ''}" data-id="${p.id}" style="animation:fadeIn .3s ease ${i * 0.03}s both">
       <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${d?.color || 'var(--accent)'}"></div>
+      ${isPaperSelectMode ? `
+        <div class="paper-card-select-overlay" onclick="event.stopPropagation()">
+          <label class="paper-card-checkbox-label" for="chk-paper-${p.id}">
+            <input type="checkbox" id="chk-paper-${p.id}" class="paper-checkbox" data-paper-id="${p.id}" ${isSelected ? 'checked' : ''} />
+            <span>${isSelected ? 'Selected' : 'Select'}</span>
+          </label>
+        </div>
+      ` : ''}
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <span class="paper-badge" style="background:${badgeBg};color:${badgeColor};margin-bottom:0" title="Domain / Focus">${badgeIcon} ${badgeLabel}</span>
         ${p.category && p.category !== badgeLabel ? `<span class="paper-cat-badge">${p.category}</span>` : ''}
@@ -819,9 +837,32 @@ function renderPapers() {
 
   grid.querySelectorAll('.paper-card').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('.paper-link')) return;
-      const p = state.papers.find(pp => pp.id === card.dataset.id);
+      if (e.target.closest('.paper-link') || e.target.closest('.paper-pdf-btn') || e.target.closest('.paper-checkbox') || e.target.closest('.paper-card-select-overlay')) return;
+      const paperId = card.dataset.id;
+      if (isPaperSelectMode) {
+        if (selectedPaperIds.has(paperId)) {
+          selectedPaperIds.delete(paperId);
+        } else {
+          selectedPaperIds.add(paperId);
+        }
+        renderPapers();
+        return;
+      }
+      const p = state.papers.find(pp => pp.id === paperId);
       if (p) openPaperDetail(p);
+    });
+  });
+
+  grid.querySelectorAll('.paper-checkbox').forEach(cb => {
+    cb.addEventListener('change', e => {
+      e.stopPropagation();
+      const paperId = cb.dataset.paperId;
+      if (cb.checked) {
+        selectedPaperIds.add(paperId);
+      } else {
+        selectedPaperIds.delete(paperId);
+      }
+      renderPapers();
     });
   });
 
@@ -2747,6 +2788,179 @@ async function handleRemoveDuplicates() {
       btn.innerHTML = '🧹 Remove Duplicates';
     }
   }
+}
+
+// ── Batch Paper Selection & Deletion ──
+function getFilteredPapers() {
+  let filtered = state.papers.filter(p => {
+    const matchDomain = !domainFilter || p.domain_id === domainFilter;
+    const matchSearch = !searchQuery || p.title.toLowerCase().includes(searchQuery) ||
+      p.authors.toLowerCase().includes(searchQuery) || (p.contribution || '').toLowerCase().includes(searchQuery) ||
+      String(p.year).includes(searchQuery);
+    return matchDomain && matchSearch;
+  });
+  filtered.sort((a, b) => {
+    if (sortMode === 'year-desc') return b.year - a.year;
+    if (sortMode === 'year-asc') return a.year - b.year;
+    if (sortMode === 'relevance') return (b.relevance_score || 0) - (a.relevance_score || 0);
+    return a.title.localeCompare(b.title);
+  });
+  return filtered;
+}
+
+function updateBatchBar(filtered = []) {
+  const batchBar = $('papers-batch-bar');
+  const toggleBtn = $('btn-toggle-select-papers');
+  const selectAllChk = $('chk-batch-select-all');
+  const filteredCountEl = $('batch-filtered-count');
+  const selectedTextEl = $('batch-selected-text');
+  const deleteCountEl = $('batch-delete-count');
+  const deleteBtn = $('btn-batch-delete');
+
+  // Prune any stale IDs that are no longer in state.papers
+  const existingIds = new Set(state.papers.map(p => p.id));
+  for (const id of selectedPaperIds) {
+    if (!existingIds.has(id)) selectedPaperIds.delete(id);
+  }
+
+  if (filteredCountEl) filteredCountEl.textContent = filtered.length;
+  if (selectedTextEl) selectedTextEl.textContent = `${selectedPaperIds.size} selected`;
+  if (deleteCountEl) deleteCountEl.textContent = selectedPaperIds.size;
+  if (deleteBtn) deleteBtn.disabled = selectedPaperIds.size === 0;
+
+  if (selectAllChk) {
+    if (filtered.length > 0 && filtered.every(p => selectedPaperIds.has(p.id))) {
+      selectAllChk.checked = true;
+      selectAllChk.indeterminate = false;
+    } else if (filtered.some(p => selectedPaperIds.has(p.id))) {
+      selectAllChk.checked = false;
+      selectAllChk.indeterminate = true;
+    } else {
+      selectAllChk.checked = false;
+      selectAllChk.indeterminate = false;
+    }
+  }
+
+  if (isPaperSelectMode || selectedPaperIds.size > 0) {
+    if (batchBar) batchBar.style.display = 'flex';
+    if (toggleBtn) {
+      toggleBtn.classList.add('active');
+      toggleBtn.innerHTML = '<span>✕</span> Done Selecting';
+    }
+  } else {
+    if (batchBar) batchBar.style.display = 'none';
+    if (toggleBtn) {
+      toggleBtn.classList.remove('active');
+      toggleBtn.innerHTML = '<span>☑️</span> Select';
+    }
+  }
+}
+
+function togglePaperSelectMode() {
+  isPaperSelectMode = !isPaperSelectMode;
+  if (!isPaperSelectMode) {
+    selectedPaperIds.clear();
+  }
+  renderPapers();
+}
+
+function cancelPaperSelectMode() {
+  isPaperSelectMode = false;
+  selectedPaperIds.clear();
+  renderPapers();
+}
+
+function handleBatchSelectAll(e) {
+  const isChecked = e.target.checked;
+  const filtered = getFilteredPapers();
+  if (isChecked) {
+    filtered.forEach(p => selectedPaperIds.add(p.id));
+    isPaperSelectMode = true;
+  } else {
+    filtered.forEach(p => selectedPaperIds.delete(p.id));
+  }
+  renderPapers();
+}
+
+async function handleBatchDeletePapers() {
+  const count = selectedPaperIds.size;
+  if (count === 0) {
+    toast('No papers selected to delete.', true);
+    return;
+  }
+
+  const selectedPapers = state.papers.filter(p => selectedPaperIds.has(p.id));
+  const previewPapers = selectedPapers.slice(0, 5);
+  const remainingCount = count - previewPapers.length;
+
+  const modalBody = $('modal-body');
+  modalBody.innerHTML = `
+    <div style="margin-bottom: 20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:1.6rem;">⚠️</span>
+        <h2 style="margin:0;font-size:1.25rem;color:#ef4444;">
+          Delete ${count} Paper${count > 1 ? 's' : ''}?
+        </h2>
+      </div>
+      <p style="color:var(--text2);font-size:0.88rem;margin:0 0 16px 0;line-height:1.5;">
+        Are you sure you want to permanently delete the selected <strong>${count}</strong> paper${count > 1 ? 's' : ''}? This action cannot be undone and will permanently remove their records, evidence claims, research notes, and associations.
+      </p>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+        ${previewPapers.map(p => `
+          <div style="font-size:0.85rem;color:var(--text);display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
+            <span style="color:#ef4444;">📄</span>
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;" title="${escapeHtml(p.title)}">
+              ${escapeHtml(p.title)}
+            </span>
+            <span style="font-size:0.75rem;color:var(--text2);flex-shrink:0;">${p.year || ''}</span>
+          </div>
+        `).join('')}
+        ${remainingCount > 0 ? `
+          <div style="font-size:0.78rem;color:var(--text2);text-align:center;padding-top:6px;font-style:italic;">
+            ... and ${remainingCount} more paper${remainingCount > 1 ? 's' : ''}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+      <button class="btn btn-ghost" id="btn-cancel-bulk-delete">Cancel</button>
+      <button class="btn btn-danger" id="btn-confirm-bulk-delete" style="background:#ef4444;color:#fff;border:none;box-shadow:0 2px 10px rgba(239,68,68,0.3);font-weight:600;cursor:pointer;">
+        🗑️ Permanently Delete (${count})
+      </button>
+    </div>
+  `;
+
+  openModal();
+
+  $('btn-cancel-bulk-delete')?.addEventListener('click', closeModal);
+
+  $('btn-confirm-bulk-delete')?.addEventListener('click', async () => {
+    const confirmBtn = $('btn-confirm-bulk-delete');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<span>⏳</span> Deleting...';
+    }
+
+    try {
+      const idsToDelete = Array.from(selectedPaperIds);
+      await api.bulkDeletePapers(idsToDelete);
+      closeModal();
+
+      selectedPaperIds.clear();
+      isPaperSelectMode = false;
+      await loadAll();
+      toast(`🗑️ Successfully deleted ${idsToDelete.length} paper${idsToDelete.length > 1 ? 's' : ''}!`);
+    } catch (err) {
+      console.error('[Bulk Delete Error]:', err);
+      toast('Failed to delete papers: ' + (err.message || err), true);
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = `🗑️ Permanently Delete (${count})`;
+      }
+    }
+  });
 }
 
 function exportToExcel(papers, sheetLabel) {

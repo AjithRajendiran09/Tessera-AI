@@ -901,6 +901,54 @@ app.delete('/api/papers/:id', checkSupabase, authenticateUser, async (req, res) 
   res.status(204).send();
 });
 
+// ── POST /api/papers/bulk-delete — Delete multiple papers safely ──
+app.post('/api/papers/bulk-delete', checkSupabase, authenticateUser, async (req, res) => {
+  try {
+    const { paper_ids } = req.body;
+    if (!Array.isArray(paper_ids) || paper_ids.length === 0) {
+      return res.status(400).json({ error: 'paper_ids array is required and must not be empty.' });
+    }
+
+    const idsToDelete = paper_ids.filter(id => typeof id === 'string' && id.trim().length > 0);
+    if (idsToDelete.length === 0) {
+      return res.status(400).json({ error: 'No valid paper IDs provided.' });
+    }
+
+    // 1. Clean up child records in related tables
+    try {
+      await req.supabaseUser.from('paper_gaps').delete().in('paper_id', idsToDelete).catch(() => {});
+      await req.supabaseUser.from('evidence_items').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_methods').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_datasets').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+      await req.supabaseUser.from('paper_findings').delete().in('paper_id', idsToDelete).eq('user_id', req.user.id).catch(() => {});
+    } catch (cleanErr) {
+      console.warn('[Bulk Delete] Child table cleanup warning:', cleanErr.message);
+    }
+
+    // 2. Delete the papers strictly scoped to user
+    const { error } = await req.supabaseUser
+      .from('papers')
+      .delete()
+      .in('id', idsToDelete)
+      .eq('user_id', req.user.id);
+
+    if (error) {
+      console.error('[Bulk Delete] Error deleting papers:', error);
+      return res.status(400).json({ error: error.message });
+    }
+
+    console.log(`[Bulk Delete] Successfully deleted ${idsToDelete.length} papers for user ${req.user.id}`);
+    res.json({
+      success: true,
+      deletedCount: idsToDelete.length,
+      deletedIds: idsToDelete
+    });
+  } catch (err) {
+    console.error('[Bulk Delete] Server error:', err);
+    res.status(500).json({ error: err.message || 'Failed to delete multiple papers.' });
+  }
+});
+
 // RESEARCH GAPS (Strictly User-Scoped)
 app.get('/api/gaps', checkSupabase, authenticateUser, async (req, res) => {
   let query = req.supabaseUser
