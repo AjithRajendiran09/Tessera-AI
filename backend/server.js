@@ -496,7 +496,7 @@ app.get('/api/papers/duplicates', checkSupabase, authenticateUser, async (req, r
   try {
     let query = req.supabaseUser
       .from('papers')
-      .select('id, title, authors, year, venue, doi, storage_path, url, abstract, contribution, notes, relevance_score, citation_count, is_read, extended_metadata, created_at, domain_id, domains(name, color, icon)')
+      .select('*, domains(name, color, icon)')
       .eq('user_id', req.user.id);
 
     if (req.query.workspace_id) {
@@ -504,7 +504,10 @@ app.get('/api/papers/duplicates', checkSupabase, authenticateUser, async (req, r
     }
 
     const { data: papers, error } = await query;
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      console.error('[GET /api/papers/duplicates] Query error:', error);
+      return res.status(400).json({ error: error.message });
+    }
     if (!papers || papers.length < 2) {
       return res.json({ totalDuplicates: 0, groupsCount: 0, duplicateGroups: [] });
     }
@@ -531,12 +534,14 @@ app.get('/api/papers/duplicates', checkSupabase, authenticateUser, async (req, r
       let score = 0;
       if (p.storage_path) score += 100;
       if (p.url && p.url.includes('.pdf')) score += 30;
-      if (p.abstract && p.abstract.trim().length > 30) score += 25;
+      const abstractText = p.abstract || p.extended_metadata?.abstract || '';
+      if (abstractText && abstractText.trim().length > 30) score += 25;
       if (p.doi && p.doi.trim().length > 4) score += 20;
       if (p.contribution && p.contribution.trim().length > 10) score += 15;
       if (p.notes && p.notes.trim().length > 5) score += 15;
       if (p.relevance_score && p.relevance_score > 0) score += 10;
-      if (p.citation_count && p.citation_count > 0) score += 5;
+      const citations = p.citation_count ?? p.extended_metadata?.citations ?? p.extended_metadata?.citation_count ?? 0;
+      if (citations > 0) score += 5;
       if (p.extended_metadata && typeof p.extended_metadata === 'object' && Object.keys(p.extended_metadata).length > 0) score += 20;
       if (p.is_read) score += 5;
       if (p.venue && p.venue.trim().length > 2) score += 5;
@@ -656,7 +661,7 @@ app.post('/api/papers/deduplicate', checkSupabase, authenticateUser, async (req,
     if (!Array.isArray(idsToDelete) || idsToDelete.length === 0) {
       let query = req.supabaseUser
         .from('papers')
-        .select('id, title, doi, storage_path, url, abstract, contribution, notes, relevance_score, citation_count, is_read, extended_metadata, created_at')
+        .select('*')
         .eq('user_id', req.user.id);
 
       if (req.body?.workspace_id) {
@@ -664,7 +669,10 @@ app.post('/api/papers/deduplicate', checkSupabase, authenticateUser, async (req,
       }
 
       const { data: papers, error } = await query;
-      if (error) return res.status(400).json({ error: error.message });
+      if (error) {
+        console.error('[POST /api/papers/deduplicate] Query error:', error);
+        return res.status(400).json({ error: error.message });
+      }
       if (!papers || papers.length < 2) {
         return res.json({ success: true, removedCount: 0, removedIds: [] });
       }
@@ -675,11 +683,14 @@ app.post('/api/papers/deduplicate', checkSupabase, authenticateUser, async (req,
         let score = 0;
         if (p.storage_path) score += 100;
         if (p.url && p.url.includes('.pdf')) score += 30;
-        if (p.abstract && p.abstract.trim().length > 30) score += 25;
+        const abstractText = p.abstract || p.extended_metadata?.abstract || '';
+        if (abstractText && abstractText.trim().length > 30) score += 25;
         if (p.doi && p.doi.trim().length > 4) score += 20;
         if (p.contribution && p.contribution.trim().length > 10) score += 15;
         if (p.notes && p.notes.trim().length > 5) score += 15;
         if (p.relevance_score && p.relevance_score > 0) score += 10;
+        const citations = p.citation_count ?? p.extended_metadata?.citations ?? p.extended_metadata?.citation_count ?? 0;
+        if (citations > 0) score += 5;
         if (p.extended_metadata && typeof p.extended_metadata === 'object' && Object.keys(p.extended_metadata).length > 0) score += 20;
         return score;
       };
